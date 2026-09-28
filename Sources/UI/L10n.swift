@@ -52,10 +52,10 @@ enum L10n {
         "Quit SwitchFix": "Завершить SwitchFix",
         "Grant Accessibility Permission…": "Разрешить универсальный доступ…",
         "SwitchFix needs Accessibility access to monitor keyboard input and replace mistyped words.":
-            "SwitchFix нужен универсальный доступ, чтобы следить за вводом и заменять слова, набранные не в той раскладке.",
+            "Для работы SwitchFix нужен универсальный доступ: так он следит за вводом и заменяет слова, набранные не в той раскладке.",
         "Grant Input Monitoring Permission…": "Разрешить мониторинг ввода…",
         "SwitchFix needs Input Monitoring access to observe keystrokes.":
-            "SwitchFix нужен мониторинг ввода, чтобы видеть нажатия клавиш.",
+            "Для работы SwitchFix нужен мониторинг ввода: так он видит нажатия клавиш.",
         "SwitchFix (missing permissions)": "SwitchFix (нет разрешений)",
         "SwitchFix (CapsLock conflict detected)": "SwitchFix (конфликт CapsLock)",
         "Warning: CapsLock conflicts with macOS input switching":
@@ -75,7 +75,7 @@ enum L10n {
         "Trigger Correction:": "Исправить:",
         "Revert Last:": "Отменить последнее:",
         "Type Key...": "Нажмите клавишу…",
-        "%@ (tap)": "%@ (одиночное)",
+        "%@ (tap)": "%@ (одно нажатие)",
         "Space": "Пробел",
         "Left": "Влево",
         "Right": "Вправо",
