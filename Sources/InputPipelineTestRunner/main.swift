@@ -667,6 +667,22 @@ run("tap modifier hotkeys") {
     check(TapModifierHotkey.containing(keyCode: 56) == nil, "Shift is not a tap hotkey")
 }
 
+run("app post mode overrides") {
+    let suiteName = "com.switchfix.tests.postMode.\(getpid())"
+    guard let defaults = UserDefaults(suiteName: suiteName) else {
+        check(false, "test defaults suite must be available")
+        return
+    }
+    defer { defaults.removePersistentDomain(forName: suiteName) }
+
+    check(AppPostMode.overrides(in: defaults) == ["com.tdesktop.Telegram": .session],
+          "unset overrides default to Telegram via the session tap")
+    defaults.set([String: String](), forKey: AppPostMode.defaultsKey)
+    check(AppPostMode.overrides(in: defaults).isEmpty, "an explicitly emptied list must not bring Telegram back")
+    defaults.set(["com.example.a": "hid", "com.example.b": "bogus"], forKey: AppPostMode.defaultsKey)
+    check(AppPostMode.overrides(in: defaults) == ["com.example.a": .hid], "stored modes are read and unknown ones ignored")
+}
+
 private enum BlockedCollaborator {
     case dictionary
     case accessibility
