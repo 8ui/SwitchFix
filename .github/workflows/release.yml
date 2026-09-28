@@ -4,6 +4,8 @@ on:
   push:
     tags:
       - "v*"
+  # Manual run: builds and uploads artifacts; the release step only runs for tags.
+  workflow_dispatch:
 
 permissions:
   contents: write
