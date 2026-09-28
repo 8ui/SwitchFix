@@ -371,14 +371,14 @@ public final class TextCorrector {
     private func post(_ events: [CGEvent], targetPID: pid_t) {
         // Some toolkits (e.g. Qt in Telegram) drop Unicode-string events posted
         // straight to the process; per-app override routes them through the system
-        // event stream instead. Defaults key: SwitchFix_postModeByApp = {bundleID: "session"|"hid"}.
+        // event stream instead. Read on every correction so settings apply immediately.
         let bundleID = NSRunningApplication(processIdentifier: targetPID)?.bundleIdentifier
-        let modes = UserDefaults.standard.dictionary(forKey: "SwitchFix_postModeByApp") as? [String: String]
+        let modes = AppPostMode.overrides()
         let tap: CGEventTapLocation?
-        switch bundleID.flatMap({ modes?[$0] }) {
-        case "session": tap = .cgSessionEventTap
-        case "hid": tap = .cghidEventTap
-        default: tap = nil
+        switch bundleID.flatMap({ modes[$0] }) {
+        case .session: tap = .cgSessionEventTap
+        case .hid: tap = .cghidEventTap
+        case nil: tap = nil
         }
         for event in events {
             if let tap {

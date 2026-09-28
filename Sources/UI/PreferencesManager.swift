@@ -123,6 +123,16 @@ public class PreferencesManager {
         }
     }
 
+    /// Per-app keystroke delivery overrides [bundleID: mode]; apps not listed use the default.
+    public var postModeByApp: [String: AppPostMode] {
+        get { AppPostMode.overrides(in: defaults) }
+        set {
+            guard newValue != self.postModeByApp else { return }
+            defaults.set(newValue.mapValues(\.rawValue), forKey: AppPostMode.defaultsKey)
+            NotificationCenter.default.post(name: .preferencesDidChange, object: nil)
+        }
+    }
+
     private init() {}
 }
 

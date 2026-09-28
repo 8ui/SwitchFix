@@ -658,6 +658,31 @@ run("100,000 event stress") {
     check(inspected.wait(timeout: .now() + 1) == .success, "final engine state must be observable")
 }
 
+run("tap modifier hotkeys") {
+    check(TapModifierHotkey.configured(keyCode: 59)?.flag == .maskControl, "left Control configures a Control tap")
+    check(TapModifierHotkey.configured(keyCode: 58)?.flag == .maskAlternate, "left Option configures an Option tap")
+    check(TapModifierHotkey.configured(keyCode: 62) == nil, "tap hotkeys are stored by their left-side key code")
+    check(TapModifierHotkey.containing(keyCode: 62)?.keyCode == 59, "right Control records as left Control")
+    check(TapModifierHotkey.containing(keyCode: 61)?.keyCode == 58, "right Option records as left Option")
+    check(TapModifierHotkey.containing(keyCode: 56) == nil, "Shift is not a tap hotkey")
+}
+
+run("app post mode overrides") {
+    let suiteName = "com.switchfix.tests.postMode.\(getpid())"
+    guard let defaults = UserDefaults(suiteName: suiteName) else {
+        check(false, "test defaults suite must be available")
+        return
+    }
+    defer { defaults.removePersistentDomain(forName: suiteName) }
+
+    check(AppPostMode.overrides(in: defaults) == ["com.tdesktop.Telegram": .session],
+          "unset overrides default to Telegram via the session tap")
+    defaults.set([String: String](), forKey: AppPostMode.defaultsKey)
+    check(AppPostMode.overrides(in: defaults).isEmpty, "an explicitly emptied list must not bring Telegram back")
+    defaults.set(["com.example.a": "hid", "com.example.b": "bogus"], forKey: AppPostMode.defaultsKey)
+    check(AppPostMode.overrides(in: defaults) == ["com.example.a": .hid], "stored modes are read and unknown ones ignored")
+}
+
 private enum BlockedCollaborator {
     case dictionary
     case accessibility

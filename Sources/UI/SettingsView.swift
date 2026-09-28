@@ -2,6 +2,7 @@ import SwiftUI
 import AppKit
 import Carbon
 import UniformTypeIdentifiers
+import Core
 import Utils
 
 // Helpers
@@ -70,22 +71,38 @@ class SettingsViewModel: ObservableObject {
     
     @objc private func syncFromPreferences() {
         // Sync back only if different to avoid loops
-        if self.correctionMode != PreferencesManager.shared.correctionMode {
-            self.correctionMode = PreferencesManager.shared.correctionMode
+        let prefs = PreferencesManager.shared
+        if self.correctionMode != prefs.correctionMode {
+            self.correctionMode = prefs.correctionMode
         }
-        // ... extend for others if needed, but mainly Mode is likely to change externally via Menu
+        if self.hotkeyKeyCode != prefs.hotkeyKeyCode {
+            self.hotkeyKeyCode = prefs.hotkeyKeyCode
+        }
+        if self.hotkeyModifiers != prefs.hotkeyModifiers {
+            self.hotkeyModifiers = prefs.hotkeyModifiers
+        }
+        if self.revertHotkeyKeyCode != prefs.revertHotkeyKeyCode {
+            self.revertHotkeyKeyCode = prefs.revertHotkeyKeyCode
+        }
+        if self.revertHotkeyModifiers != prefs.revertHotkeyModifiers {
+            self.revertHotkeyModifiers = prefs.revertHotkeyModifiers
+        }
     }
 }
 
 class RecorderState: ObservableObject {
     @Published var isRecording = false
     private var monitor: Any?
+    // A lone tap-hotkey modifier press awaiting its release.
+    private var pendingTap: TapModifierHotkey?
 
     deinit {
         stop()
     }
 
-    func start(completion: @escaping (UInt16, UInt64) -> Void) {
+    /// - Parameter allowsModifierTap: also record a lone Control/Option press-and-release,
+    ///   reported as the modifier's left-side key code with no modifiers.
+    func start(allowsModifierTap: Bool, completion: @escaping (UInt16, UInt64) -> Void) {
         stop()
         isRecording = true
 
@@ -100,10 +117,27 @@ class RecorderState: ObservableObject {
             }
             // Pass through other modifier transitions so app-wide modifier state stays intact.
             if event.type == .flagsChanged {
+                guard allowsModifierTap, let tap = TapModifierHotkey.containing(keyCode: event.keyCode) else {
+                    self.pendingTap = nil
+                    return event
+                }
+                let flags = CGEventFlags(rawValue: UInt64(event.modifierFlags.rawValue))
+                if flags.contains(tap.flag) {
+                    let others = CGEventFlags([.maskCommand, .maskControl, .maskAlternate, .maskShift])
+                        .subtracting(tap.flag)
+                    self.pendingTap = flags.intersection(others).isEmpty ? tap : nil
+                } else if self.pendingTap?.keyCode == tap.keyCode {
+                    completion(tap.keyCode, 0)
+                    self.stop()
+                } else {
+                    self.pendingTap = nil
+                }
                 return event
             }
 
             if event.type == .keyDown {
+                // A key pressed while the modifier is held makes it a combo, not a tap.
+                self.pendingTap = nil
                 if event.keyCode == 53 { // ESC
                     self.stop()
                     return nil
@@ -129,6 +163,7 @@ class RecorderState: ObservableObject {
             NSEvent.removeMonitor(m)
             monitor = nil
         }
+        pendingTap = nil
         isRecording = false
     }
 }
@@ -136,11 +171,16 @@ class RecorderState: ObservableObject {
 struct HotkeyRecorder: View {
     @Binding var keyCode: UInt16
     @Binding var modifiers: UInt64
+    /// Whether a lone Control/Option tap can be recorded (KeyboardMonitor supports it for the correction hotkey only).
+    var allowsModifierTap = false
     @StateObject private var recorder = RecorderState()
     
     var displayText: String {
         if recorder.isRecording {
             return "Type Key..."
+        }
+        if allowsModifierTap, let tap = TapModifierHotkey.configured(keyCode: keyCode) {
+            return getModifierString(for: tap.flag.rawValue) + " " + tap.name + " (tap)"
         }
         let modStr = getModifierString(for: modifiers)
         let keyStr = getKeyString(for: keyCode)
@@ -152,7 +192,7 @@ struct HotkeyRecorder: View {
             if recorder.isRecording {
                 recorder.stop()
             } else {
-                recorder.start { newKey, newMods in
+                recorder.start(allowsModifierTap: allowsModifierTap) { newKey, newMods in
                     self.keyCode = newKey
                     self.modifiers = newMods
                 }
@@ -173,17 +213,35 @@ struct HotkeyRecorder: View {
     }
 }
 
-struct ExcludedAppRow: Identifiable, Hashable {
+struct AppRow: Identifiable, Hashable {
     let id: String // bundle identifier
     let name: String
     let icon: NSImage?
+
+    init(id: String, name: String, icon: NSImage?) {
+        self.id = id
+        self.name = name
+        self.icon = icon
+    }
+
+    /// Resolves the display name and icon of an installed app, falling back to the bundle ID.
+    init(bundleID: String) {
+        let url = NSWorkspace.shared.urlForApplication(withBundleIdentifier: bundleID)
+        self.init(
+            id: bundleID,
+            name: url.map { FileManager.default.displayName(atPath: $0.path) } ?? bundleID,
+            icon: url.map { NSWorkspace.shared.icon(forFile: $0.path) }
+        )
+    }
+
+    static func byName(_ lhs: AppRow, _ rhs: AppRow) -> Bool {
+        lhs.name.localizedCaseInsensitiveCompare(rhs.name) == .orderedAscending
+    }
 }
 
 class ExclusionsViewModel: ObservableObject {
-    @Published var apps: [ExcludedAppRow] = []
+    @Published var apps: [AppRow] = []
     @Published var selection: Set<String> = []
-    @Published var runningApps: [ExcludedAppRow] = []
-    @Published var showingRunningAppsPicker = false
 
     init() {
         reload()
@@ -195,30 +253,9 @@ class ExclusionsViewModel: ObservableObject {
     }
 
     @objc func reload() {
-        apps = AppFilter.shared.allBlacklisted.map { bundleID -> ExcludedAppRow in
-            let url = NSWorkspace.shared.urlForApplication(withBundleIdentifier: bundleID)
-            let name = url.map { FileManager.default.displayName(atPath: $0.path) } ?? bundleID
-            let icon = url.map { NSWorkspace.shared.icon(forFile: $0.path) }
-            return ExcludedAppRow(id: bundleID, name: name, icon: icon)
-        }.sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
+        apps = AppFilter.shared.allBlacklisted.map(AppRow.init(bundleID:)).sorted(by: AppRow.byName)
         // Drop selections that no longer exist (e.g. removed via the menu-bar toggle).
         selection.formIntersection(apps.map { $0.id })
-    }
-
-    /// Refreshes the list of currently running apps eligible to be added (excludes ones already excluded and SwitchFix itself).
-    func refreshRunningApps() {
-        let alreadyExcluded = Set(apps.map { $0.id })
-        let ownBundleID = Bundle.main.bundleIdentifier
-
-        runningApps = NSWorkspace.shared.runningApplications
-            .filter { $0.activationPolicy == .regular }
-            .compactMap { app -> ExcludedAppRow? in
-                guard let bundleID = app.bundleIdentifier,
-                      bundleID != ownBundleID,
-                      !alreadyExcluded.contains(bundleID) else { return nil }
-                return ExcludedAppRow(id: bundleID, name: app.localizedName ?? bundleID, icon: app.icon)
-            }
-            .sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
     }
 
     func addBundleIDs<S: Sequence>(_ bundleIDs: S) where S.Element == String {
@@ -226,23 +263,6 @@ class ExclusionsViewModel: ObservableObject {
             AppFilter.shared.addToBlacklist(bundleID)
         }
         reload()
-    }
-
-    /// Presents an Open panel (defaulting to /Applications, but browsable anywhere) to pick app bundles.
-    func addAppFromFileSystem() {
-        let panel = NSOpenPanel()
-        panel.allowedContentTypes = [.application]
-        panel.directoryURL = URL(fileURLWithPath: "/Applications")
-        panel.allowsMultipleSelection = true
-        panel.canChooseDirectories = false
-        panel.canChooseFiles = true
-
-        // Non-blocking: runModal() would spin a modal session on the main run loop
-        // and steal frontmost-app focus from the capture pipeline.
-        panel.begin { [weak self] response in
-            guard response == .OK, let self else { return }
-            self.addBundleIDs(panel.urls.compactMap { Bundle(url: $0)?.bundleIdentifier })
-        }
     }
 
     func removeSelected() {
@@ -254,8 +274,47 @@ class ExclusionsViewModel: ObservableObject {
     }
 }
 
+class AppCompatibilityViewModel: ObservableObject {
+    @Published var apps: [AppRow] = []
+    @Published var selection: Set<String> = []
+    // Stored overrides. Listed apps missing here were switched to Default in this
+    // window; they stay in the list until it is reopened so the choice can be undone.
+    @Published private(set) var modes: [String: AppPostMode] = [:]
+
+    init() {
+        modes = PreferencesManager.shared.postModeByApp
+        apps = modes.keys.map(AppRow.init(bundleID:)).sorted(by: AppRow.byName)
+    }
+
+    func setMode(_ mode: AppPostMode?, for bundleID: String) {
+        modes[bundleID] = mode
+        PreferencesManager.shared.postModeByApp = modes
+    }
+
+    /// Newly added apps start with the session event tap, the mode that fixes Telegram.
+    func addBundleIDs<S: Sequence>(_ bundleIDs: S) where S.Element == String {
+        for bundleID in bundleIDs where !apps.contains(where: { $0.id == bundleID }) {
+            apps.append(AppRow(bundleID: bundleID))
+            modes[bundleID] = .session
+        }
+        apps.sort(by: AppRow.byName)
+        PreferencesManager.shared.postModeByApp = modes
+    }
+
+    func removeSelected() {
+        apps.removeAll { selection.contains($0.id) }
+        for bundleID in selection {
+            modes[bundleID] = nil
+        }
+        selection.removeAll()
+        PreferencesManager.shared.postModeByApp = modes
+    }
+}
+
 struct RunningAppPickerView: View {
-    @ObservedObject var model: ExclusionsViewModel
+    let runningApps: [AppRow]
+    let emptyText: String
+    let onAdd: (Set<String>) -> Void
     @Environment(\.dismiss) private var dismiss
     @State private var selection: Set<String> = []
 
@@ -263,13 +322,13 @@ struct RunningAppPickerView: View {
         VStack(alignment: .leading, spacing: 12) {
             Text("Choose Running Apps").font(.headline)
 
-            if model.runningApps.isEmpty {
-                Text("All running apps are already excluded.")
+            if runningApps.isEmpty {
+                Text(emptyText)
                     .font(.callout)
                     .foregroundColor(.secondary)
                     .frame(width: 360, height: 260, alignment: .center)
             } else {
-                List(model.runningApps, selection: $selection) { app in
+                List(runningApps, selection: $selection) { app in
                     HStack(spacing: 6) {
                         if let icon = app.icon {
                             Image(nsImage: icon)
@@ -287,7 +346,7 @@ struct RunningAppPickerView: View {
                 Spacer()
                 Button("Cancel") { dismiss() }
                 Button("Add") {
-                    model.addBundleIDs(selection)
+                    onAdd(selection)
                     dismiss()
                 }
                 .keyboardShortcut(.defaultAction)
@@ -295,6 +354,113 @@ struct RunningAppPickerView: View {
             }
         }
         .padding(20)
+    }
+}
+
+/// Bordered list of apps with +/- controls; apps are added from running apps or the Applications folder.
+struct AppListEditor<Accessory: View>: View {
+    let apps: [AppRow]
+    @Binding var selection: Set<String>
+    /// Shown in the running-apps picker when every running app is already listed.
+    let allListedText: String
+    let onAdd: ([String]) -> Void
+    let onRemoveSelected: () -> Void
+    @ViewBuilder let accessory: (AppRow) -> Accessory
+
+    @State private var runningApps: [AppRow] = []
+    @State private var showingRunningAppsPicker = false
+
+    var body: some View {
+        VStack(spacing: 0) {
+            List(apps, selection: $selection) { app in
+                HStack(spacing: 6) {
+                    if let icon = app.icon {
+                        Image(nsImage: icon)
+                            .resizable()
+                            .frame(width: 16, height: 16)
+                    }
+                    Text(app.name)
+                    Spacer()
+                    accessory(app)
+                }
+                .tag(app.id)
+            }
+            .frame(height: 140)
+
+            Divider()
+
+            HStack(spacing: 0) {
+                Menu {
+                    Button("Choose from Running Apps…") {
+                        refreshRunningApps()
+                        showingRunningAppsPicker = true
+                    }
+                    Button("Choose from Applications Folder…") {
+                        addAppFromFileSystem()
+                    }
+                } label: {
+                    Image(systemName: "plus")
+                        .frame(width: 20, height: 20)
+                }
+                .menuStyle(.borderlessButton)
+                .menuIndicator(.hidden)
+                .fixedSize()
+
+                Divider().frame(height: 12)
+
+                Button(action: onRemoveSelected) {
+                    Image(systemName: "minus")
+                        .frame(width: 20, height: 20)
+                }
+                .buttonStyle(.borderless)
+                .disabled(selection.isEmpty)
+
+                Spacer()
+            }
+            .padding(4)
+            .background(Color(nsColor: .controlBackgroundColor))
+        }
+        .overlay(
+            RoundedRectangle(cornerRadius: 6)
+                .stroke(Color.gray.opacity(0.3), lineWidth: 1)
+        )
+        .sheet(isPresented: $showingRunningAppsPicker) {
+            RunningAppPickerView(runningApps: runningApps, emptyText: allListedText) { onAdd(Array($0)) }
+        }
+    }
+
+    /// Refreshes the list of currently running apps eligible to be added (excludes ones already listed and SwitchFix itself).
+    private func refreshRunningApps() {
+        let alreadyListed = Set(apps.map { $0.id })
+        let ownBundleID = Bundle.main.bundleIdentifier
+
+        runningApps = NSWorkspace.shared.runningApplications
+            .filter { $0.activationPolicy == .regular }
+            .compactMap { app -> AppRow? in
+                guard let bundleID = app.bundleIdentifier,
+                      bundleID != ownBundleID,
+                      !alreadyListed.contains(bundleID) else { return nil }
+                return AppRow(id: bundleID, name: app.localizedName ?? bundleID, icon: app.icon)
+            }
+            .sorted(by: AppRow.byName)
+    }
+
+    /// Presents an Open panel (defaulting to /Applications, but browsable anywhere) to pick app bundles.
+    private func addAppFromFileSystem() {
+        let panel = NSOpenPanel()
+        panel.allowedContentTypes = [.application]
+        panel.directoryURL = URL(fileURLWithPath: "/Applications")
+        panel.allowsMultipleSelection = true
+        panel.canChooseDirectories = false
+        panel.canChooseFiles = true
+
+        // Non-blocking: runModal() would spin a modal session on the main run loop
+        // and steal frontmost-app focus from the capture pipeline.
+        let onAdd = self.onAdd
+        panel.begin { response in
+            guard response == .OK else { return }
+            onAdd(panel.urls.compactMap { Bundle(url: $0)?.bundleIdentifier })
+        }
     }
 }
 
@@ -308,64 +474,50 @@ struct ExcludedAppsView: View {
                 .font(.caption)
                 .foregroundColor(.secondary)
 
-            VStack(spacing: 0) {
-                List(model.apps, selection: $model.selection) { app in
-                    HStack(spacing: 6) {
-                        if let icon = app.icon {
-                            Image(nsImage: icon)
-                                .resizable()
-                                .frame(width: 16, height: 16)
-                        }
-                        Text(app.name)
-                        Spacer()
-                        Text(app.id)
-                            .font(.caption2)
-                            .foregroundColor(.secondary)
-                    }
-                    .tag(app.id)
-                }
-                .frame(height: 140)
-
-                Divider()
-
-                HStack(spacing: 0) {
-                    Menu {
-                        Button("Choose from Running Apps…") {
-                            model.refreshRunningApps()
-                            model.showingRunningAppsPicker = true
-                        }
-                        Button("Choose from Applications Folder…") {
-                            model.addAppFromFileSystem()
-                        }
-                    } label: {
-                        Image(systemName: "plus")
-                            .frame(width: 20, height: 20)
-                    }
-                    .menuStyle(.borderlessButton)
-                    .menuIndicator(.hidden)
-                    .fixedSize()
-
-                    Divider().frame(height: 12)
-
-                    Button(action: model.removeSelected) {
-                        Image(systemName: "minus")
-                            .frame(width: 20, height: 20)
-                    }
-                    .buttonStyle(.borderless)
-                    .disabled(model.selection.isEmpty)
-
-                    Spacer()
-                }
-                .padding(4)
-                .background(Color(nsColor: .controlBackgroundColor))
+            AppListEditor(
+                apps: model.apps,
+                selection: $model.selection,
+                allListedText: "All running apps are already excluded.",
+                onAdd: { model.addBundleIDs($0) },
+                onRemoveSelected: model.removeSelected
+            ) { app in
+                Text(app.id)
+                    .font(.caption2)
+                    .foregroundColor(.secondary)
             }
-            .overlay(
-                RoundedRectangle(cornerRadius: 6)
-                    .stroke(Color.gray.opacity(0.3), lineWidth: 1)
-            )
         }
-        .sheet(isPresented: $model.showingRunningAppsPicker) {
-            RunningAppPickerView(model: model)
+    }
+}
+
+struct AppCompatibilityView: View {
+    @StateObject private var model = AppCompatibilityViewModel()
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("App Compatibility").font(.headline)
+            Text("Some apps, such as Telegram, ignore text sent directly to them. For these apps SwitchFix types corrections through the system event stream instead.")
+                .font(.caption)
+                .foregroundColor(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+
+            AppListEditor(
+                apps: model.apps,
+                selection: $model.selection,
+                allListedText: "All running apps are already listed.",
+                onAdd: { model.addBundleIDs($0) },
+                onRemoveSelected: model.removeSelected
+            ) { app in
+                Picker("", selection: Binding(
+                    get: { model.modes[app.id] },
+                    set: { model.setMode($0, for: app.id) }
+                )) {
+                    Text("Default").tag(AppPostMode?.none)
+                    Text("Session event tap").tag(AppPostMode?.some(.session))
+                    Text("HID event tap").tag(AppPostMode?.some(.hid))
+                }
+                .labelsHidden()
+                .fixedSize()
+            }
         }
     }
 }
@@ -385,8 +537,18 @@ struct SettingsView: View {
     }
 
     var body: some View {
+        // Scrolls so the app lists never get clipped by the fixed window height.
+        ScrollView {
+            content
+                .padding(30)
+                .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .frame(width: 480, height: 700)
+    }
+
+    private var content: some View {
         VStack(alignment: .leading, spacing: 24) {
-            
+
             // GENERAL
             VStack(alignment: .leading, spacing: 8) {
                 Text("General").font(.headline)
@@ -423,7 +585,8 @@ struct SettingsView: View {
                             .gridColumnAlignment(.trailing)
                         HotkeyRecorder(
                             keyCode: $model.hotkeyKeyCode,
-                            modifiers: $model.hotkeyModifiers
+                            modifiers: $model.hotkeyModifiers,
+                            allowsModifierTap: true
                         )
                     }
                     
@@ -436,6 +599,12 @@ struct SettingsView: View {
                     }
                 }
                 
+                if TapModifierHotkey.configured(keyCode: model.hotkeyKeyCode)?.flag == .maskControl {
+                    Text("Double-pressing Control is the macOS Dictation shortcut. Consider Option instead.")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                }
+
                 Text("Recommended: Set 'Revert Last' to Caps Lock to avoid conflicts.")
                     .font(.caption)
                     .foregroundColor(.secondary)
@@ -446,9 +615,10 @@ struct SettingsView: View {
             // EXCLUDED APPS
             ExcludedAppsView()
 
-            Spacer()
+            Divider()
+
+            // APP COMPATIBILITY
+            AppCompatibilityView()
         }
-        .padding(30)
-        .frame(width: 480, height: 700)
     }
 }

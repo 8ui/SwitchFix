@@ -15,7 +15,7 @@ A macOS menu bar utility that automatically corrects keyboard layout mistakes. T
 - **После переключения раскладки клавишей 🌐 (Globe) терялись нажатия** — отложенная проверка фокуса отбрасывалась как устаревшая, и до клика мышью все буквы выпадали из буфера (или терялась первая: `ghbdtn` → `gпривет`). ([#15](https://github.com/rundax/SwitchFix/issues/15))
 - **В Chromium/Electron (Claude, Chrome) хоткей стирал слова целиком** — синтетические Backspace доходили до приложения раньше отпускания модификатора и превращались в Option+Backspace. Теперь у синтетических нажатий модификаторы явно сброшены.
 - **Выделение в Electron-приложениях** — перед чтением выделения включается `AXManualAccessibility`, без него Electron не отдаёт поле ввода через Accessibility.
-- **Telegram (Qt) выбрасывал вставляемый текст** — для таких приложений есть режим отправки через системный поток событий (см. `SwitchFix_postModeByApp` ниже).
+- **Telegram (Qt) выбрасывал вставляемый текст** — для таких приложений есть режим отправки через системный поток событий (секция **App Compatibility** в настройках, см. ниже).
 
 ### Доработки ручной коррекции
 
@@ -38,16 +38,22 @@ cd SwitchFix
 security find-certificate -c "SwitchFix Development" -p > /tmp/switchfix.pem && security add-trusted-cert -r trustRoot -p codeSign -k ~/Library/Keychains/login.keychain-db /tmp/switchfix.pem
 ```
 
-Хоткей на одиночный Option (58; для Control — 59) и режим ввода для Telegram. Окно настроек одиночный модификатор записать не умеет, поэтому задаётся так; поле хоткея в настройках после этого не трогайте:
+Всё настраивается в окне настроек (значок SwitchFix в строке меню → Settings…):
+
+- **Correction Mode** → **Hotkey Only**, если нужна только ручная коррекция.
+- **Shortcuts → Trigger Correction**: нажмите на поле, затем нажмите и отпустите Option (или Control). В поле появится `⌥ Option (tap)`. Обычные сочетания вроде `⌃⇧Space` записываются как раньше. Для **Revert Last** одиночный модификатор не поддерживается.
+- **App Compatibility**: способ отправки текста для отдельных приложений. Telegram уже в списке с режимом **Session event tap**. Если другое приложение теряет исправленный текст, добавьте его кнопкой «+» и выберите Session или HID. **Default** — обычная отправка напрямую процессу. Изменения применяются сразу.
+
+Не используйте одиночный Control, если включена диктовка macOS: её системный хоткей — двойное нажатие Control.
+
+Альтернатива — те же настройки через Терминал (после этого перезапустите SwitchFix):
 
 ```bash
 defaults write com.switchfix.app SwitchFix_correctionMode -string hotkey
-defaults write com.switchfix.app SwitchFix_hotkeyKeyCode -int 58
+defaults write com.switchfix.app SwitchFix_hotkeyKeyCode -int 58      # одиночный Option; Control — 59
 defaults write com.switchfix.app SwitchFix_hotkeyModifiers -int 0
 defaults write com.switchfix.app SwitchFix_postModeByApp -dict com.tdesktop.Telegram session
 ```
-
-Перезапустите SwitchFix после изменения настроек. Не используйте одиночный Control, если включена диктовка macOS: её системный хоткей — двойное нажатие Control.
 
 Обновиться с оригинального репозитория:
 
