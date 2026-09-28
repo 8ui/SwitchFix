@@ -5,6 +5,59 @@ A macOS menu bar utility that automatically corrects keyboard layout mistakes. T
 ![SwitchFix Demo](SwitchFix.gif)
 ![SwitchFix App Icon](Resources/Assets.xcassets/AppIcon.svg)
 
+## Об этом форке
+
+Форк [rundax/SwitchFix](https://github.com/rundax/SwitchFix) (v0.0.9) с исправлениями для свежих macOS/Swift и доработками ручной коррекции. Проверено на macOS 27.0, Apple Silicon, Xcode 27 / Swift 6.4.
+
+### Исправления
+
+- **Словари не находились при сборке на Swift 6.4** — `build-app.sh` клал `*.bin` в корень `SwitchFix_Dictionary.bundle`, а новый SwiftPM собирает бандл со структурой `Contents/Resources`. В итоге коррекция молча не работала совсем. ([#14](https://github.com/rundax/SwitchFix/issues/14))
+- **После переключения раскладки клавишей 🌐 (Globe) терялись нажатия** — отложенная проверка фокуса отбрасывалась как устаревшая, и до клика мышью все буквы выпадали из буфера (или терялась первая: `ghbdtn` → `gпривет`). ([#15](https://github.com/rundax/SwitchFix/issues/15))
+- **В Chromium/Electron (Claude, Chrome) хоткей стирал слова целиком** — синтетические Backspace доходили до приложения раньше отпускания модификатора и превращались в Option+Backspace. Теперь у синтетических нажатий модификаторы явно сброшены.
+- **Выделение в Electron-приложениях** — перед чтением выделения включается `AXManualAccessibility`, без него Electron не отдаёт поле ввода через Accessibility.
+- **Telegram (Qt) выбрасывал вставляемый текст** — для таких приложений есть режим отправки через системный поток событий (см. `SwitchFix_postModeByApp` ниже).
+
+### Доработки ручной коррекции
+
+- **Хоткей на одиночное нажатие модификатора** — Option или Control: нажал и отпустил, без других клавиш. Сочетания `Option+…`/`Ctrl+…` работают как обычно. Ничего не печатает, в отличие от Option+Space, который вставляет неразрывный пробел. ([#16](https://github.com/rundax/SwitchFix/issues/16))
+- **Хоткей переводит слово всегда** — даже если его нет в словаре (опечатки, редкие слова): `ghbftn` → `приает`. Автоматический режим по-прежнему сверяется со словарём.
+- **Исходная раскладка определяется по тексту**, а не по активной раскладке системы: `пше` → `git` работает, даже если система считает раскладку английской. Выделение можно конвертировать туда и обратно сколько угодно раз, фраза с запятой не ломается (`ghbdtn, vbh` ⇄ `привет, мир`).
+
+### Установка и настройка форка
+
+```bash
+git clone https://github.com/8ui/SwitchFix.git
+cd SwitchFix
+./scripts/setup-codesign.sh   # один раз: стабильная подпись, разрешения переживают пересборку
+./install.sh
+```
+
+Если `setup-codesign.sh` не находит только что созданный сертификат, значит, macOS считает его недоверенным. Разрешите его для подписи кода (попросит пароль) и запустите скрипт ещё раз:
+
+```bash
+security find-certificate -c "SwitchFix Development" -p > /tmp/switchfix.pem && security add-trusted-cert -r trustRoot -p codeSign -k ~/Library/Keychains/login.keychain-db /tmp/switchfix.pem
+```
+
+Хоткей на одиночный Option (58; для Control — 59) и режим ввода для Telegram. Окно настроек одиночный модификатор записать не умеет, поэтому задаётся так; поле хоткея в настройках после этого не трогайте:
+
+```bash
+defaults write com.switchfix.app SwitchFix_correctionMode -string hotkey
+defaults write com.switchfix.app SwitchFix_hotkeyKeyCode -int 58
+defaults write com.switchfix.app SwitchFix_hotkeyModifiers -int 0
+defaults write com.switchfix.app SwitchFix_postModeByApp -dict com.tdesktop.Telegram session
+```
+
+Перезапустите SwitchFix после изменения настроек. Не используйте одиночный Control, если включена диктовка macOS: её системный хоткей — двойное нажатие Control.
+
+Обновиться с оригинального репозитория:
+
+```bash
+git remote add upstream https://github.com/rundax/SwitchFix.git   # один раз
+git pull upstream master
+```
+
+---
+
 ## Features
 
 - **Automatic correction** — detects wrong-layout words on space/enter and corrects them instantly.
@@ -85,6 +138,14 @@ defaults write com.switchfix.app SwitchFix_revertHotkeyModifiers -int 0
 # Correction hotkey: Ctrl+Shift+Space
 defaults write com.switchfix.app SwitchFix_hotkeyKeyCode -int 49
 defaults write com.switchfix.app SwitchFix_hotkeyModifiers -int $((262144+131072))
+
+# Correction hotkey: lone Option tap (fork; 59 = lone Control tap)
+defaults write com.switchfix.app SwitchFix_hotkeyKeyCode -int 58
+defaults write com.switchfix.app SwitchFix_hotkeyModifiers -int 0
+
+# Per-app event delivery for toolkits that drop Unicode events posted to the process (fork)
+# values: session | hid
+defaults write com.switchfix.app SwitchFix_postModeByApp -dict com.tdesktop.Telegram session
 ```
 
 ## How It Works
