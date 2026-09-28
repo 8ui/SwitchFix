@@ -30,18 +30,12 @@ enum L10n {
 
     private static let russian: [String: String] = [
         // Status bar menu
-        "Language": "Язык",
-        "Enable": "Включить",
-        "Disable": "Выключить",
         "Correction Mode": "Режим исправления",
         "Automatic": "Автоматически",
+        "SwitchFix Enabled": "SwitchFix включён",
         "Hotkey Only": "Только по горячей клавише",
+        "Hotkey Only (%@)": "Только по горячей клавише (%@)",
         "On Layout Switch": "При смене раскладки",
-        "Enable in Current App": "Включить в текущем приложении",
-        "App Filtering Unavailable": "Фильтр приложений недоступен",
-        "Current App": "текущем приложении",
-        "Enable in %@": "Включить в %@",
-        "Disable in %@": "Выключить в %@",
         "Installed Layouts": "Установленные раскладки",
         "No supported layouts found": "Поддерживаемые раскладки не найдены",
         "English": "Английская",
@@ -58,14 +52,24 @@ enum L10n {
             "Для работы SwitchFix нужен мониторинг ввода: так он видит нажатия клавиш.",
         "SwitchFix (missing permissions)": "SwitchFix (нет разрешений)",
         "SwitchFix (CapsLock conflict detected)": "SwitchFix (конфликт CapsLock)",
-        "Warning: CapsLock conflicts with macOS input switching":
-            "Внимание: CapsLock конфликтует с переключением раскладки macOS",
+        "Fix CapsLock Conflict…": "Устранить конфликт CapsLock…",
         "CapsLock is configured both in SwitchFix (revert) and in macOS (input source switch).":
             "CapsLock назначен и в SwitchFix (отмена), и в macOS (смена источника ввода).",
 
         // Settings window
-        "SwitchFix Settings": "Настройки SwitchFix",
         "General": "Основные",
+        "Correction": "Исправление",
+        "Apps": "Приложения",
+        "About": "О программе",
+        "Enable SwitchFix": "Включить SwitchFix",
+        "Interface Language:": "Язык интерфейса:",
+        "Permissions": "Разрешения",
+        "Accessibility": "Универсальный доступ",
+        "Input Monitoring": "Мониторинг ввода",
+        "Granted": "Выдано",
+        "Open System Settings…": "Открыть Системные настройки…",
+        "SwitchFix needs both to see what you type and replace mistyped words.":
+            "Оба разрешения нужны SwitchFix, чтобы видеть ввод и заменять слова, набранные не в той раскладке.",
         "Automatic (Space / Enter)": "Автоматически (пробел / Enter)",
         "Auto-corrects on word boundaries (space, enter).": "Исправляет автоматически в конце слова (пробел, Enter).",
         "Corrects only when triggered via hotkey.": "Исправляет только по горячей клавише.",
@@ -82,23 +86,29 @@ enum L10n {
         "Down": "Вниз",
         "Up": "Вверх",
         "Key %@": "Клавиша %@",
+        "Trigger Correction can be a single Option or Control press: click its field, then press and release the key.":
+            "«Исправить» можно назначить на одиночное нажатие Option или Control: нажмите на поле, затем нажмите и отпустите клавишу.",
+        "macOS also switches input sources with Caps Lock, so Revert Last may not fire. Pick another key, or turn off switching input sources with Caps Lock in System Settings → Keyboard.":
+            "macOS тоже переключает раскладку по Caps Lock, поэтому «Отменить последнее» может не срабатывать. Назначьте другую клавишу или отключите переключение раскладки по Caps Lock в Системных настройках → Клавиатура.",
         "Double-pressing Control is the macOS Dictation shortcut. Consider Option instead.":
             "Двойное нажатие Control — системное сочетание для диктовки macOS. Лучше выбрать Option.",
-        "Recommended: Set 'Revert Last' to Caps Lock to avoid conflicts.":
-            "Рекомендуется назначить «Отменить последнее» на Caps Lock, чтобы избежать конфликтов.",
-        "Excluded Apps": "Исключённые приложения",
-        "SwitchFix won't correct text while these apps are active.":
-            "SwitchFix не исправляет текст, пока активно одно из этих приложений.",
-        "App Compatibility": "Совместимость с приложениями",
-        "Some apps, such as Telegram, ignore text sent directly to them. For these apps SwitchFix types corrections through the system event stream instead.":
-            "Некоторые приложения, например Telegram, игнорируют текст, отправленный им напрямую. Для них SwitchFix вводит исправления через системный поток событий.",
-        "Default": "По умолчанию",
-        "Session event tap": "Поток сеанса (session)",
-        "HID event tap": "Поток HID (hid)",
+        "Per-App Settings": "Настройки для приложений",
+        "App": "Приложение",
+        "Correct": "Исправлять",
+        "Text Input": "Ввод текста",
+        "Standard": "Обычный",
+        "System Stream": "Системный поток",
+        "System Stream (HID)": "Системный поток (HID)",
+        "SwitchFix doesn't correct text in apps with Correct unchecked.":
+            "В приложениях без флажка «Исправлять» SwitchFix текст не исправляет.",
+        "If an app loses corrected text (e.g. Telegram), set its Text Input to System Stream; if that doesn't help, try System Stream (HID).":
+            "Если приложение теряет исправленный текст (как Telegram), выберите для него ввод «Системный поток», а если не поможет — «Системный поток (HID)».",
+        "Version %@": "Версия %@",
+        "SwitchFix corrects between English, Ukrainian and Russian layouts.":
+            "SwitchFix исправляет текст между английской, украинской и русской раскладками.",
         "Choose from Running Apps…": "Выбрать из запущенных…",
         "Choose from Applications Folder…": "Выбрать из папки «Программы»…",
         "Choose Running Apps": "Выберите запущенные приложения",
-        "All running apps are already excluded.": "Все запущенные приложения уже исключены.",
         "All running apps are already listed.": "Все запущенные приложения уже в списке.",
         "Cancel": "Отменить",
         "Add": "Добавить",
