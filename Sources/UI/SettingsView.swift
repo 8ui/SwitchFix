@@ -1,7 +1,7 @@
 import SwiftUI
 import AppKit
+import Combine
 import Carbon
-import UniformTypeIdentifiers
 import Core
 import Utils
 
@@ -36,9 +36,25 @@ func getKeyString(for key: UInt16) -> String {
     }
 }
 
+/// How a hotkey reads in the UI, e.g. "⌃⇧Space" or "⌥ Option (tap)".
+/// - Parameters:
+///   - allowsModifierTap: read a lone Control/Option key code as a tap hotkey.
+///   - marksTap: append the "(tap)" marker to a tap hotkey.
+func hotkeyDisplayString(keyCode: UInt16, modifiers: UInt64, allowsModifierTap: Bool, marksTap: Bool = true) -> String {
+    if allowsModifierTap, let tap = TapModifierHotkey.configured(keyCode: keyCode) {
+        let name = getModifierString(for: tap.flag.rawValue) + " " + tap.name
+        return marksTap ? String(format: L10n.tr("%@ (tap)"), name) : name
+    }
+    return getModifierString(for: modifiers) + getKeyString(for: keyCode)
+}
+
 class SettingsViewModel: ObservableObject {
     @Published var language: AppLanguage = PreferencesManager.shared.language {
         didSet { PreferencesManager.shared.language = language }
+    }
+
+    @Published var isEnabled: Bool = PreferencesManager.shared.isEnabled {
+        didSet { PreferencesManager.shared.isEnabled = isEnabled }
     }
 
     @Published var launchAtLogin: Bool = PreferencesManager.shared.launchAtLogin {
@@ -78,6 +94,9 @@ class SettingsViewModel: ObservableObject {
         let prefs = PreferencesManager.shared
         if self.language != prefs.language {
             self.language = prefs.language
+        }
+        if self.isEnabled != prefs.isEnabled {
+            self.isEnabled = prefs.isEnabled
         }
         if self.correctionMode != prefs.correctionMode {
             self.correctionMode = prefs.correctionMode
@@ -186,12 +205,7 @@ struct HotkeyRecorder: View {
         if recorder.isRecording {
             return L10n.tr("Type Key...")
         }
-        if allowsModifierTap, let tap = TapModifierHotkey.configured(keyCode: keyCode) {
-            return String(format: L10n.tr("%@ (tap)"), getModifierString(for: tap.flag.rawValue) + " " + tap.name)
-        }
-        let modStr = getModifierString(for: modifiers)
-        let keyStr = getKeyString(for: keyCode)
-        return modStr + keyStr
+        return hotkeyDisplayString(keyCode: keyCode, modifiers: modifiers, allowsModifierTap: allowsModifierTap)
     }
     
     var body: some View {
@@ -220,317 +234,127 @@ struct HotkeyRecorder: View {
     }
 }
 
-struct AppRow: Identifiable, Hashable {
-    let id: String // bundle identifier
-    let name: String
-    let icon: NSImage?
 
-    init(id: String, name: String, icon: NSImage?) {
-        self.id = id
-        self.name = name
-        self.icon = icon
-    }
+// MARK: - Layout building blocks
 
-    /// Resolves the display name and icon of an installed app, falling back to the bundle ID.
-    init(bundleID: String) {
-        let url = NSWorkspace.shared.urlForApplication(withBundleIdentifier: bundleID)
-        self.init(
-            id: bundleID,
-            name: url.map { FileManager.default.displayName(atPath: $0.path) } ?? bundleID,
-            icon: url.map { NSWorkspace.shared.icon(forFile: $0.path) }
-        )
-    }
-
-    static func byName(_ lhs: AppRow, _ rhs: AppRow) -> Bool {
-        lhs.name.localizedCaseInsensitiveCompare(rhs.name) == .orderedAscending
-    }
-}
-
-class ExclusionsViewModel: ObservableObject {
-    @Published var apps: [AppRow] = []
-    @Published var selection: Set<String> = []
-
-    init() {
-        reload()
-        NotificationCenter.default.addObserver(self, selector: #selector(reload), name: .appFilterDidChange, object: nil)
-    }
-
-    deinit {
-        NotificationCenter.default.removeObserver(self)
-    }
-
-    @objc func reload() {
-        apps = AppFilter.shared.allBlacklisted.map(AppRow.init(bundleID:)).sorted(by: AppRow.byName)
-        // Drop selections that no longer exist (e.g. removed via the menu-bar toggle).
-        selection.formIntersection(apps.map { $0.id })
-    }
-
-    func addBundleIDs<S: Sequence>(_ bundleIDs: S) where S.Element == String {
-        for bundleID in bundleIDs {
-            AppFilter.shared.addToBlacklist(bundleID)
-        }
-        reload()
-    }
-
-    func removeSelected() {
-        for bundleID in selection {
-            AppFilter.shared.removeFromBlacklist(bundleID)
-        }
-        selection.removeAll()
-        reload()
-    }
-}
-
-class AppCompatibilityViewModel: ObservableObject {
-    @Published var apps: [AppRow] = []
-    @Published var selection: Set<String> = []
-    // Stored overrides. Listed apps missing here were switched to Default in this
-    // window; they stay in the list until it is reopened so the choice can be undone.
-    @Published private(set) var modes: [String: AppPostMode] = [:]
-
-    init() {
-        modes = PreferencesManager.shared.postModeByApp
-        apps = modes.keys.map(AppRow.init(bundleID:)).sorted(by: AppRow.byName)
-    }
-
-    func setMode(_ mode: AppPostMode?, for bundleID: String) {
-        modes[bundleID] = mode
-        PreferencesManager.shared.postModeByApp = modes
-    }
-
-    /// Newly added apps start with the session event tap, the mode that fixes Telegram.
-    func addBundleIDs<S: Sequence>(_ bundleIDs: S) where S.Element == String {
-        for bundleID in bundleIDs where !apps.contains(where: { $0.id == bundleID }) {
-            apps.append(AppRow(bundleID: bundleID))
-            modes[bundleID] = .session
-        }
-        apps.sort(by: AppRow.byName)
-        PreferencesManager.shared.postModeByApp = modes
-    }
-
-    func removeSelected() {
-        apps.removeAll { selection.contains($0.id) }
-        for bundleID in selection {
-            modes[bundleID] = nil
-        }
-        selection.removeAll()
-        PreferencesManager.shared.postModeByApp = modes
-    }
-}
-
-struct RunningAppPickerView: View {
-    let runningApps: [AppRow]
-    let emptyText: String
-    let onAdd: (Set<String>) -> Void
-    @Environment(\.dismiss) private var dismiss
-    @State private var selection: Set<String> = []
+/// A titled box of related settings.
+struct SettingsSection<Content: View>: View {
+    let title: String
+    @ViewBuilder let content: Content
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Text(L10n.tr("Choose Running Apps")).font(.headline)
-
-            if runningApps.isEmpty {
-                Text(emptyText)
-                    .font(.callout)
-                    .foregroundColor(.secondary)
-                    .frame(width: 360, height: 260, alignment: .center)
-            } else {
-                List(runningApps, selection: $selection) { app in
-                    HStack(spacing: 6) {
-                        if let icon = app.icon {
-                            Image(nsImage: icon)
-                                .resizable()
-                                .frame(width: 16, height: 16)
-                        }
-                        Text(app.name)
-                    }
-                    .tag(app.id)
+        VStack(alignment: .leading, spacing: 6) {
+            Text(title).font(.headline)
+            GroupBox {
+                VStack(alignment: .leading, spacing: 10) {
+                    content
                 }
-                .frame(width: 360, height: 260)
+                .padding(6)
+                .frame(maxWidth: .infinity, alignment: .leading)
             }
+        }
+    }
+}
 
-            HStack {
-                Spacer()
-                Button(L10n.tr("Cancel")) { dismiss() }
-                Button(L10n.tr("Add")) {
-                    onAdd(selection)
-                    dismiss()
-                }
-                .keyboardShortcut(.defaultAction)
-                .disabled(selection.isEmpty)
-            }
+/// Secondary explanatory text under a setting.
+struct SettingsNote: View {
+    let text: String
+    var color: Color = .secondary
+
+    var body: some View {
+        Text(text)
+            .font(.caption)
+            .foregroundColor(color)
+            .fixedSize(horizontal: false, vertical: true)
+    }
+}
+
+/// Root of a Settings tab: fixed width, as tall as its content (the window follows
+/// the height), rebuilt in full when the interface language changes.
+struct SettingsTabContainer<Content: View>: View {
+    let language: AppLanguage
+    @ViewBuilder let content: Content
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 20) {
+            content
         }
         .padding(20)
+        .frame(width: SettingsTab.contentWidth, alignment: .topLeading)
+        .fixedSize(horizontal: false, vertical: true)
+        // Rebuild every section (including their own models) in the new language.
+        .id(language)
     }
 }
 
-/// Bordered list of apps with +/- controls; apps are added from running apps or the Applications folder.
-struct AppListEditor<Accessory: View>: View {
-    let apps: [AppRow]
-    @Binding var selection: Set<String>
-    /// Shown in the running-apps picker when every running app is already listed.
-    let allListedText: String
-    let onAdd: ([String]) -> Void
-    let onRemoveSelected: () -> Void
-    @ViewBuilder let accessory: (AppRow) -> Accessory
+// MARK: - General
 
-    @State private var runningApps: [AppRow] = []
-    @State private var showingRunningAppsPicker = false
+struct PermissionRow: View {
+    let title: String
+    let isGranted: Bool
+    let openSettings: () -> Void
 
     var body: some View {
-        VStack(spacing: 0) {
-            List(apps, selection: $selection) { app in
-                HStack(spacing: 6) {
-                    if let icon = app.icon {
-                        Image(nsImage: icon)
-                            .resizable()
-                            .frame(width: 16, height: 16)
-                    }
-                    Text(app.name)
-                    Spacer()
-                    accessory(app)
-                }
-                .tag(app.id)
-            }
-            .frame(height: 140)
-
-            Divider()
-
-            HStack(spacing: 0) {
-                Menu {
-                    Button(L10n.tr("Choose from Running Apps…")) {
-                        refreshRunningApps()
-                        showingRunningAppsPicker = true
-                    }
-                    Button(L10n.tr("Choose from Applications Folder…")) {
-                        addAppFromFileSystem()
-                    }
-                } label: {
-                    Image(systemName: "plus")
-                        .frame(width: 20, height: 20)
-                }
-                .menuStyle(.borderlessButton)
-                .menuIndicator(.hidden)
-                .fixedSize()
-
-                Divider().frame(height: 12)
-
-                Button(action: onRemoveSelected) {
-                    Image(systemName: "minus")
-                        .frame(width: 20, height: 20)
-                }
-                .buttonStyle(.borderless)
-                .disabled(selection.isEmpty)
-
-                Spacer()
-            }
-            .padding(4)
-            .background(Color(nsColor: .controlBackgroundColor))
-        }
-        .overlay(
-            RoundedRectangle(cornerRadius: 6)
-                .stroke(Color.gray.opacity(0.3), lineWidth: 1)
-        )
-        .sheet(isPresented: $showingRunningAppsPicker) {
-            RunningAppPickerView(runningApps: runningApps, emptyText: allListedText) { onAdd(Array($0)) }
-        }
-    }
-
-    /// Refreshes the list of currently running apps eligible to be added (excludes ones already listed and SwitchFix itself).
-    private func refreshRunningApps() {
-        let alreadyListed = Set(apps.map { $0.id })
-        let ownBundleID = Bundle.main.bundleIdentifier
-
-        runningApps = NSWorkspace.shared.runningApplications
-            .filter { $0.activationPolicy == .regular }
-            .compactMap { app -> AppRow? in
-                guard let bundleID = app.bundleIdentifier,
-                      bundleID != ownBundleID,
-                      !alreadyListed.contains(bundleID) else { return nil }
-                return AppRow(id: bundleID, name: app.localizedName ?? bundleID, icon: app.icon)
-            }
-            .sorted(by: AppRow.byName)
-    }
-
-    /// Presents an Open panel (defaulting to /Applications, but browsable anywhere) to pick app bundles.
-    private func addAppFromFileSystem() {
-        let panel = NSOpenPanel()
-        panel.allowedContentTypes = [.application]
-        panel.directoryURL = URL(fileURLWithPath: "/Applications")
-        panel.allowsMultipleSelection = true
-        panel.canChooseDirectories = false
-        panel.canChooseFiles = true
-
-        // Non-blocking: runModal() would spin a modal session on the main run loop
-        // and steal frontmost-app focus from the capture pipeline.
-        let onAdd = self.onAdd
-        panel.begin { response in
-            guard response == .OK else { return }
-            onAdd(panel.urls.compactMap { Bundle(url: $0)?.bundleIdentifier })
-        }
-    }
-}
-
-struct ExcludedAppsView: View {
-    @StateObject private var model = ExclusionsViewModel()
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text(L10n.tr("Excluded Apps")).font(.headline)
-            Text(L10n.tr("SwitchFix won't correct text while these apps are active."))
-                .font(.caption)
-                .foregroundColor(.secondary)
-
-            AppListEditor(
-                apps: model.apps,
-                selection: $model.selection,
-                allListedText: L10n.tr("All running apps are already excluded."),
-                onAdd: { model.addBundleIDs($0) },
-                onRemoveSelected: model.removeSelected
-            ) { app in
-                Text(app.id)
-                    .font(.caption2)
-                    .foregroundColor(.secondary)
+        HStack {
+            Image(systemName: isGranted ? "checkmark.circle.fill" : "exclamationmark.triangle.fill")
+                .foregroundColor(isGranted ? .green : .orange)
+            Text(title)
+            Spacer()
+            if isGranted {
+                Text(L10n.tr("Granted")).foregroundColor(.secondary)
+            } else {
+                Button(L10n.tr("Open System Settings…"), action: openSettings)
             }
         }
     }
 }
 
-struct AppCompatibilityView: View {
-    @StateObject private var model = AppCompatibilityViewModel()
+struct GeneralSettingsView: View {
+    @ObservedObject var model: SettingsViewModel
+    @State private var accessibilityGranted = Permissions.isAccessibilityGranted()
+    @State private var inputMonitoringGranted = Permissions.isInputMonitoringGranted()
+    // Permissions are granted in System Settings, so poll while the tab is shown.
+    private let permissionsTimer = Timer.publish(every: 2, on: .main, in: .common).autoconnect()
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text(L10n.tr("App Compatibility")).font(.headline)
-            Text(L10n.tr("Some apps, such as Telegram, ignore text sent directly to them. For these apps SwitchFix types corrections through the system event stream instead."))
-                .font(.caption)
-                .foregroundColor(.secondary)
-                .fixedSize(horizontal: false, vertical: true)
-
-            AppListEditor(
-                apps: model.apps,
-                selection: $model.selection,
-                allListedText: L10n.tr("All running apps are already listed."),
-                onAdd: { model.addBundleIDs($0) },
-                onRemoveSelected: model.removeSelected
-            ) { app in
-                Picker("", selection: Binding(
-                    get: { model.modes[app.id] },
-                    set: { model.setMode($0, for: app.id) }
-                )) {
-                    Text(L10n.tr("Default")).tag(AppPostMode?.none)
-                    Text(L10n.tr("Session event tap")).tag(AppPostMode?.some(.session))
-                    Text(L10n.tr("HID event tap")).tag(AppPostMode?.some(.hid))
+        SettingsTabContainer(language: model.language) {
+            SettingsSection(title: L10n.tr("General")) {
+                Toggle(L10n.tr("Enable SwitchFix"), isOn: $model.isEnabled)
+                Toggle(L10n.tr("Launch at Login"), isOn: $model.launchAtLogin)
+                Picker(L10n.tr("Interface Language:"), selection: $model.language) {
+                    ForEach(AppLanguage.allCases, id: \.self) { language in
+                        Text(language.nativeName).tag(language)
+                    }
                 }
-                .labelsHidden()
+                .pickerStyle(.segmented)
                 .fixedSize()
             }
+
+            SettingsSection(title: L10n.tr("Permissions")) {
+                PermissionRow(
+                    title: L10n.tr("Accessibility"),
+                    isGranted: accessibilityGranted,
+                    openSettings: Permissions.openAccessibilitySettings
+                )
+                PermissionRow(
+                    title: L10n.tr("Input Monitoring"),
+                    isGranted: inputMonitoringGranted,
+                    openSettings: Permissions.openInputMonitoringSettings
+                )
+                SettingsNote(text: L10n.tr("SwitchFix needs both to see what you type and replace mistyped words."))
+            }
+        }
+        .onReceive(permissionsTimer) { _ in
+            accessibilityGranted = Permissions.isAccessibilityGranted()
+            inputMonitoringGranted = Permissions.isInputMonitoringGranted()
         }
     }
 }
 
-struct SettingsView: View {
-    @StateObject private var model = SettingsViewModel()
+// MARK: - Correction
+
+struct CorrectionSettingsView: View {
+    @ObservedObject var model: SettingsViewModel
 
     private var correctionModeDescription: String {
         switch model.correctionMode {
@@ -544,65 +368,20 @@ struct SettingsView: View {
     }
 
     var body: some View {
-        // Scrolls so the app lists never get clipped by the fixed window height.
-        ScrollView {
-            content
-                .padding(30)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                // Rebuild every section (including their own models) in the new language.
-                .id(model.language)
-        }
-        .frame(width: 480, height: 700)
-    }
-
-    private var content: some View {
-        VStack(alignment: .leading, spacing: 24) {
-
-            // LANGUAGE
-            VStack(alignment: .leading, spacing: 8) {
-                Text(L10n.tr("Language")).font(.headline)
-                Picker("", selection: $model.language) {
-                    ForEach(AppLanguage.allCases, id: \.self) { language in
-                        Text(language.nativeName).tag(language)
-                    }
-                }
-                .pickerStyle(.segmented)
-                .labelsHidden()
-                .fixedSize()
-            }
-
-            Divider()
-
-            // GENERAL
-            VStack(alignment: .leading, spacing: 8) {
-                Text(L10n.tr("General")).font(.headline)
-                Toggle(L10n.tr("Launch at Login"), isOn: $model.launchAtLogin)
-            }
-            
-            Divider()
-            
-            // CORRECTION MODE
-            VStack(alignment: .leading, spacing: 12) {
-                Text(L10n.tr("Correction Mode")).font(.headline)
-                
+        SettingsTabContainer(language: model.language) {
+            SettingsSection(title: L10n.tr("Correction Mode")) {
                 Picker("", selection: $model.correctionMode) {
                     Text(L10n.tr("Automatic (Space / Enter)")).tag(CorrectionMode.automatic)
                     Text(L10n.tr("Hotkey Only")).tag(CorrectionMode.hotkey)
                     Text(L10n.tr("On Layout Switch")).tag(CorrectionMode.layoutSwitch)
                 }
                 .pickerStyle(RadioGroupPickerStyle())
-                
-                Text(correctionModeDescription)
-                    .font(.caption)
-                    .foregroundColor(.secondary)
+                .labelsHidden()
+
+                SettingsNote(text: correctionModeDescription)
             }
-            
-            Divider()
-            
-            // SHORTCUTS
-            VStack(alignment: .leading, spacing: 16) {
-                Text(L10n.tr("Shortcuts")).font(.headline)
-                
+
+            SettingsSection(title: L10n.tr("Shortcuts")) {
                 Grid(alignment: .leading, horizontalSpacing: 20, verticalSpacing: 12) {
                     GridRow {
                         Text(L10n.tr("Trigger Correction:"))
@@ -613,7 +392,7 @@ struct SettingsView: View {
                             allowsModifierTap: true
                         )
                     }
-                    
+
                     GridRow {
                         Text(L10n.tr("Revert Last:"))
                         HotkeyRecorder(
@@ -622,27 +401,84 @@ struct SettingsView: View {
                         )
                     }
                 }
-                
+
+                SettingsNote(text: L10n.tr("Trigger Correction can be a single Option or Control press: click its field, then press and release the key."))
+
                 if TapModifierHotkey.configured(keyCode: model.hotkeyKeyCode)?.flag == .maskControl {
-                    Text(L10n.tr("Double-pressing Control is the macOS Dictation shortcut. Consider Option instead."))
-                        .font(.caption)
-                        .foregroundColor(.secondary)
+                    SettingsNote(
+                        text: L10n.tr("Double-pressing Control is the macOS Dictation shortcut. Consider Option instead."),
+                        color: .orange
+                    )
                 }
 
-                Text(L10n.tr("Recommended: Set 'Revert Last' to Caps Lock to avoid conflicts."))
-                    .font(.caption)
-                    .foregroundColor(.secondary)
+                if SystemHotkeyConflicts.hasCapsLockConflict(revertHotkeyKeyCode: model.revertHotkeyKeyCode) {
+                    SettingsNote(
+                        text: L10n.tr("macOS also switches input sources with Caps Lock, so Revert Last may not fire. Pick another key, or turn off switching input sources with Caps Lock in System Settings → Keyboard."),
+                        color: .orange
+                    )
+                }
+            }
+        }
+    }
+}
+
+// MARK: - About
+
+struct AboutSettingsView: View {
+    @ObservedObject var model: SettingsViewModel
+
+    private var version: String {
+        let info = Bundle.main.infoDictionary
+        let short = info?["CFBundleShortVersionString"] as? String ?? "–"
+        guard let build = info?["CFBundleVersion"] as? String else { return short }
+        return "\(short) (\(build))"
+    }
+
+    var body: some View {
+        let sourcesByLayout = InputSourceManager.shared.availableInputSourcesByLayout()
+        let currentID = InputSourceManager.shared.currentInputSourceID()
+        let layouts = Layout.allCases.filter { !(sourcesByLayout[$0] ?? []).isEmpty }
+
+        SettingsTabContainer(language: model.language) {
+            HStack(spacing: 14) {
+                Image(nsImage: NSApp.applicationIconImage)
+                    .resizable()
+                    .frame(width: 64, height: 64)
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("SwitchFix").font(.title2).bold()
+                    Text(String(format: L10n.tr("Version %@"), version))
+                        .foregroundColor(.secondary)
+                    if let url = URL(string: "https://github.com/8ui/SwitchFix") {
+                        Link("github.com/8ui/SwitchFix", destination: url)
+                    }
+                }
             }
 
-            Divider()
-
-            // EXCLUDED APPS
-            ExcludedAppsView()
-
-            Divider()
-
-            // APP COMPATIBILITY
-            AppCompatibilityView()
+            SettingsSection(title: L10n.tr("Installed Layouts")) {
+                if layouts.isEmpty {
+                    Text(L10n.tr("No supported layouts found"))
+                        .foregroundColor(.secondary)
+                }
+                ForEach(layouts, id: \.self) { layout in
+                    HStack(alignment: .firstTextBaseline) {
+                        Text(L10n.tr(layout.displayName))
+                        Spacer()
+                        VStack(alignment: .trailing, spacing: 4) {
+                            ForEach(sourcesByLayout[layout] ?? [], id: \.id) { source in
+                                HStack(spacing: 4) {
+                                    if source.id == currentID {
+                                        Image(systemName: "checkmark")
+                                    }
+                                    Text(source.name)
+                                }
+                                .foregroundColor(source.id == currentID ? .primary : .secondary)
+                                .help(source.id)
+                            }
+                        }
+                    }
+                }
+                SettingsNote(text: L10n.tr("SwitchFix corrects between English, Ukrainian and Russian layouts."))
+            }
         }
     }
 }

@@ -15,7 +15,7 @@ A macOS menu bar utility that automatically corrects keyboard layout mistakes. T
 - **После переключения раскладки клавишей 🌐 (Globe) терялись нажатия** — отложенная проверка фокуса отбрасывалась как устаревшая, и до клика мышью все буквы выпадали из буфера (или терялась первая: `ghbdtn` → `gпривет`). ([#15](https://github.com/rundax/SwitchFix/issues/15))
 - **В Chromium/Electron (Claude, Chrome) хоткей стирал слова целиком** — синтетические Backspace доходили до приложения раньше отпускания модификатора и превращались в Option+Backspace. Теперь у синтетических нажатий модификаторы явно сброшены.
 - **Выделение в Electron-приложениях** — перед чтением выделения включается `AXManualAccessibility`, без него Electron не отдаёт поле ввода через Accessibility.
-- **Telegram (Qt) выбрасывал вставляемый текст** — для таких приложений есть режим отправки через системный поток событий (секция **App Compatibility** в настройках, см. ниже).
+- **Telegram (Qt) выбрасывал вставляемый текст** — для таких приложений есть режим отправки через системный поток событий (вкладка **Приложения** в настройках, см. ниже).
 
 ### Доработки ручной коррекции
 
@@ -38,12 +38,15 @@ cd SwitchFix
 security find-certificate -c "SwitchFix Development" -p > /tmp/switchfix.pem && security add-trusted-cert -r trustRoot -p codeSign -k ~/Library/Keychains/login.keychain-db /tmp/switchfix.pem
 ```
 
-Всё настраивается в окне настроек (значок SwitchFix в строке меню → Settings…):
+Всё настраивается в окне настроек (значок SwitchFix в строке меню → Настройки…, `⌘,`). Окно разбито на вкладки:
 
-- **Language / Язык** — язык интерфейса: русский или английский. По умолчанию как в системе. Переключается и первым пунктом меню в строке меню, сразу, без перезапуска.
-- **Correction Mode** → **Hotkey Only**, если нужна только ручная коррекция.
-- **Shortcuts → Trigger Correction**: нажмите на поле, затем нажмите и отпустите Option (или Control). В поле появится `⌥ Option (tap)`. Обычные сочетания вроде `⌃⇧Space` записываются как раньше. Для **Revert Last** одиночный модификатор не поддерживается.
-- **App Compatibility**: способ отправки текста для отдельных приложений. Telegram уже в списке с режимом **Session event tap**. Если другое приложение теряет исправленный текст, добавьте его кнопкой «+» и выберите Session или HID. **Default** — обычная отправка напрямую процессу. Изменения применяются сразу.
+- **Основные** — включение SwitchFix, запуск при входе в систему, язык интерфейса (русский или английский, по умолчанию как в системе; меняется сразу, без перезапуска) и состояние разрешений macOS с кнопками, которые открывают нужную страницу Системных настроек.
+- **Исправление** → **Режим исправления**: выберите **Только по горячей клавише**, если нужна только ручная коррекция.
+- **Исправление** → **Горячие клавиши** → **Исправить**: нажмите на поле, затем нажмите и отпустите Option (или Control). В поле появится `⌥ Option (одно нажатие)`. Обычные сочетания вроде `⌃⇧Space` записываются как раньше. Для **Отменить последнее** одиночный модификатор не поддерживается.
+- **Приложения** — одна таблица для всех настроек по приложениям. Флажок **Исправлять** снят — SwitchFix не трогает текст в этом приложении (терминалы и IDE выключены по умолчанию). Колонка **Ввод текста** задаёт способ отправки исправлений: **Обычный** — напрямую процессу, **Системный поток** (session event tap) — для приложений, которые теряют текст, как Telegram (он уже в списке), **Системный поток (HID)** — если не помог предыдущий. Приложения добавляются кнопкой «+» (новые сразу исключаются из исправления), изменения применяются сразу.
+- **О программе** — версия и установленные раскладки, которые видит SwitchFix.
+
+В меню в строке меню остались только частые действия: включение/выключение, режим исправления, Настройки и Выход. Если не хватает разрешений или Caps Lock конфликтует с переключением раскладки macOS, сверху меню появляется предупреждение; нажатие на него ведёт туда, где это исправляется.
 
 Не используйте одиночный Control, если включена диктовка macOS: её системный хоткей — двойное нажатие Control.
 
@@ -70,12 +73,12 @@ git pull upstream master
 - **Automatic correction** — detects wrong-layout words on space/enter and corrects them instantly.
 - **Hotkey mode** — correct only when you press Ctrl+Shift+Space (configurable).
 - **Selection correction** — select text and press the hotkey to convert it.
-- **Permissions indicator** — shows the status of required macOS permissions in the app menu.
+- **Permissions indicator** — missing macOS permissions show up at the top of the menu and in Settings → General.
 - **Undo** — `Cmd+Z` within 5 seconds reverts the last correction.
 - **Revert hotkey** — `CapsLock` reverts the last correction (configurable).
 - **Three layouts** — English (US/ABC/British/Dvorak/Colemak), Ukrainian, and Russian.
 - **Smart filtering** — skips password fields, URLs, emails, camelCase, mixed scripts.
-- **App blacklist** — disabled in terminals, IDEs, and code editors by default (toggle per app).
+- **App blacklist** — disabled in terminals, IDEs, and code editors by default (toggle per app in Settings → Apps).
 - **Launch at Login** — optional auto-start.
 
 ## Requirements
@@ -127,11 +130,11 @@ This creates a self-signed certificate in your Keychain and saves it to `.codesi
 ## Menu Bar Options
 
 SwitchFix lives in your menu bar with an **Ab** icon. The menu provides:
-- **Enable/Disable** toggle
-- **Correction Mode** — Automatic or Hotkey Only
-- **Permissions Status** — visually indicates if required permissions are granted
-- **Installed Layouts** — shows all detected system layouts
-- **Launch at Login** — toggle automatic startup
+- **Warnings** — missing permissions or a CapsLock conflict, each linking to where it is fixed
+- **SwitchFix Enabled** toggle
+- **Correction Mode** — Automatic, Hotkey Only (shows the current hotkey) or On Layout Switch
+- **Settings…** (`⌘,`) — tabs General, Correction, Apps and About (installed layouts, version)
+- **Quit**
 
 ## Advanced Configuration
 

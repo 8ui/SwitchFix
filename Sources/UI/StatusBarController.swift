@@ -1,31 +1,24 @@
 import AppKit
-import ServiceManagement
 import Core
 import Utils
 
 public class StatusBarController: NSObject, NSMenuDelegate {
     private let statusItem: NSStatusItem
     private let menu: NSMenu
-    private var languageMenuItem: NSMenuItem!
     private var enableMenuItem: NSMenuItem!
-    private var modeMenuItem: NSMenuItem!
+    private var modeHeaderItem: NSMenuItem!
     private var automaticModeItem: NSMenuItem!
     private var hotkeyModeItem: NSMenuItem!
     private var layoutSwitchModeItem: NSMenuItem!
-    private var appFilterMenuItem: NSMenuItem!
-    private var installedLayoutsMenuItem: NSMenuItem!
     private var settingsMenuItem: NSMenuItem!
-    private var loginMenuItem: NSMenuItem!
     private var quitMenuItem: NSMenuItem!
-    private var conflictMenuItem: NSMenuItem?
-    private var conflictSeparatorItem: NSMenuItem?
-    private var permissionMenuItems: [NSMenuItem] = []
-    private var permissionSeparatorItem: NSMenuItem?
+    /// Missing permissions and hotkey conflicts, shown above everything else.
+    private var warningItems: [NSMenuItem] = []
 
     public override init() {
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
         menu = NSMenu()
-        // Explicit isEnabled writes (e.g. "App Filtering Unavailable") only take
+        // Explicit isEnabled writes (e.g. the fallback section header) only take
         // effect when AppKit's auto-enablement is off.
         menu.autoenablesItems = false
 
@@ -35,6 +28,14 @@ public class StatusBarController: NSObject, NSMenuDelegate {
         setupMenu()
 
         statusItem.menu = menu
+
+        // The Settings window can toggle SwitchFix too.
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(preferencesDidChange),
+            name: .preferencesDidChange,
+            object: nil
+        )
     }
 
     private func setupIcon() {
@@ -61,62 +62,30 @@ public class StatusBarController: NSObject, NSMenuDelegate {
     }
 
     private func setupMenu() {
-        let prefs = PreferencesManager.shared
-
         menu.delegate = self
 
-        // Interface language submenu (titles are set in refreshTitles)
-        let languageMenu = NSMenu()
-        for language in AppLanguage.allCases {
-            let item = NSMenuItem(title: language.nativeName, action: #selector(setLanguage(_:)), keyEquivalent: "")
-            item.target = self
-            item.representedObject = language.rawValue
-            languageMenu.addItem(item)
-        }
-        languageMenuItem = NSMenuItem(title: "", action: nil, keyEquivalent: "")
-        languageMenuItem.submenu = languageMenu
-        menu.addItem(languageMenuItem)
-
-        menu.addItem(NSMenuItem.separator())
-
-        // Enable/Disable toggle
+        // Enable/Disable toggle (titles are set in refreshTitles)
         enableMenuItem = NSMenuItem(title: "", action: #selector(toggleEnabled), keyEquivalent: "")
         enableMenuItem.target = self
         menu.addItem(enableMenuItem)
 
         menu.addItem(NSMenuItem.separator())
 
-        // Correction mode submenu
-        let modeMenu = NSMenu()
+        // Correction mode, inline so the current one is visible at a glance
+        modeHeaderItem = Self.makeSectionHeader()
+        menu.addItem(modeHeaderItem)
+
         automaticModeItem = NSMenuItem(title: "", action: #selector(setAutomaticMode), keyEquivalent: "")
         automaticModeItem.target = self
-        modeMenu.addItem(automaticModeItem)
+        menu.addItem(automaticModeItem)
 
         hotkeyModeItem = NSMenuItem(title: "", action: #selector(setHotkeyMode), keyEquivalent: "")
         hotkeyModeItem.target = self
-        modeMenu.addItem(hotkeyModeItem)
+        menu.addItem(hotkeyModeItem)
 
         layoutSwitchModeItem = NSMenuItem(title: "", action: #selector(setLayoutSwitchMode), keyEquivalent: "")
         layoutSwitchModeItem.target = self
-        modeMenu.addItem(layoutSwitchModeItem)
-
-        modeMenuItem = NSMenuItem(title: "", action: nil, keyEquivalent: "")
-        modeMenuItem.submenu = modeMenu
-        menu.addItem(modeMenuItem)
-
-        menu.addItem(NSMenuItem.separator())
-
-        // App filter toggle for current app
-        appFilterMenuItem = NSMenuItem(title: L10n.tr("Enable in Current App"), action: #selector(toggleCurrentAppFilter), keyEquivalent: "")
-        appFilterMenuItem.target = self
-        menu.addItem(appFilterMenuItem)
-
-        menu.addItem(NSMenuItem.separator())
-
-        // Installed layouts submenu
-        installedLayoutsMenuItem = NSMenuItem(title: "", action: nil, keyEquivalent: "")
-        installedLayoutsMenuItem.submenu = buildInstalledLayoutsMenu()
-        menu.addItem(installedLayoutsMenuItem)
+        menu.addItem(layoutSwitchModeItem)
 
         menu.addItem(NSMenuItem.separator())
 
@@ -125,16 +94,6 @@ public class StatusBarController: NSObject, NSMenuDelegate {
         settingsMenuItem.target = self
         menu.addItem(settingsMenuItem)
 
-        menu.addItem(NSMenuItem.separator())
-        
-        // Launch at Login
-        loginMenuItem = NSMenuItem(title: "", action: #selector(toggleLaunchAtLogin(_:)), keyEquivalent: "")
-        loginMenuItem.target = self
-        loginMenuItem.state = prefs.launchAtLogin ? .on : .off
-        menu.addItem(loginMenuItem)
-
-        menu.addItem(NSMenuItem.separator())
-
         // Quit
         quitMenuItem = NSMenuItem(title: "", action: #selector(quit), keyEquivalent: "q")
         quitMenuItem.target = self
@@ -142,43 +101,50 @@ public class StatusBarController: NSObject, NSMenuDelegate {
 
         refreshTitles()
         refreshModeMenu()
-        refreshSystemHotkeyConflictIndicator()
-        refreshPermissionIndicators()
+        refreshWarnings()
+        updateIcon()
     }
 
-    /// Applies the current interface language to the fixed menu items.
+    private static func makeSectionHeader() -> NSMenuItem {
+        if #available(macOS 14.0, *) {
+            return NSMenuItem.sectionHeader(title: "")
+        }
+        let item = NSMenuItem(title: "", action: nil, keyEquivalent: "")
+        item.isEnabled = false
+        return item
+    }
+
+    /// Applies the current interface language and hotkey to the fixed menu items.
     private func refreshTitles() {
         let prefs = PreferencesManager.shared
-        languageMenuItem.title = L10n.tr("Language")
-        for item in languageMenuItem.submenu?.items ?? [] {
-            item.state = item.representedObject as? String == prefs.language.rawValue ? .on : .off
-        }
-        enableMenuItem.title = prefs.isEnabled ? L10n.tr("Disable") : L10n.tr("Enable")
-        modeMenuItem.title = L10n.tr("Correction Mode")
+        enableMenuItem.title = L10n.tr("SwitchFix Enabled")
+        enableMenuItem.state = prefs.isEnabled ? .on : .off
+        modeHeaderItem.title = L10n.tr("Correction Mode")
         automaticModeItem.title = L10n.tr("Automatic")
-        hotkeyModeItem.title = L10n.tr("Hotkey Only")
+        let hotkey = hotkeyDisplayString(
+            keyCode: prefs.hotkeyKeyCode,
+            modifiers: prefs.hotkeyModifiers,
+            allowsModifierTap: true,
+            marksTap: false
+        )
+        hotkeyModeItem.title = String(format: L10n.tr("Hotkey Only (%@)"), hotkey)
         layoutSwitchModeItem.title = L10n.tr("On Layout Switch")
-        installedLayoutsMenuItem.title = L10n.tr("Installed Layouts")
         settingsMenuItem.title = L10n.tr("Settings...")
-        loginMenuItem.title = L10n.tr("Launch at Login")
         quitMenuItem.title = L10n.tr("Quit SwitchFix")
-    }
-
-    @objc private func setLanguage(_ sender: NSMenuItem) {
-        guard let raw = sender.representedObject as? String,
-              let language = AppLanguage(rawValue: raw) else { return }
-        PreferencesManager.shared.language = language
-        refreshTitles()
     }
 
     @objc private func openSettings() {
         SettingsWindowController.shared.showSettings()
     }
-    
+
+    @objc private func openCorrectionSettings() {
+        SettingsWindowController.shared.showSettings(tab: .correction)
+    }
+
     @objc private func toggleEnabled() {
         let prefs = PreferencesManager.shared
         prefs.isEnabled = !prefs.isEnabled
-        enableMenuItem.title = prefs.isEnabled ? L10n.tr("Disable") : L10n.tr("Enable")
+        enableMenuItem.state = prefs.isEnabled ? .on : .off
         updateIcon()
     }
 
@@ -197,15 +163,12 @@ public class StatusBarController: NSObject, NSMenuDelegate {
         refreshModeMenu()
     }
 
-    @objc private func toggleLaunchAtLogin(_ sender: NSMenuItem) {
-        let prefs = PreferencesManager.shared
-        prefs.launchAtLogin = !prefs.launchAtLogin
-        // The sender state will update in menuWillOpen, but we can update it immediately too for feedback
-        sender.state = prefs.launchAtLogin ? .on : .off
-    }
-
     @objc private func quit() {
         NSApplication.shared.terminate(nil)
+    }
+
+    @objc private func preferencesDidChange() {
+        updateIcon()
     }
 
     private func refreshModeMenu() {
@@ -221,133 +184,66 @@ public class StatusBarController: NSObject, NSMenuDelegate {
         button.appearsDisabled = !isEnabled
     }
 
-    @objc private func toggleCurrentAppFilter(_ sender: NSMenuItem) {
-        guard let bundleID = sender.representedObject as? String else { return }
-        if AppFilter.shared.isBlacklisted(bundleID) {
-            AppFilter.shared.removeFromBlacklist(bundleID)
-        } else {
-            AppFilter.shared.addToBlacklist(bundleID)
-        }
-        refreshAppFilterMenuItem()
-    }
+    /// Rebuilds the warnings block at the top of the menu and the menu bar tooltip.
+    private func refreshWarnings() {
+        warningItems.forEach { menu.removeItem($0) }
+        warningItems.removeAll()
 
-    private func refreshAppFilterMenuItem() {
-        guard let app = NSWorkspace.shared.frontmostApplication,
-              let bundleID = app.bundleIdentifier else {
-            appFilterMenuItem.title = L10n.tr("App Filtering Unavailable")
-            appFilterMenuItem.isEnabled = false
-            appFilterMenuItem.representedObject = nil
-            return
-        }
+        var items: [NSMenuItem] = []
 
-        let name = app.localizedName ?? L10n.tr("Current App")
-        appFilterMenuItem.isEnabled = true
-        appFilterMenuItem.representedObject = bundleID
+        let accessibilityGranted = Permissions.isAccessibilityGranted()
+        let inputMonitoringGranted = Permissions.isInputMonitoringGranted()
 
-        if AppFilter.shared.isBlacklisted(bundleID) {
-            appFilterMenuItem.title = String(format: L10n.tr("Enable in %@"), name)
-        } else {
-            appFilterMenuItem.title = String(format: L10n.tr("Disable in %@"), name)
-        }
-    }
-
-    private func buildInstalledLayoutsMenu() -> NSMenu {
-        let sub = NSMenu()
-        let sourcesByLayout = InputSourceManager.shared.availableInputSourcesByLayout()
-        let currentID = InputSourceManager.shared.currentInputSourceID()
-
-        var added = false
-        for layout in Layout.allCases {
-            guard let sources = sourcesByLayout[layout], !sources.isEmpty else { continue }
-            let layoutItem = NSMenuItem(title: L10n.tr(layout.displayName), action: nil, keyEquivalent: "")
-            let layoutMenu = NSMenu()
-            for source in sources {
-                let item = NSMenuItem(title: source.name, action: nil, keyEquivalent: "")
-                item.toolTip = source.id
-                if source.id == currentID {
-                    item.state = .on
-                }
-                layoutMenu.addItem(item)
-            }
-            layoutItem.submenu = layoutMenu
-            sub.addItem(layoutItem)
-            added = true
-        }
-
-        if !added {
-            let item = NSMenuItem(title: L10n.tr("No supported layouts found"), action: nil, keyEquivalent: "")
-            item.isEnabled = false
-            sub.addItem(item)
-        }
-
-        return sub
-    }
-
-    private func refreshInstalledLayoutsMenu() {
-        installedLayoutsMenuItem.submenu = buildInstalledLayoutsMenu()
-    }
-
-    private func refreshPermissionIndicators() {
-        permissionMenuItems.forEach { menu.removeItem($0) }
-        permissionMenuItems.removeAll()
-        if let separator = permissionSeparatorItem {
-            menu.removeItem(separator)
-            permissionSeparatorItem = nil
-        }
-
-        var itemsToInsert: [NSMenuItem] = []
-
-        if !Permissions.isAccessibilityGranted() {
-            let item = NSMenuItem(
+        if !accessibilityGranted {
+            items.append(makeWarningItem(
                 title: L10n.tr("Grant Accessibility Permission…"),
-                action: #selector(openAccessibilityPermissionSettings),
-                keyEquivalent: ""
-            )
-            item.target = self
-            item.toolTip = L10n.tr("SwitchFix needs Accessibility access to monitor keyboard input and replace mistyped words.")
-            itemsToInsert.append(item)
+                toolTip: L10n.tr("SwitchFix needs Accessibility access to monitor keyboard input and replace mistyped words."),
+                action: #selector(openAccessibilityPermissionSettings)
+            ))
         }
 
-        if !Permissions.isInputMonitoringGranted() {
-            let item = NSMenuItem(
+        if !inputMonitoringGranted {
+            items.append(makeWarningItem(
                 title: L10n.tr("Grant Input Monitoring Permission…"),
-                action: #selector(openInputMonitoringPermissionSettings),
-                keyEquivalent: ""
-            )
-            item.target = self
-            item.toolTip = L10n.tr("SwitchFix needs Input Monitoring access to observe keystrokes.")
-            itemsToInsert.append(item)
-        }
-
-        guard !itemsToInsert.isEmpty else {
-            updateMenuBarTooltipForPermissions()
-            return
-        }
-
-        for (index, item) in itemsToInsert.enumerated() {
-            menu.insertItem(item, at: index)
-        }
-        let separator = NSMenuItem.separator()
-        menu.insertItem(separator, at: itemsToInsert.count)
-
-        permissionMenuItems = itemsToInsert
-        permissionSeparatorItem = separator
-
-        updateMenuBarTooltipForPermissions()
-    }
-
-    private func updateMenuBarTooltipForPermissions() {
-        guard permissionMenuItems.isEmpty else {
-            statusItem.button?.toolTip = L10n.tr("SwitchFix (missing permissions)")
-            return
+                toolTip: L10n.tr("SwitchFix needs Input Monitoring access to observe keystrokes."),
+                action: #selector(openInputMonitoringPermissionSettings)
+            ))
         }
 
         let hasConflict = SystemHotkeyConflicts.hasCapsLockConflict(
             revertHotkeyKeyCode: PreferencesManager.shared.revertHotkeyKeyCode
         )
-        statusItem.button?.toolTip = hasConflict
-            ? L10n.tr("SwitchFix (CapsLock conflict detected)")
-            : "SwitchFix"
+        if hasConflict {
+            items.append(makeWarningItem(
+                title: L10n.tr("Fix CapsLock Conflict…"),
+                toolTip: L10n.tr("CapsLock is configured both in SwitchFix (revert) and in macOS (input source switch)."),
+                action: #selector(openCorrectionSettings)
+            ))
+        }
+
+        if !items.isEmpty {
+            items.append(NSMenuItem.separator())
+        }
+        for (index, item) in items.enumerated() {
+            menu.insertItem(item, at: index)
+        }
+        warningItems = items
+
+        if !accessibilityGranted || !inputMonitoringGranted {
+            statusItem.button?.toolTip = L10n.tr("SwitchFix (missing permissions)")
+        } else if hasConflict {
+            statusItem.button?.toolTip = L10n.tr("SwitchFix (CapsLock conflict detected)")
+        } else {
+            statusItem.button?.toolTip = "SwitchFix"
+        }
+    }
+
+    private func makeWarningItem(title: String, toolTip: String, action: Selector) -> NSMenuItem {
+        let item = NSMenuItem(title: title, action: action, keyEquivalent: "")
+        item.target = self
+        item.toolTip = toolTip
+        item.image = NSImage(systemSymbolName: "exclamationmark.triangle.fill", accessibilityDescription: nil)
+        return item
     }
 
     @objc private func openAccessibilityPermissionSettings() {
@@ -358,51 +254,12 @@ public class StatusBarController: NSObject, NSMenuDelegate {
         Permissions.openInputMonitoringSettings()
     }
 
-    private func refreshSystemHotkeyConflictIndicator() {
-        let hasConflict = SystemHotkeyConflicts.hasCapsLockConflict(
-            revertHotkeyKeyCode: PreferencesManager.shared.revertHotkeyKeyCode
-        )
-
-        if hasConflict {
-            if conflictMenuItem == nil {
-                let item = NSMenuItem(title: "", action: nil, keyEquivalent: "")
-                item.isEnabled = false
-
-                let separator = NSMenuItem.separator()
-                menu.insertItem(item, at: 0)
-                menu.insertItem(separator, at: 1)
-                conflictMenuItem = item
-                conflictSeparatorItem = separator
-            }
-            // Retitled on every refresh so a language switch reaches an existing item.
-            conflictMenuItem?.title = L10n.tr("Warning: CapsLock conflicts with macOS input switching")
-            conflictMenuItem?.toolTip = L10n.tr("CapsLock is configured both in SwitchFix (revert) and in macOS (input source switch).")
-            statusItem.button?.toolTip = L10n.tr("SwitchFix (CapsLock conflict detected)")
-        } else {
-            if let item = conflictMenuItem {
-                menu.removeItem(item)
-                conflictMenuItem = nil
-            }
-            if let separator = conflictSeparatorItem {
-                menu.removeItem(separator)
-                conflictSeparatorItem = nil
-            }
-            statusItem.button?.toolTip = "SwitchFix"
-        }
-    }
-
     public func menuWillOpen(_ menu: NSMenu) {
         if menu === self.menu {
-            // Titles first: the language may have changed in the Settings window.
+            // Titles first: the language or hotkey may have changed in the Settings window.
             refreshTitles()
-            refreshSystemHotkeyConflictIndicator()
-            refreshPermissionIndicators()
-            refreshAppFilterMenuItem()
-            refreshInstalledLayoutsMenu()
+            refreshWarnings()
             refreshModeMenu()
-            
-            // Refresh Launch at Login state
-            loginMenuItem.state = PreferencesManager.shared.launchAtLogin ? .on : .off
             updateIcon()
         }
     }
