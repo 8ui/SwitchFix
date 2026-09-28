@@ -330,11 +330,11 @@ public final class InputEngine {
         }
     }
 
-    private func runDetection(_ request: DetectionRequest) {
+    private func runDetection(_ request: DetectionRequest, forceConversion: Bool = false) {
         detectionQueue.async { [weak self] in
             guard let self else { return }
             let startedAt = DispatchTime.now().uptimeNanoseconds
-            let result: DetectionResult?
+            var result: DetectionResult?
             if let customDetection = self.customDetection {
                 result = customDetection(request)
             } else {
@@ -348,6 +348,39 @@ public final class InputEngine {
                 result = self.detector.flushBuffer(
                     boundaryCharacter: request.boundary.isEmpty ? nil : request.boundary
                 )
+                // Manual hotkey = explicit user intent: convert even when the
+                // dictionary does not recognize the word (typos, rare words).
+                // The source layout comes from the word's script, not the current input
+                // source: the two can differ (e.g. Cyrillic word, English layout active).
+                let sourceLayout = ScriptAnalyzer.resolvedSourceLayout(
+                    for: request.word,
+                    currentLayout: request.context.layout,
+                    allowedLayouts: configuration.allowedLayouts
+                )
+                let alternatives = forceConversion && result == nil
+                    ? LayoutMapper.convertToAlternatives(
+                        request.word,
+                        from: sourceLayout,
+                        ukrainianFromVariant: configuration.ukrainianFromVariant,
+                        ukrainianToVariant: configuration.ukrainianToVariant
+                    ).filter { $0.1 != request.word }
+                    : []
+                if forceConversion, result == nil {
+                    SwitchFixLog.engine.notice(
+                        "force: source=\(sourceLayout.rawValue) current=\(request.context.layout.rawValue) allowed=\(configuration.allowedLayouts.map(\.rawValue).sorted()) alternatives=\(alternatives.map { $0.0.rawValue })"
+                    )
+                }
+                // Prefer a layout that is installed; fall back to any conversion.
+                if let (target, converted) = alternatives.first(where: { configuration.allowedLayouts.contains($0.0) })
+                    ?? alternatives.first {
+                    result = DetectionResult(
+                        sourceLayout: sourceLayout,
+                        targetLayout: target,
+                        convertedWord: converted,
+                        originalWord: request.word,
+                        shouldSwitchLayout: true
+                    )
+                }
             }
             let duration = DispatchTime.now().uptimeNanoseconds &- startedAt
             if let result {
@@ -387,6 +420,7 @@ public final class InputEngine {
             cancelReason = "word-too-long"
         }
         guard cancelReason == nil else {
+            SwitchFixLog.engine.notice("correction cancelled reason=\(cancelReason!)")
             logger.debug("correction cancelled reason=\(cancelReason!) word='\(result.originalWord)'")
             return
         }
@@ -429,6 +463,9 @@ public final class InputEngine {
         sequence: UInt64,
         context: InputContextSnapshot
     ) {
+        SwitchFixLog.engine.notice(
+            "manual: bufferLen=\(word?.count ?? 0) secureFocus=\(String(describing: context.secureFocus)) appAllowed=\(context.appAllowed) seq=\(sequence)"
+        )
         guard context.secureFocus == .notSecure, context.appAllowed else { return }
         let latest = captureState.snapshot()
         let generation = latest.editGeneration
@@ -442,7 +479,7 @@ public final class InputEngine {
                     editGeneration: generation,
                     correctionEpoch: requestCorrectionEpoch,
                     context: context
-                ))
+                ), forceConversion: true)
             }
             return
         }
@@ -456,24 +493,26 @@ public final class InputEngine {
                       latest.editGeneration == generation,
                       latest.correctionEpoch == requestCorrectionEpoch,
                       latest.context == context else {
+                    SwitchFixLog.engine.notice(
+                        "manual: dropped after selection query seqMatch=\(latest.latestPhysicalSequence == sequence) genMatch=\(latest.editGeneration == generation) epochMatch=\(latest.correctionEpoch == requestCorrectionEpoch) contextMatch=\(latest.context == context)"
+                    )
                     return
                 }
+                SwitchFixLog.engine.notice("manual: selectionLen=\(selectedText?.count ?? -1)")
 
                 let configuration = self.detectionConfiguration.withLock { $0 }
                 if let selectedText, !selectedText.isEmpty,
-                   let (targetLayout, converted) = LayoutMapper.convertToAlternatives(
+                   let (sourceLayout, targetLayout, converted) = Self.selectionConversion(
                     selectedText,
-                    from: context.layout,
-                    ukrainianFromVariant: configuration.ukrainianFromVariant,
-                    ukrainianToVariant: configuration.ukrainianToVariant
-                   ).first,
-                   converted != selectedText {
+                    currentLayout: context.layout,
+                    configuration: configuration
+                   ) {
                     self.corrector.performSelectionCorrection(
                         selectedText: selectedText,
                         convertedText: converted,
                         targetLayout: targetLayout,
                         shouldSwitchLayout: true,
-                        originalLayout: context.layout,
+                        originalLayout: sourceLayout,
                         sequence: sequence,
                         context: context,
                         editGeneration: generation,
@@ -488,7 +527,7 @@ public final class InputEngine {
                         editGeneration: generation,
                         correctionEpoch: requestCorrectionEpoch,
                         context: context
-                    ))
+                    ), forceConversion: true)
                 }
                 }
             }
@@ -499,6 +538,40 @@ public final class InputEngine {
         detectionQueue.async { [weak self] in
             self?.detector.reset()
         }
+    }
+
+    /// Converts selected text starting from the current layout, then from the others:
+    /// the selection may already be in a different script than the active input source
+    /// (e.g. converting the same selection back and forth). Installed targets win.
+    private static func selectionConversion(
+        _ text: String,
+        currentLayout: Layout,
+        configuration: DetectionConfiguration
+    ) -> (source: Layout, target: Layout, converted: String)? {
+        // Try the layout matching the text's dominant script first, otherwise e.g.
+        // "привет, мир" "converted" from English only turns the comma into "б".
+        let cyrillic = text.unicodeScalars.filter { (0x0400...0x04FF).contains($0.value) }.count
+        let latin = text.unicodeScalars.filter { $0.isASCII && CharacterSet.letters.contains($0) }.count
+        let scriptLayouts: [Layout] = cyrillic > latin
+            ? (currentLayout == .english ? [.russian, .ukrainian] : [currentLayout, .russian, .ukrainian])
+            : [.english]
+        var sources: [Layout] = []
+        for layout in scriptLayouts + [currentLayout] + Layout.allCases where !sources.contains(layout) {
+            sources.append(layout)
+        }
+        for source in sources {
+            let alternatives = LayoutMapper.convertToAlternatives(
+                text,
+                from: source,
+                ukrainianFromVariant: configuration.ukrainianFromVariant,
+                ukrainianToVariant: configuration.ukrainianToVariant
+            ).filter { $0.1 != text }
+            if let (target, converted) = alternatives.first(where: { configuration.allowedLayouts.contains($0.0) })
+                ?? alternatives.first {
+                return (source, target, converted)
+            }
+        }
+        return nil
     }
 }
 
