@@ -22,6 +22,23 @@ public class PreferencesManager {
         static let hotkeyModifiers = "SwitchFix_hotkeyModifiers"
         static let revertHotkeyKeyCode = "SwitchFix_revertHotkeyKeyCode"
         static let revertHotkeyModifiers = "SwitchFix_revertHotkeyModifiers"
+        static let language = "SwitchFix_language"
+    }
+
+    /// Interface language (default: follows the system language).
+    public var language: AppLanguage {
+        get {
+            guard let raw = defaults.string(forKey: Keys.language),
+                  let language = AppLanguage(rawValue: raw) else {
+                return .systemDefault
+            }
+            return language
+        }
+        set {
+            guard newValue != self.language else { return }
+            defaults.set(newValue.rawValue, forKey: Keys.language)
+            NotificationCenter.default.post(name: .preferencesDidChange, object: nil)
+        }
     }
 
     public var isEnabled: Bool {

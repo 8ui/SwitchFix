@@ -23,7 +23,7 @@ public class SettingsWindowController: NSObject {
             defer: false
         )
         window.center()
-        window.title = "SwitchFix Settings"
+        window.title = L10n.tr("SwitchFix Settings")
         window.contentViewController = hostingController
         // Ensure window is released when closed so we can recreate it cleanly or handle shouldClose logic
         window.isReleasedWhenClosed = false
@@ -38,6 +38,13 @@ public class SettingsWindowController: NSObject {
             name: NSWindow.willCloseNotification,
             object: window
         )
+        // Keep the title in the current interface language.
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(preferencesDidChange),
+            name: .preferencesDidChange,
+            object: nil
+        )
 
         controller.showWindow(nil)
         NSApp.activate(ignoringOtherApps: true)
@@ -47,6 +54,11 @@ public class SettingsWindowController: NSObject {
         if let window = notification.object as? NSWindow {
             NotificationCenter.default.removeObserver(self, name: NSWindow.willCloseNotification, object: window)
         }
+        NotificationCenter.default.removeObserver(self, name: .preferencesDidChange, object: nil)
         windowController = nil
+    }
+
+    @objc private func preferencesDidChange() {
+        windowController?.window?.title = L10n.tr("SwitchFix Settings")
     }
 }

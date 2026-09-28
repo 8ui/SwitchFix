@@ -18,25 +18,29 @@ func getModifierString(for modifiers: UInt64) -> String {
 
 func getKeyString(for key: UInt16) -> String {
     switch key {
-    case 49: return "Space"
+    case 49: return L10n.tr("Space")
     case 36: return "Return"
     case 48: return "Tab"
     case 53: return "Esc"
     case 51: return "Delete"
     case 57: return "Caps Lock"
-    case 123: return "Left"
-    case 124: return "Right"
-    case 125: return "Down"
-    case 126: return "Up"
+    case 123: return L10n.tr("Left")
+    case 124: return L10n.tr("Right")
+    case 125: return L10n.tr("Down")
+    case 126: return L10n.tr("Up")
     default:
         if let char = KeyCodeMapping.characterForKeyCode(key)?.uppercased(), !char.isEmpty {
             return char
         }
-        return "Key \(key)"
+        return String(format: L10n.tr("Key %@"), "\(key)")
     }
 }
 
 class SettingsViewModel: ObservableObject {
+    @Published var language: AppLanguage = PreferencesManager.shared.language {
+        didSet { PreferencesManager.shared.language = language }
+    }
+
     @Published var launchAtLogin: Bool = PreferencesManager.shared.launchAtLogin {
         didSet { PreferencesManager.shared.launchAtLogin = launchAtLogin }
     }
@@ -72,6 +76,9 @@ class SettingsViewModel: ObservableObject {
     @objc private func syncFromPreferences() {
         // Sync back only if different to avoid loops
         let prefs = PreferencesManager.shared
+        if self.language != prefs.language {
+            self.language = prefs.language
+        }
         if self.correctionMode != prefs.correctionMode {
             self.correctionMode = prefs.correctionMode
         }
@@ -177,10 +184,10 @@ struct HotkeyRecorder: View {
     
     var displayText: String {
         if recorder.isRecording {
-            return "Type Key..."
+            return L10n.tr("Type Key...")
         }
         if allowsModifierTap, let tap = TapModifierHotkey.configured(keyCode: keyCode) {
-            return getModifierString(for: tap.flag.rawValue) + " " + tap.name + " (tap)"
+            return String(format: L10n.tr("%@ (tap)"), getModifierString(for: tap.flag.rawValue) + " " + tap.name)
         }
         let modStr = getModifierString(for: modifiers)
         let keyStr = getKeyString(for: keyCode)
@@ -320,7 +327,7 @@ struct RunningAppPickerView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text("Choose Running Apps").font(.headline)
+            Text(L10n.tr("Choose Running Apps")).font(.headline)
 
             if runningApps.isEmpty {
                 Text(emptyText)
@@ -344,8 +351,8 @@ struct RunningAppPickerView: View {
 
             HStack {
                 Spacer()
-                Button("Cancel") { dismiss() }
-                Button("Add") {
+                Button(L10n.tr("Cancel")) { dismiss() }
+                Button(L10n.tr("Add")) {
                     onAdd(selection)
                     dismiss()
                 }
@@ -391,11 +398,11 @@ struct AppListEditor<Accessory: View>: View {
 
             HStack(spacing: 0) {
                 Menu {
-                    Button("Choose from Running Apps…") {
+                    Button(L10n.tr("Choose from Running Apps…")) {
                         refreshRunningApps()
                         showingRunningAppsPicker = true
                     }
-                    Button("Choose from Applications Folder…") {
+                    Button(L10n.tr("Choose from Applications Folder…")) {
                         addAppFromFileSystem()
                     }
                 } label: {
@@ -469,15 +476,15 @@ struct ExcludedAppsView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Text("Excluded Apps").font(.headline)
-            Text("SwitchFix won't correct text while these apps are active.")
+            Text(L10n.tr("Excluded Apps")).font(.headline)
+            Text(L10n.tr("SwitchFix won't correct text while these apps are active."))
                 .font(.caption)
                 .foregroundColor(.secondary)
 
             AppListEditor(
                 apps: model.apps,
                 selection: $model.selection,
-                allListedText: "All running apps are already excluded.",
+                allListedText: L10n.tr("All running apps are already excluded."),
                 onAdd: { model.addBundleIDs($0) },
                 onRemoveSelected: model.removeSelected
             ) { app in
@@ -494,8 +501,8 @@ struct AppCompatibilityView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Text("App Compatibility").font(.headline)
-            Text("Some apps, such as Telegram, ignore text sent directly to them. For these apps SwitchFix types corrections through the system event stream instead.")
+            Text(L10n.tr("App Compatibility")).font(.headline)
+            Text(L10n.tr("Some apps, such as Telegram, ignore text sent directly to them. For these apps SwitchFix types corrections through the system event stream instead."))
                 .font(.caption)
                 .foregroundColor(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
@@ -503,7 +510,7 @@ struct AppCompatibilityView: View {
             AppListEditor(
                 apps: model.apps,
                 selection: $model.selection,
-                allListedText: "All running apps are already listed.",
+                allListedText: L10n.tr("All running apps are already listed."),
                 onAdd: { model.addBundleIDs($0) },
                 onRemoveSelected: model.removeSelected
             ) { app in
@@ -511,9 +518,9 @@ struct AppCompatibilityView: View {
                     get: { model.modes[app.id] },
                     set: { model.setMode($0, for: app.id) }
                 )) {
-                    Text("Default").tag(AppPostMode?.none)
-                    Text("Session event tap").tag(AppPostMode?.some(.session))
-                    Text("HID event tap").tag(AppPostMode?.some(.hid))
+                    Text(L10n.tr("Default")).tag(AppPostMode?.none)
+                    Text(L10n.tr("Session event tap")).tag(AppPostMode?.some(.session))
+                    Text(L10n.tr("HID event tap")).tag(AppPostMode?.some(.hid))
                 }
                 .labelsHidden()
                 .fixedSize()
@@ -528,11 +535,11 @@ struct SettingsView: View {
     private var correctionModeDescription: String {
         switch model.correctionMode {
         case .automatic:
-            return "Auto-corrects on word boundaries (space, enter)."
+            return L10n.tr("Auto-corrects on word boundaries (space, enter).")
         case .hotkey:
-            return "Corrects only when triggered via hotkey."
+            return L10n.tr("Corrects only when triggered via hotkey.")
         case .layoutSwitch:
-            return "Corrects the current word (or selection) when you switch the system keyboard layout."
+            return L10n.tr("Corrects the current word (or selection) when you switch the system keyboard layout.")
         }
     }
 
@@ -542,6 +549,8 @@ struct SettingsView: View {
             content
                 .padding(30)
                 .frame(maxWidth: .infinity, alignment: .leading)
+                // Rebuild every section (including their own models) in the new language.
+                .id(model.language)
         }
         .frame(width: 480, height: 700)
     }
@@ -549,22 +558,37 @@ struct SettingsView: View {
     private var content: some View {
         VStack(alignment: .leading, spacing: 24) {
 
+            // LANGUAGE
+            VStack(alignment: .leading, spacing: 8) {
+                Text(L10n.tr("Language")).font(.headline)
+                Picker("", selection: $model.language) {
+                    ForEach(AppLanguage.allCases, id: \.self) { language in
+                        Text(language.nativeName).tag(language)
+                    }
+                }
+                .pickerStyle(.segmented)
+                .labelsHidden()
+                .fixedSize()
+            }
+
+            Divider()
+
             // GENERAL
             VStack(alignment: .leading, spacing: 8) {
-                Text("General").font(.headline)
-                Toggle("Launch at Login", isOn: $model.launchAtLogin)
+                Text(L10n.tr("General")).font(.headline)
+                Toggle(L10n.tr("Launch at Login"), isOn: $model.launchAtLogin)
             }
             
             Divider()
             
             // CORRECTION MODE
             VStack(alignment: .leading, spacing: 12) {
-                Text("Correction Mode").font(.headline)
+                Text(L10n.tr("Correction Mode")).font(.headline)
                 
                 Picker("", selection: $model.correctionMode) {
-                    Text("Automatic (Space / Enter)").tag(CorrectionMode.automatic)
-                    Text("Hotkey Only").tag(CorrectionMode.hotkey)
-                    Text("On Layout Switch").tag(CorrectionMode.layoutSwitch)
+                    Text(L10n.tr("Automatic (Space / Enter)")).tag(CorrectionMode.automatic)
+                    Text(L10n.tr("Hotkey Only")).tag(CorrectionMode.hotkey)
+                    Text(L10n.tr("On Layout Switch")).tag(CorrectionMode.layoutSwitch)
                 }
                 .pickerStyle(RadioGroupPickerStyle())
                 
@@ -577,11 +601,11 @@ struct SettingsView: View {
             
             // SHORTCUTS
             VStack(alignment: .leading, spacing: 16) {
-                Text("Shortcuts").font(.headline)
+                Text(L10n.tr("Shortcuts")).font(.headline)
                 
                 Grid(alignment: .leading, horizontalSpacing: 20, verticalSpacing: 12) {
                     GridRow {
-                        Text("Trigger Correction:")
+                        Text(L10n.tr("Trigger Correction:"))
                             .gridColumnAlignment(.trailing)
                         HotkeyRecorder(
                             keyCode: $model.hotkeyKeyCode,
@@ -591,7 +615,7 @@ struct SettingsView: View {
                     }
                     
                     GridRow {
-                        Text("Revert Last:")
+                        Text(L10n.tr("Revert Last:"))
                         HotkeyRecorder(
                             keyCode: $model.revertHotkeyKeyCode,
                             modifiers: $model.revertHotkeyModifiers
@@ -600,12 +624,12 @@ struct SettingsView: View {
                 }
                 
                 if TapModifierHotkey.configured(keyCode: model.hotkeyKeyCode)?.flag == .maskControl {
-                    Text("Double-pressing Control is the macOS Dictation shortcut. Consider Option instead.")
+                    Text(L10n.tr("Double-pressing Control is the macOS Dictation shortcut. Consider Option instead."))
                         .font(.caption)
                         .foregroundColor(.secondary)
                 }
 
-                Text("Recommended: Set 'Revert Last' to Caps Lock to avoid conflicts.")
+                Text(L10n.tr("Recommended: Set 'Revert Last' to Caps Lock to avoid conflicts."))
                     .font(.caption)
                     .foregroundColor(.secondary)
             }
