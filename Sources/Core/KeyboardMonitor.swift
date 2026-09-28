@@ -38,6 +38,8 @@ public final class KeyboardMonitor {
     private var diagnosticRingIndex = 0
     // Tap-callback-thread confined: tracks caps lock toggle state for edge detection.
     private var lastAlphaShiftState: Bool?
+    // Tap-callback-thread confined: a lone hotkey-modifier press awaiting its release.
+    private var controlTapArmed = false
     private var tapResetCount: UInt64 = 0
 
     private static let spaceKeyCode: UInt16 = 49
@@ -46,6 +48,11 @@ public final class KeyboardMonitor {
     private static let escapeKeyCode: UInt16 = 53
     private static let deleteKeyCode: UInt16 = 51
     private static let capsLockKeyCode: UInt16 = 57
+    /// Single-modifier tap hotkeys, keyed by the configured (left-side) key code.
+    private static let tapModifiers: [UInt16: (keyCodes: Set<UInt16>, flag: CGEventFlags)] = [
+        59: ([59, 62], .maskControl),   // Control (left / right)
+        58: ([58, 61], .maskAlternate), // Option (left / right)
+    ]
     private static let zKeyCode: UInt16 = 6
 
     private static let functionKeyCodes: Set<UInt16> = Set([
@@ -301,11 +308,31 @@ public final class KeyboardMonitor {
         keyCode: UInt16,
         flags: CGEventFlags
     ) -> CapturedInput.Kind? {
+        let hotkeys = captureState.hotkeyConfiguration()
+        // Hotkey key code = left Control (59) or left Option (58): fire on a lone tap of
+        // that modifier (either side; press + release with nothing else in between),
+        // so <modifier>+<key> combos keep working as usual.
+        let tapModifier = KeyboardMonitor.tapModifiers[hotkeys.hotkeyKeyCode]
+        let isTapKey = type == .flagsChanged && tapModifier?.keyCodes.contains(keyCode) == true
+        if !isTapKey {
+            controlTapArmed = false
+        }
+        if isTapKey, let tapModifier {
+            if flags.contains(tapModifier.flag) {
+                let others = CGEventFlags([.maskCommand, .maskControl, .maskAlternate, .maskShift])
+                    .subtracting(tapModifier.flag)
+                controlTapArmed = flags.intersection(others).isEmpty
+                return nil
+            }
+            let fire = controlTapArmed
+            controlTapArmed = false
+            return fire ? .hotkey : nil
+        }
+
         if type == .leftMouseDown || type == .rightMouseDown || type == .otherMouseDown {
             return .focusMayChange
         }
 
-        let hotkeys = captureState.hotkeyConfiguration()
         if type == .flagsChanged {
             guard keyCode == KeyboardMonitor.capsLockKeyCode,
                   isMatchingHotkey(
