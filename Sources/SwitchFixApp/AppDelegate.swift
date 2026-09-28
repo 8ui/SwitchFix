@@ -239,6 +239,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 fromVariant: fromVariant,
                 toVariant: toVariant
             )
+            // The switch key (e.g. Globe) is captured as navigation and leaves focus
+            // unknown; the new epoch orphans that pending query, so re-resolve here —
+            // otherwise every keystroke is dropped until the next click.
+            if context.secureFocus != .notSecure {
+                focusCoordinator?.focusMayChange(pid: context.frontmostPID, epoch: context.epoch)
+            }
         }
         updateDetectionConfiguration(allowedLayouts: readyLayouts)
     }
