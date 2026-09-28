@@ -101,6 +101,11 @@ if [ -d "$PRODUCTS_DIR/SwitchFix_Dictionary.bundle" ]; then
     echo "Copied dictionary bundle to Contents/Resources/."
 
     DICT_BUNDLE="$APP_BUNDLE/Contents/Resources/SwitchFix_Dictionary.bundle"
+    # Newer Swift toolchains emit a macOS-style bundle (Contents/Resources);
+    # Bundle.url(forResource:) only looks there, not at the bundle root.
+    if [ -d "$DICT_BUNDLE/Contents/Resources" ]; then
+        DICT_BUNDLE="$DICT_BUNDLE/Contents/Resources"
+    fi
     for lang in en_US ru_RU uk_UA; do
         BIN_PATH="$PROJECT_DIR/.build/dictionary-bin/${lang}.bin"
         if [ -f "$BIN_PATH" ]; then
