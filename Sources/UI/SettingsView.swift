@@ -2,6 +2,7 @@ import SwiftUI
 import AppKit
 import Carbon
 import UniformTypeIdentifiers
+import Core
 import Utils
 
 // Helpers
@@ -70,22 +71,38 @@ class SettingsViewModel: ObservableObject {
     
     @objc private func syncFromPreferences() {
         // Sync back only if different to avoid loops
-        if self.correctionMode != PreferencesManager.shared.correctionMode {
-            self.correctionMode = PreferencesManager.shared.correctionMode
+        let prefs = PreferencesManager.shared
+        if self.correctionMode != prefs.correctionMode {
+            self.correctionMode = prefs.correctionMode
         }
-        // ... extend for others if needed, but mainly Mode is likely to change externally via Menu
+        if self.hotkeyKeyCode != prefs.hotkeyKeyCode {
+            self.hotkeyKeyCode = prefs.hotkeyKeyCode
+        }
+        if self.hotkeyModifiers != prefs.hotkeyModifiers {
+            self.hotkeyModifiers = prefs.hotkeyModifiers
+        }
+        if self.revertHotkeyKeyCode != prefs.revertHotkeyKeyCode {
+            self.revertHotkeyKeyCode = prefs.revertHotkeyKeyCode
+        }
+        if self.revertHotkeyModifiers != prefs.revertHotkeyModifiers {
+            self.revertHotkeyModifiers = prefs.revertHotkeyModifiers
+        }
     }
 }
 
 class RecorderState: ObservableObject {
     @Published var isRecording = false
     private var monitor: Any?
+    // A lone tap-hotkey modifier press awaiting its release.
+    private var pendingTap: TapModifierHotkey?
 
     deinit {
         stop()
     }
 
-    func start(completion: @escaping (UInt16, UInt64) -> Void) {
+    /// - Parameter allowsModifierTap: also record a lone Control/Option press-and-release,
+    ///   reported as the modifier's left-side key code with no modifiers.
+    func start(allowsModifierTap: Bool, completion: @escaping (UInt16, UInt64) -> Void) {
         stop()
         isRecording = true
 
@@ -100,10 +117,27 @@ class RecorderState: ObservableObject {
             }
             // Pass through other modifier transitions so app-wide modifier state stays intact.
             if event.type == .flagsChanged {
+                guard allowsModifierTap, let tap = TapModifierHotkey.containing(keyCode: event.keyCode) else {
+                    self.pendingTap = nil
+                    return event
+                }
+                let flags = CGEventFlags(rawValue: UInt64(event.modifierFlags.rawValue))
+                if flags.contains(tap.flag) {
+                    let others = CGEventFlags([.maskCommand, .maskControl, .maskAlternate, .maskShift])
+                        .subtracting(tap.flag)
+                    self.pendingTap = flags.intersection(others).isEmpty ? tap : nil
+                } else if self.pendingTap?.keyCode == tap.keyCode {
+                    completion(tap.keyCode, 0)
+                    self.stop()
+                } else {
+                    self.pendingTap = nil
+                }
                 return event
             }
 
             if event.type == .keyDown {
+                // A key pressed while the modifier is held makes it a combo, not a tap.
+                self.pendingTap = nil
                 if event.keyCode == 53 { // ESC
                     self.stop()
                     return nil
@@ -129,6 +163,7 @@ class RecorderState: ObservableObject {
             NSEvent.removeMonitor(m)
             monitor = nil
         }
+        pendingTap = nil
         isRecording = false
     }
 }
@@ -136,11 +171,16 @@ class RecorderState: ObservableObject {
 struct HotkeyRecorder: View {
     @Binding var keyCode: UInt16
     @Binding var modifiers: UInt64
+    /// Whether a lone Control/Option tap can be recorded (KeyboardMonitor supports it for the correction hotkey only).
+    var allowsModifierTap = false
     @StateObject private var recorder = RecorderState()
     
     var displayText: String {
         if recorder.isRecording {
             return "Type Key..."
+        }
+        if allowsModifierTap, let tap = TapModifierHotkey.configured(keyCode: keyCode) {
+            return getModifierString(for: tap.flag.rawValue) + " " + tap.name + " (tap)"
         }
         let modStr = getModifierString(for: modifiers)
         let keyStr = getKeyString(for: keyCode)
@@ -152,7 +192,7 @@ struct HotkeyRecorder: View {
             if recorder.isRecording {
                 recorder.stop()
             } else {
-                recorder.start { newKey, newMods in
+                recorder.start(allowsModifierTap: allowsModifierTap) { newKey, newMods in
                     self.keyCode = newKey
                     self.modifiers = newMods
                 }
@@ -423,7 +463,8 @@ struct SettingsView: View {
                             .gridColumnAlignment(.trailing)
                         HotkeyRecorder(
                             keyCode: $model.hotkeyKeyCode,
-                            modifiers: $model.hotkeyModifiers
+                            modifiers: $model.hotkeyModifiers,
+                            allowsModifierTap: true
                         )
                     }
                     
@@ -436,6 +477,12 @@ struct SettingsView: View {
                     }
                 }
                 
+                if TapModifierHotkey.configured(keyCode: model.hotkeyKeyCode)?.flag == .maskControl {
+                    Text("Double-pressing Control is the macOS Dictation shortcut. Consider Option instead.")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                }
+
                 Text("Recommended: Set 'Revert Last' to Caps Lock to avoid conflicts.")
                     .font(.caption)
                     .foregroundColor(.secondary)

@@ -48,11 +48,6 @@ public final class KeyboardMonitor {
     private static let escapeKeyCode: UInt16 = 53
     private static let deleteKeyCode: UInt16 = 51
     private static let capsLockKeyCode: UInt16 = 57
-    /// Single-modifier tap hotkeys, keyed by the configured (left-side) key code.
-    private static let tapModifiers: [UInt16: (keyCodes: Set<UInt16>, flag: CGEventFlags)] = [
-        59: ([59, 62], .maskControl),   // Control (left / right)
-        58: ([58, 61], .maskAlternate), // Option (left / right)
-    ]
     private static let zKeyCode: UInt16 = 6
 
     private static let functionKeyCodes: Set<UInt16> = Set([
@@ -312,7 +307,7 @@ public final class KeyboardMonitor {
         // Hotkey key code = left Control (59) or left Option (58): fire on a lone tap of
         // that modifier (either side; press + release with nothing else in between),
         // so <modifier>+<key> combos keep working as usual.
-        let tapModifier = KeyboardMonitor.tapModifiers[hotkeys.hotkeyKeyCode]
+        let tapModifier = TapModifierHotkey.configured(keyCode: hotkeys.hotkeyKeyCode)
         let isTapKey = type == .flagsChanged && tapModifier?.keyCodes.contains(keyCode) == true
         if !isTapKey {
             controlTapArmed = false

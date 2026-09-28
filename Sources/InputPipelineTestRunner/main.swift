@@ -658,6 +658,15 @@ run("100,000 event stress") {
     check(inspected.wait(timeout: .now() + 1) == .success, "final engine state must be observable")
 }
 
+run("tap modifier hotkeys") {
+    check(TapModifierHotkey.configured(keyCode: 59)?.flag == .maskControl, "left Control configures a Control tap")
+    check(TapModifierHotkey.configured(keyCode: 58)?.flag == .maskAlternate, "left Option configures an Option tap")
+    check(TapModifierHotkey.configured(keyCode: 62) == nil, "tap hotkeys are stored by their left-side key code")
+    check(TapModifierHotkey.containing(keyCode: 62)?.keyCode == 59, "right Control records as left Control")
+    check(TapModifierHotkey.containing(keyCode: 61)?.keyCode == 58, "right Option records as left Option")
+    check(TapModifierHotkey.containing(keyCode: 56) == nil, "Shift is not a tap hotkey")
+}
+
 private enum BlockedCollaborator {
     case dictionary
     case accessibility
