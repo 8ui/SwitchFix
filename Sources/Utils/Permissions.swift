@@ -341,6 +341,9 @@ public final class AccessibilityFocusCoordinator {
     private static func selectedText(pid: pid_t) -> String? {
         let application = AXUIElementCreateApplication(pid)
         AXUIElementSetMessagingTimeout(application, 0.05)
+        // Electron/Chromium apps build their accessibility tree only on request;
+        // without it the focused field and its selection are invisible. Idempotent.
+        AXUIElementSetAttributeValue(application, "AXManualAccessibility" as CFString, kCFBooleanTrue)
         guard let focused = focusedElement(application: application) else { return nil }
         AXUIElementSetMessagingTimeout(focused, 0.05)
 
