@@ -1,0 +1,45 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - master
+      - "claude/**"
+  pull_request:
+    branches:
+      - master
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-and-test:
+    name: Build and test (macos-15)
+    runs-on: macos-15
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v7
+
+      - name: Show Swift version
+        run: swift --version
+
+      - name: Build (release)
+        run: swift build -c release
+
+      - name: TestRunner
+        run: swift run -c release TestRunner
+
+      - name: InputPipelineTestRunner
+        run: swift run -c release InputPipelineTestRunner
+
+      - name: Build app bundle (ad-hoc signed)
+        run: |
+          chmod +x scripts/build-app.sh
+          unset SWITCHFIX_CODESIGN_IDENTITY
+          scripts/build-app.sh
