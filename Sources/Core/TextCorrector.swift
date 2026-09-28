@@ -369,7 +369,22 @@ public final class TextCorrector {
     }
 
     private func post(_ events: [CGEvent], targetPID: pid_t) {
+        // Some toolkits (e.g. Qt in Telegram) drop Unicode-string events posted
+        // straight to the process; per-app override routes them through the system
+        // event stream instead. Defaults key: SwitchFix_postModeByApp = {bundleID: "session"|"hid"}.
+        let bundleID = NSRunningApplication(processIdentifier: targetPID)?.bundleIdentifier
+        let modes = UserDefaults.standard.dictionary(forKey: "SwitchFix_postModeByApp") as? [String: String]
+        let tap: CGEventTapLocation?
+        switch bundleID.flatMap({ modes?[$0] }) {
+        case "session": tap = .cgSessionEventTap
+        case "hid": tap = .cghidEventTap
+        default: tap = nil
+        }
         for event in events {
+            if let tap {
+                event.post(tap: tap)
+                continue
+            }
             event.postToPid(targetPID)
         }
     }
@@ -378,6 +393,10 @@ public final class TextCorrector {
         guard let event = CGEvent(keyboardEventSource: eventSource, virtualKey: keyCode, keyDown: keyDown) else {
             return nil
         }
+        // A modifier-tap hotkey fires on release, and these events can reach the app
+        // before that release does: without explicit flags Chromium sees Option held
+        // and turns Backspace into delete-word.
+        event.flags = []
         event.setIntegerValueField(.eventSourceUserData, value: switchFixEventMarker)
         return event
     }
