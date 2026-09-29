@@ -139,6 +139,13 @@ runSuite("LayoutMapper: Special chars EN→RU") {
     assertEqual(LayoutMapper.convert("`", from: .english, to: .russian), "ё")
 }
 
+runSuite("LayoutMapper: Special chars RU→EN") {
+    assertEqual(LayoutMapper.convert("ж", from: .russian, to: .english), ";")
+    assertEqual(LayoutMapper.convert("э", from: .russian, to: .english), "'")
+    assertEqual(LayoutMapper.convert("ё", from: .russian, to: .english), "`")
+    assertEqual(LayoutMapper.convert("ЖЭЁ", from: .russian, to: .english), ":\"~")
+}
+
 runSuite("LayoutMapper: Special chars EN→UK") {
     assertEqual(LayoutMapper.convert("'", from: .english, to: .ukrainian), "є")
     assertEqual(LayoutMapper.convert("]", from: .english, to: .ukrainian), "ї")

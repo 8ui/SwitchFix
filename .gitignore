@@ -19,5 +19,6 @@ Sources/Dictionary/Resources/uk_full.txt
 
 # Local / temporary files and tooling
 .pi/
+.superpowers/
 temp.txt
 *.key

@@ -1,0 +1,16 @@
+{
+  "hooks": {
+    "SessionStart": [
+      { "hooks": [{ "type": "command", "command": "sh \"${CLAUDE_PROJECT_DIR:-.}/.claude/rtp-hook.sh\" hook-sessionstart" }] }
+    ],
+    "PostToolUse": [
+      { "matcher": "Edit|Write|MultiEdit", "hooks": [{ "type": "command", "command": "sh \"${CLAUDE_PROJECT_DIR:-.}/.claude/rtp-hook.sh\" hook-postedit" }] }
+    ],
+    "PreCompact": [
+      { "hooks": [{ "type": "command", "command": "sh \"${CLAUDE_PROJECT_DIR:-.}/.claude/rtp-hook.sh\" hook-precompact" }] }
+    ],
+    "Stop": [
+      { "hooks": [{ "type": "command", "command": "sh \"${CLAUDE_PROJECT_DIR:-.}/.claude/rtp-hook.sh\" hook-stop" }] }
+    ]
+  }
+}

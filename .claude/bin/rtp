@@ -1,0 +1,9 @@
+#!/bin/sh
+# rtp is NOT an npm package: `npx rtp` fetches an unrelated registry package.
+# Resolve symlinks first: the skill is found relative to the real file.
+f=$0
+while [ -L "$f" ]; do
+  l=$(readlink "$f")
+  case $l in /*) f=$l ;; *) f=$(dirname "$f")/$l ;; esac
+done
+exec node "$(cd "$(dirname "$f")/.." && pwd)/skills/run-task-pipeline/scripts/rtp.mjs" "$@"

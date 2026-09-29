@@ -1,0 +1,9 @@
+{
+  "baseBranch": "origin/master",
+  "verify": [
+    { "run": "swift build -c release", "only": "local" },
+    { "run": "swift run -c release TestRunner", "timeout": 900, "only": "local" },
+    { "run": "swift run -c release InputPipelineTestRunner", "timeout": 900, "only": "local" },
+    { "record": "CI зелёный: <ссылка на push-ран GitHub Actions коммита с кодом>" }
+  ]
+}

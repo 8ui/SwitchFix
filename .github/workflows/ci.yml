@@ -5,6 +5,11 @@ on:
     branches:
       - master
       - "claude/**"
+    # A commit that only updates the task tracker (e.g. recording CI evidence)
+    # must not start a run — with cancel-in-progress it would cancel the run of
+    # the code commit being recorded.
+    paths-ignore:
+      - "docs/tasks/**"
   pull_request:
     branches:
       - master
