@@ -15,6 +15,7 @@ quality. Results are recorded in `plan/benchmarks/`.
 | File | Content |
 |---|---|
 | `en.txt`, `ru.txt`, `uk.txt` | one raw sentence per line, ~5000 words per language |
+| `mixed_ru.txt`, `mixed_uk.txt` | **main scenario**: ~100 native-language messages each with English words inside ("создай новую worktree"); hand-written for this project (same license as the repo) |
 | `edge_cases.tsv` | hand-written cases: code/CLI words, chat slang, names, transliteration (`keep`) and tech terms / word forms typed on the wrong layout (`fix`) |
 | `extract_ud.py` | regenerates the sentence files from pinned treebank commits |
 
@@ -46,4 +47,8 @@ CC BY-NC-SA, so the Ukrainian set is more formal than the others.
 - **Sentences**: whole sentences typed with one detector (context carries over, as in the
   app). When a correction switches the layout, the rest of the sentence is typed on the new
   layout.
+- **Mixed messages** (primary metric): English + native layout only. Each word's language
+  comes from its script. Two typist models: *relies on app* (never switches by hand) and
+  *switches late* (types the first word after a language change on the old layout, then
+  switches by hand). A message counts as fully correct when every word ends up as written.
 - **Edge cases**: `edge_cases.tsv`, reported per group with the failing words.

@@ -34,15 +34,15 @@ private func wrongLayouts(for language: Layout) -> [Layout] {
 }
 
 private enum EvalConfig: CaseIterable {
-    /// All three layouts installed (both Cyrillic layouts compete).
-    case all
-    /// Only English plus the Cyrillic layout involved.
+    /// Primary: English plus the user's native Cyrillic layout (the common setup).
     case pair
+    /// Secondary: all three layouts installed (both Cyrillic layouts compete).
+    case all
 
     var name: String {
         switch self {
-        case .all: return "en+ru+uk"
-        case .pair: return "en+one"
+        case .pair: return "en + native (primary)"
+        case .all: return "en+ru+uk (secondary)"
         }
     }
 
@@ -277,18 +277,20 @@ private func runIsolatedEval(sentences: [Layout: [[String]]]) {
 /// Simulates typing whole sentences. A correction that switches the layout makes
 /// the rest of the sentence typed on the new layout, as in the real app.
 private func runSentenceEval(sentences: [Layout: [[String]]]) {
-    runSuite("LayoutEval: sentences (context), layouts en+ru+uk") {
+    runSuite("LayoutEval: sentences (context), layouts en + native") {
         print("")
         print("| case | words | restored | left wrong | wrong conversion | false positives after switch | sentences switched | avg words before switch |")
         print("|---|---|---|---|---|---|---|---|")
-        let allowed = Set(Layout.allCases)
 
         for language in evalLanguages {
             let list = sentences[language, default: []]
 
             var correctWords = 0
             var falsePositives = 0
-            let detector = makeDetector(current: language, allowed: allowed)
+            let detector = makeDetector(
+                current: language,
+                allowed: EvalConfig.pair.allowedLayouts(language: language, typedOn: wrongLayouts(for: language)[0])
+            )
             for sentence in list {
                 detector.reset()
                 for word in sentence {
@@ -308,6 +310,7 @@ private func runSentenceEval(sentences: [Layout: [[String]]]) {
                 var fpAfterSwitch = 0
                 var switched = 0
                 var wordsBeforeSwitch = 0
+                detector.allowedLayouts = EvalConfig.pair.allowedLayouts(language: language, typedOn: startLayout)
                 for sentence in list {
                     detector.reset()
                     var layout = startLayout
@@ -342,6 +345,142 @@ private func runSentenceEval(sentences: [Layout: [[String]]]) {
                 }
                 let avg = switched > 0 ? String(format: "%.2f", Double(wordsBeforeSwitch) / Double(switched)) : "—"
                 print("| \(evalCode(language)) started on \(evalCode(startLayout)) | \(wrongWords) | \(restored) (\(pct(restored, wrongWords))) | \(leftWrong) (\(pct(leftWrong, wrongWords))) | \(wrongConversions) | \(fpAfterSwitch) | \(switched)/\(list.count) (\(pct(switched, list.count))) | \(avg) |")
+            }
+        }
+    }
+}
+
+// MARK: - Mixed messages (native text with English words)
+
+private struct MixedToken {
+    let word: String
+    let language: Layout
+}
+
+private func tokenizeMixed(_ sentence: String, native: Layout) -> [MixedToken] {
+    var tokens: [MixedToken] = []
+    for chunk in sentence.split(whereSeparator: { $0.isWhitespace }) {
+        let text = String(chunk)
+        if let word = tokenize(text, language: .english).first {
+            tokens.append(MixedToken(word: word, language: .english))
+        } else if let word = tokenize(text, language: native).first {
+            tokens.append(MixedToken(word: word, language: native))
+        }
+    }
+    return tokens
+}
+
+private func loadMixed(_ native: Layout) -> [[MixedToken]] {
+    let path = FileManager.default.currentDirectoryPath + "/Tests/LayoutEval/mixed_\(evalCode(native)).txt"
+    guard let content = try? String(contentsOfFile: path, encoding: .utf8) else {
+        print("  WARN: could not read mixed messages at \(path)")
+        return []
+    }
+    return content
+        .split(whereSeparator: \.isNewline)
+        .map { tokenizeMixed(String($0), native: native) }
+        .filter { !$0.isEmpty }
+}
+
+private enum TypistModel: CaseIterable {
+    /// Never switches the layout by hand; only SwitchFix switches it.
+    case reliesOnApp
+    /// Types the first word after a language change on the old layout, then
+    /// switches by hand (unless SwitchFix already did).
+    case switchesLate
+
+    var name: String {
+        switch self {
+        case .reliesOnApp: return "relies on app"
+        case .switchesLate: return "switches late"
+        }
+    }
+}
+
+/// The main user scenario: native-language messages with English words
+/// ("создай новую worktree"), typed starting on the native layout.
+private func runMixedEval() {
+    runSuite("LayoutEval: mixed native + English messages, layouts en + native") {
+        print("")
+        print("| messages | typist | fully correct | English words mistyped → restored | native words mistyped → restored | left wrong | wrong conversion | false positives |")
+        print("|---|---|---|---|---|---|---|---|")
+
+        for native in [Layout.russian, .ukrainian] {
+            let messages = loadMixed(native)
+            let englishCount = messages.reduce(0) { count, message in
+                count + message.filter { $0.language == .english }.count
+            }
+            assert(messages.count > 50, "mixed \(evalCode(native)) messages should load")
+            assert(englishCount > 50, "mixed \(evalCode(native)) messages should contain English words")
+
+            for model in TypistModel.allCases {
+                let detector = makeDetector(current: native, allowed: [.english, native])
+                var fullyCorrect = 0
+                var englishMistyped = 0
+                var englishRestored = 0
+                var nativeMistyped = 0
+                var nativeRestored = 0
+                var leftWrong = 0
+                var wrongConversions = 0
+                var falsePositives = 0
+                var failures: [String] = []
+
+                for message in messages {
+                    detector.reset()
+                    var layout = native
+                    var previousLanguage: Layout?
+                    var messageOK = true
+                    var rendered: [String] = []
+
+                    for token in message {
+                        if model == .switchesLate, previousLanguage == token.language, layout != token.language {
+                            layout = token.language
+                        }
+                        previousLanguage = token.language
+
+                        if layout == token.language {
+                            if let result = detect(detector, word: token.word, current: layout) {
+                                falsePositives += 1
+                                messageOK = false
+                                rendered.append("[\(token.word)→\(result.convertedWord)]")
+                                if result.shouldSwitchLayout { layout = result.targetLayout }
+                            } else {
+                                rendered.append(token.word)
+                            }
+                            continue
+                        }
+
+                        let isEnglish = token.language == .english
+                        if isEnglish { englishMistyped += 1 } else { nativeMistyped += 1 }
+                        let typed = typedForm(of: token.word, language: token.language, on: layout)
+                        guard let result = detect(detector, word: typed, current: layout) else {
+                            leftWrong += 1
+                            messageOK = false
+                            rendered.append("[\(typed)]")
+                            continue
+                        }
+                        if restores(result, to: token.word, language: token.language) {
+                            if isEnglish { englishRestored += 1 } else { nativeRestored += 1 }
+                            rendered.append(token.word)
+                        } else {
+                            wrongConversions += 1
+                            messageOK = false
+                            rendered.append("[\(typed)→\(result.convertedWord)]")
+                        }
+                        if result.shouldSwitchLayout { layout = result.targetLayout }
+                    }
+
+                    if messageOK {
+                        fullyCorrect += 1
+                    } else if failures.count < 8 {
+                        failures.append(rendered.joined(separator: " "))
+                    }
+                }
+
+                print("| \(evalCode(native)) (\(messages.count)) | \(model.name) | \(fullyCorrect) (\(pct(fullyCorrect, messages.count))) | \(englishRestored)/\(englishMistyped) (\(pct(englishRestored, englishMistyped))) | \(nativeRestored)/\(nativeMistyped) (\(pct(nativeRestored, nativeMistyped))) | \(leftWrong) | \(wrongConversions) | \(falsePositives) |")
+                for failure in failures {
+                    print("|   ↳ \(failure) | | | | | | | |")
+                }
             }
         }
     }
@@ -414,6 +553,7 @@ func runLayoutEvalSuites() {
     for language in evalLanguages {
         sentences[language] = loadSentences(language)
     }
+    runMixedEval()
     runIsolatedEval(sentences: sentences)
     runSentenceEval(sentences: sentences)
     runEdgeCaseEval()
