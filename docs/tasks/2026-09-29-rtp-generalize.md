@@ -7,9 +7,9 @@ phase: impl
 created: 2026-09-29
 updated: 2026-09-29
 blocked_by: null
-steps_done: 0
+steps_done: 1
 steps_total: 8
-step_current: 1
+step_current: 2
 artifacts:
   spec: docs/features/rtp-cloud-switchfix-spec.md
   plan: docs/plans/rtp-cloud-switchfix-plan.md
@@ -23,8 +23,8 @@ _2-5 строк: что делаем и зачем. Задача этой сек
 
 ## Progress
 
-1. ▶ копии скиллов, лицензия, `.gitignore`
-2. ⬜ фиксы копии rtp — путь с пробелом/кириллицей и кавычечная форма
+1. ✅ копии скиллов, лицензия, `.gitignore`
+2. ▶ фиксы копии rtp — путь с пробелом/кириллицей и кавычечная форма
 3. ⬜ SKILL.md копии rtp
 4. ⬜ хуки и шим
 5. ⬜ `.rtp.json` и CLAUDE.md
@@ -66,10 +66,16 @@ _2-5 строк: что делаем и зачем. Задача этой сек
 - 2026-09-29: plan подзадачи 2 drafted (8 steps)
 - 2026-09-29: plan-review подзадачи 2 (Plan/opus): 2 blocker (PATH= ломает grep в гварде; jq to_entries не сортирует) + 4 major + 7 minor — учтены
 - 2026-09-29: plan-review passed, старт реализации подзадачи 2
+- 2026-09-29: шаг 1 ✅ копии скиллов, лицензия, `.gitignore` — копии + лицензия, режимы 100755 сохранены, server.cjs запускается, регресс копии 154/0
 
 ## Decisions
 
 _Нетривиальные решения по ходу задачи. Одна строка на решение._
+
+- Подзадача 1: проектная специфика rtp — в `docs/tasks/.rtp.json` (baseBranch/verify/reviewers) + CLAUDE.md; rtp только печатает подсказки, ничего не запускает.
+- Подзадача 2: копии скиллов в SwitchFix разовые, без sync; 10 скиллов superpowers (замыкание ссылок); локально копии скрыты через `skillOverrides` в settings.local.json.
+- Подзадача 2: гвард хуков копии — «глобальные хуки rtp подключены в settings.json пользователя», а не наличие папки скилла и не `CLAUDE_CODE_REMOTE`.
+- Подзадача 2: регэкспы Stop-хука копии принимают кавычку после `rtp.mjs`; побочный эффект — `grep "rtp" …` с кавычкой теперь тоже считается мутирующим вызовом, как и раньше без кавычки. Принято.
 
 ## Debt
 

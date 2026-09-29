@@ -101,9 +101,9 @@ cat > "$ROOT/t_now.jsonl" <<EOF
 {"type":"assistant","message":{"content":[{"type":"tool_use","name":"Edit","input":{"file_path":"$ROOT/src/a.ts"}}]}}
 {"type":"user","message":{"content":[{"type":"tool_result","content":"ok"}]}}
 EOF
-echo "{\"cwd\":\"$ROOT\",\"transcript_path\":\"$ROOT/t_old.jsonl\",\"stop_hook_active\":false}" | node $RTP hook-stop >/dev/null 2>&1
+echo "{\"cwd\":\"$ROOT\",\"transcript_path\":\"$ROOT/t_old.jsonl\",\"stop_hook_active\":false}" | node "$RTP" hook-stop >/dev/null 2>&1
 [ $? -eq 0 ] && ok "read-only ход после старой правки не блокируется" || bad "блокирует ход без правок"
-echo "{\"cwd\":\"$ROOT\",\"transcript_path\":\"$ROOT/t_now.jsonl\",\"stop_hook_active\":false}" | node $RTP hook-stop >/dev/null 2>&1
+echo "{\"cwd\":\"$ROOT\",\"transcript_path\":\"$ROOT/t_now.jsonl\",\"stop_hook_active\":false}" | node "$RTP" hook-stop >/dev/null 2>&1
 [ $? -eq 2 ] && ok "правка в текущем ходе без rtp — блокируется" || bad "не блокирует реальный случай"
 
 echo "F11: кавычки в title не утекают экранированными"
@@ -128,7 +128,7 @@ cat > "$H/t1.jsonl" <<EOF
 {"type":"user","message":{"content":"почини скилл"}}
 {"type":"assistant","message":{"content":[{"type":"tool_use","name":"Edit","input":{"file_path":"$H/elsewhere/src/a.ts"}}]}}
 EOF
-OUT=$(echo "{\"cwd\":\"$H/repo-a\",\"transcript_path\":\"$H/t1.jsonl\",\"stop_hook_active\":false}" | node $RTP hook-stop 2>&1)
+OUT=$(echo "{\"cwd\":\"$H/repo-a\",\"transcript_path\":\"$H/t1.jsonl\",\"stop_hook_active\":false}" | node "$RTP" hook-stop 2>&1)
 RC=$?
 [ $RC -eq 0 ] && ok "exit 0 при правках вне трекера" || bad "exit $RC вместо 0"
 echo "$OUT" | grep -q "$FOREIGN" && bad "назвал чужую задачу repo-a" || ok "чужая задача не названа"
@@ -138,7 +138,7 @@ cat > "$H/t2.jsonl" <<EOF
 {"type":"user","message":{"content":"поправь repo-b"}}
 {"type":"assistant","message":{"content":[{"type":"tool_use","name":"Edit","input":{"file_path":"$H/repo-b/src/x.ts"}}]}}
 EOF
-OUT=$(echo "{\"cwd\":\"$H/repo-a\",\"transcript_path\":\"$H/t2.jsonl\",\"stop_hook_active\":false}" | node $RTP hook-stop 2>&1)
+OUT=$(echo "{\"cwd\":\"$H/repo-a\",\"transcript_path\":\"$H/t2.jsonl\",\"stop_hook_active\":false}" | node "$RTP" hook-stop 2>&1)
 RC=$?
 [ $RC -eq 2 ] && ok "exit 2 — правки в репозитории с трекером" || bad "exit $RC вместо 2"
 echo "$OUT" | grep -q "$FOREIGN" && bad "назвал задачу из cwd-репозитория" || ok "задача из cwd не подставлена"
@@ -152,13 +152,13 @@ cat > "$H/t3.jsonl" <<EOF
 {"type":"user","message":{"content":"продолжай"}}
 {"type":"assistant","message":{"content":[{"type":"tool_use","name":"Edit","input":{"file_path":"$H/repo-b/src/x.ts"}}]}}
 EOF
-OUT=$(echo "{\"cwd\":\"$H/repo-a\",\"transcript_path\":\"$H/t3.jsonl\",\"stop_hook_active\":false}" | node $RTP hook-stop 2>&1)
+OUT=$(echo "{\"cwd\":\"$H/repo-a\",\"transcript_path\":\"$H/t3.jsonl\",\"stop_hook_active\":false}" | node "$RTP" hook-stop 2>&1)
 echo "$OUT" | grep -q "$MINE" && ok "назвал задачу сессии" || bad "не нашёл задачу сессии"
 echo "$OUT" | grep -q "$FOREIGN" && bad "приплёл чужую" || ok "чужая не приплетена"
 
 echo "H4: precompact не трогает файл задачи, к которой сессия не прикасалась"
 BEFORE=$(node -e "console.log(require('fs').statSync(process.argv[1]).mtimeMs)" "$H/repo-a/docs/tasks/$FOREIGN.md")
-echo "{\"cwd\":\"$H/repo-a\",\"transcript_path\":\"$H/t1.jsonl\"}" | node $RTP hook-precompact >/dev/null 2>&1
+echo "{\"cwd\":\"$H/repo-a\",\"transcript_path\":\"$H/t1.jsonl\"}" | node "$RTP" hook-precompact >/dev/null 2>&1
 AFTER=$(node -e "console.log(require('fs').statSync(process.argv[1]).mtimeMs)" "$H/repo-a/docs/tasks/$FOREIGN.md")
 [ "$BEFORE" = "$AFTER" ] && ok "чужой ## Handoff не переписан" || bad "precompact переписал чужую задачу"
 
@@ -175,7 +175,7 @@ cat > "$H/t5.jsonl" <<EOF
 {"type":"user","message":{"content":"дальше"}}
 {"type":"assistant","message":{"content":[{"type":"tool_use","id":"u2","name":"Edit","input":{"file_path":"$H/repo-b/src/x.ts"}}]}}
 EOF
-OUT=$(echo "{\"cwd\":\"$H/repo-a\",\"transcript_path\":\"$H/t5.jsonl\",\"stop_hook_active\":false}" | node $RTP hook-stop 2>&1)
+OUT=$(echo "{\"cwd\":\"$H/repo-a\",\"transcript_path\":\"$H/t5.jsonl\",\"stop_hook_active\":false}" | node "$RTP" hook-stop 2>&1)
 echo "$OUT" | grep -q "$MINE" && ok "назвал задачу сессии" || bad "не нашёл задачу сессии"
 echo "$OUT" | grep -q "$FOREIGN" && bad "подменил задачей из --ref" || ok "id из --ref проигнорирован"
 
@@ -186,7 +186,7 @@ cat > "$H/t6.jsonl" <<EOF
 {"type":"user","message":{"content":"дальше"}}
 {"type":"assistant","message":{"content":[{"type":"tool_use","id":"u2","name":"Edit","input":{"file_path":"$H/repo-b/src/x.ts"}}]}}
 EOF
-OUT=$(echo "{\"cwd\":\"$H/repo-a\",\"transcript_path\":\"$H/t6.jsonl\",\"stop_hook_active\":false}" | node $RTP hook-stop 2>&1)
+OUT=$(echo "{\"cwd\":\"$H/repo-a\",\"transcript_path\":\"$H/t6.jsonl\",\"stop_hook_active\":false}" | node "$RTP" hook-stop 2>&1)
 echo "$OUT" | grep -q "$FOREIGN" && bad "взял id из текста лога" || ok "id из текста лога проигнорирован"
 
 echo "H7: task-notification не считается новым ходом"
@@ -197,7 +197,7 @@ cat > "$H/t7.jsonl" <<EOF
 {"type":"user","message":{"content":"<task-notification>агент завершил работу</task-notification>"}}
 {"type":"assistant","message":{"content":[{"type":"text","text":"готово"}]}}
 EOF
-echo "{\"cwd\":\"$H/repo-a\",\"transcript_path\":\"$H/t7.jsonl\",\"stop_hook_active\":false}" | node $RTP hook-stop >/dev/null 2>&1
+echo "{\"cwd\":\"$H/repo-a\",\"transcript_path\":\"$H/t7.jsonl\",\"stop_hook_active\":false}" | node "$RTP" hook-stop >/dev/null 2>&1
 [ $? -eq 2 ] && ok "правка до нотификации всё ещё учитывается" || bad "нотификация сбросила ход"
 
 echo "H8: посторонняя команда со словом rtp не снимает блок"
@@ -207,7 +207,7 @@ for CMD in "git commit -m 'chore: rtp pipeline docs'" "grep -n scanTranscript ~/
 {"type":"assistant","message":{"content":[{"type":"tool_use","id":"u1","name":"Edit","input":{"file_path":"$H/repo-b/src/x.ts"}}]}}
 {"type":"assistant","message":{"content":[{"type":"tool_use","id":"u2","name":"Bash","input":{"command":"$CMD"}}]}}
 EOF
-  echo "{\"cwd\":\"$H/repo-a\",\"transcript_path\":\"$H/t8.jsonl\",\"stop_hook_active\":false}" | node $RTP hook-stop >/dev/null 2>&1
+  echo "{\"cwd\":\"$H/repo-a\",\"transcript_path\":\"$H/t8.jsonl\",\"stop_hook_active\":false}" | node "$RTP" hook-stop >/dev/null 2>&1
   [ $? -eq 2 ] && ok "не обманулся: $CMD" || bad "снял блок по команде: $CMD"
 done
 
@@ -217,7 +217,7 @@ cat > "$H/t9.jsonl" <<EOF
 {"type":"assistant","message":{"content":[{"type":"tool_use","id":"u1","name":"Edit","input":{"file_path":"$H/repo-b/src/x.ts"}}]}}
 {"type":"user","message":{"content":[{"type":"tool_result","tool_use_id":"u1","is_error":true,"content":"The user doesn't want to take this action right now"}]}}
 EOF
-echo "{\"cwd\":\"$H/repo-a\",\"transcript_path\":\"$H/t9.jsonl\",\"stop_hook_active\":false}" | node $RTP hook-stop >/dev/null 2>&1
+echo "{\"cwd\":\"$H/repo-a\",\"transcript_path\":\"$H/t9.jsonl\",\"stop_hook_active\":false}" | node "$RTP" hook-stop >/dev/null 2>&1
 [ $? -eq 0 ] && ok "не требует трекера за отклонённую правку" || bad "блокирует за несостоявшуюся правку"
 
 echo "H10: rtp в одном сообщении с правкой засчитывается"
@@ -225,12 +225,12 @@ cat > "$H/t10.jsonl" <<EOF
 {"type":"user","message":{"content":"почини"}}
 {"type":"assistant","message":{"content":[{"type":"tool_use","id":"u1","name":"Edit","input":{"file_path":"$H/repo-b/src/x.ts"}},{"type":"tool_use","id":"u2","name":"Bash","input":{"command":"rtp phase $MINE --to impl --log done"}}]}}
 EOF
-echo "{\"cwd\":\"$H/repo-a\",\"transcript_path\":\"$H/t10.jsonl\",\"stop_hook_active\":false}" | node $RTP hook-stop >/dev/null 2>&1
+echo "{\"cwd\":\"$H/repo-a\",\"transcript_path\":\"$H/t10.jsonl\",\"stop_hook_active\":false}" | node "$RTP" hook-stop >/dev/null 2>&1
 [ $? -eq 0 ] && ok "параллельный батч tool_use засчитан" || bad "батч в одном сообщении не засчитан"
 
 echo "H11: precompact не пишет в задачу, названную только через --ref"
 BEFORE=$(node -e "console.log(require('fs').statSync(process.argv[1]).mtimeMs)" "$H/repo-a/docs/tasks/$FOREIGN.md")
-echo "{\"cwd\":\"$H/repo-a\",\"transcript_path\":\"$H/t5.jsonl\"}" | node $RTP hook-precompact >/dev/null 2>&1
+echo "{\"cwd\":\"$H/repo-a\",\"transcript_path\":\"$H/t5.jsonl\"}" | node "$RTP" hook-precompact >/dev/null 2>&1
 AFTER=$(node -e "console.log(require('fs').statSync(process.argv[1]).mtimeMs)" "$H/repo-a/docs/tasks/$FOREIGN.md")
 [ "$BEFORE" = "$AFTER" ] && ok "чужой файл не тронут" || bad "precompact переписал задачу из --ref"
 
@@ -250,7 +250,7 @@ cat > "$H/v1.jsonl" <<EOF
 {"type":"user","message":{"content":"дальше"}}
 {"type":"assistant","message":{"content":[{"type":"tool_use","id":"u2","name":"Edit","input":{"file_path":"$H/repo-b/src/x.ts"}}]}}
 EOF
-OUT=$(echo "{\"cwd\":\"$H/repo-b\",\"transcript_path\":\"$H/v1.jsonl\",\"stop_hook_active\":false}" | node $RTP hook-stop 2>&1)
+OUT=$(echo "{\"cwd\":\"$H/repo-b\",\"transcript_path\":\"$H/v1.jsonl\",\"stop_hook_active\":false}" | node "$RTP" hook-stop 2>&1)
 echo "$OUT" | grep -q "$MINE" && ok "\$ID резолвится" || bad "\$ID не резолвится"
 
 echo "V2: форма \${ID} тоже видна"
@@ -260,7 +260,7 @@ cat > "$H/v2.jsonl" <<EOF
 {"type":"user","message":{"content":"дальше"}}
 {"type":"assistant","message":{"content":[{"type":"tool_use","id":"u2","name":"Edit","input":{"file_path":"$H/repo-b/src/x.ts"}}]}}
 EOF
-OUT=$(echo "{\"cwd\":\"$H/repo-b\",\"transcript_path\":\"$H/v2.jsonl\",\"stop_hook_active\":false}" | node $RTP hook-stop 2>&1)
+OUT=$(echo "{\"cwd\":\"$H/repo-b\",\"transcript_path\":\"$H/v2.jsonl\",\"stop_hook_active\":false}" | node "$RTP" hook-stop 2>&1)
 echo "$OUT" | grep -q "$MINE" && ok "\${ID} резолвится" || bad "\${ID} не резолвится"
 
 echo "V3: свежая работа через переменную бьёт старое литеральное упоминание"
@@ -271,7 +271,7 @@ cat > "$H/v3.jsonl" <<EOF
 {"type":"assistant","message":{"content":[{"type":"tool_use","id":"u2","name":"Bash","input":{"command":"KY=$MINE\nrtp phase \$KY --to impl --log start"}}]}}
 {"type":"assistant","message":{"content":[{"type":"tool_use","id":"u3","name":"Edit","input":{"file_path":"$H/repo-b/src/x.ts"}}]}}
 EOF
-OUT=$(echo "{\"cwd\":\"$H/repo-b\",\"transcript_path\":\"$H/v3.jsonl\",\"stop_hook_active\":false}" | node $RTP hook-stop 2>&1)
+OUT=$(echo "{\"cwd\":\"$H/repo-b\",\"transcript_path\":\"$H/v3.jsonl\",\"stop_hook_active\":false}" | node "$RTP" hook-stop 2>&1)
 echo "$OUT" | grep -q "$MINE" && ok "названа актуальная задача" || bad "названа не та задача"
 echo "$OUT" | grep -q "$CLOSED" && bad "названа закрытая задача" || ok "закрытая не названа"
 
@@ -282,7 +282,7 @@ cat > "$H/v4.jsonl" <<EOF
 {"type":"user","message":{"content":"а теперь другое"}}
 {"type":"assistant","message":{"content":[{"type":"tool_use","id":"u2","name":"Edit","input":{"file_path":"$H/repo-b/src/x.ts"}}]}}
 EOF
-OUT=$(echo "{\"cwd\":\"$H/repo-b\",\"transcript_path\":\"$H/v4.jsonl\",\"stop_hook_active\":false}" | node $RTP hook-stop 2>&1)
+OUT=$(echo "{\"cwd\":\"$H/repo-b\",\"transcript_path\":\"$H/v4.jsonl\",\"stop_hook_active\":false}" | node "$RTP" hook-stop 2>&1)
 echo "$OUT" | grep -q "$CLOSED" && bad "предлагает дописать в закрытую задачу" || ok "закрытая задача не предлагается"
 echo "$OUT" | grep -q "rtp new" && ok "просит завести новую" || bad "не предложил завести новую"
 
@@ -294,11 +294,11 @@ cat > "$H/v5.jsonl" <<EOF
 {"type":"user","message":{"content":"теперь отчёт"}}
 {"type":"assistant","message":{"content":[{"type":"tool_use","id":"u2","name":"Write","input":{"file_path":"$H/scratch/report.md"}}]}}
 EOF
-echo "{\"cwd\":\"$H/repo-b\",\"transcript_path\":\"$H/v5.jsonl\",\"stop_hook_active\":false}" | node $RTP hook-stop >/dev/null 2>&1
+echo "{\"cwd\":\"$H/repo-b\",\"transcript_path\":\"$H/v5.jsonl\",\"stop_hook_active\":false}" | node "$RTP" hook-stop >/dev/null 2>&1
 [ $? -eq 0 ] && ok "запись вне трекера не требует обновления задачи" || bad "блокирует за файл вне трекера"
 
 echo "V6: id вне текущего хода — формулировка с оговоркой"
-OUT=$(echo "{\"cwd\":\"$H/repo-b\",\"transcript_path\":\"$H/v1.jsonl\",\"stop_hook_active\":false}" | node $RTP hook-stop 2>&1)
+OUT=$(echo "{\"cwd\":\"$H/repo-b\",\"transcript_path\":\"$H/v1.jsonl\",\"stop_hook_active\":false}" | node "$RTP" hook-stop 2>&1)
 echo "$OUT" | grep -q "Похоже, речь о" && ok "не утверждает, а предполагает" || bad "утверждает при догадке"
 
 echo ""
@@ -757,6 +757,18 @@ printf '\357\273\277%s' '{"verify":["make a"]}' > "$CFGD/.rtp.json"
 printf '%s' '{"verify":["a\nb",{"record":"x\ny"},"ok"]}' > "$CFGD/.rtp.json"
 [ "$(lc 2>/dev/null)" = '{"verify":[{"run":"ok"}],"reviewers":[]}' ] && ok "многострочные run/record отброшены" || bad "многострочные: $(lc 2>/dev/null)"
 rm -f "$CFGD/.rtp.json"
+
+echo "P1: скилл в пути с пробелом и кириллицей — rtp new находит шаблон"
+SPD="$ROOT/my dir/проект/skill"; mkdir -p "$SPD"
+cp -R "$(dirname "$RTP")" "$SPD/scripts"; cp -R "$(dirname "$RTP")/../templates" "$SPD/templates"
+mkdir -p "$ROOT/sp/docs/tasks"
+node "$SPD/scripts/rtp.mjs" new --title "Space path" --type chore --pipeline minimal --reason r --tasks-dir "$ROOT/sp/docs/tasks" >/dev/null 2>"$ROOT/p1.err" \
+  && ls "$ROOT/sp/docs/tasks" | grep -q 'space-path' && ok "rtp new из пути с пробелом/кириллицей" || bad "rtp new упал: $(cat "$ROOT/p1.err")"
+
+echo "P2: Stop засчитывает вызов rtp.mjs с путём в кавычках"
+mk "$H/p2.jsonl" '[user("правлю"),asst(edit("u1",E.H+"/repo-b/src/x.ts")),res("u1","ok"),asst(bash("u2","node \"/x/.claude/skills/run-task-pipeline/scripts/rtp.mjs\" phase "+E.MINE+" --to impl --log s")),res("u2","ok")]'
+OUT=$(stop "$H/repo-b" "$H/p2.jsonl" p2); RC=$?
+[ $RC -eq 0 ] && ok "кавычечная форма засчитана" || bad "exit $RC: $OUT"
 
 echo ""
 echo "итог (все секции): PASS=$PASS FAIL=$FAIL"

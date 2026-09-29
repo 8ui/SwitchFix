@@ -1821,15 +1821,15 @@ const AGENT_TOOLS = new Set(['Agent', 'Task']);
 // ids from `--ref`, from `--log` prose and from printed listings — which is
 // exactly how a foreign task got named. Group 1 = subcommand, group 2 = slot.
 const RTP_TASK_ARG =
-  /(?:^|[\s;&|(/])rtp(?:\.mjs)?\s+(phase|artifact|steps|step|status|handoff|verify|debt|show|validate|next)\s+(?!-)(\S+)/g;
+  /(?:^|[\s;&|(/])rtp(?:\.mjs)?["']?\s+(phase|artifact|steps|step|status|handoff|verify|debt|show|validate|next)\s+(?!-)(\S+)/g;
 // "state was updated" requires a MUTATING subcommand: `rtp list`, a grep over
 // rtp.mjs, or a commit message mentioning rtp must not disarm the hook. The
 // same set decides which named ids are trusted enough for a cwd-only lookup.
 const RTP_MUTATING_SUBS = new Set(['new', 'phase', 'artifact', 'steps', 'step', 'debt', 'verify', 'handoff']);
 const RTP_MUTATING =
-  /(?:^|[\s;&|(/])rtp(?:\.mjs)?\s+(?:new|phase|artifact|steps|step|debt|verify|handoff)\b/;
-const RTP_NEW = /(?:^|[\s;&|(/])rtp(?:\.mjs)?\s+new\b/;
-const RTP_VERIFY = /(?:^|[\s;&|(/])rtp(?:\.mjs)?\s+verify\b/;
+  /(?:^|[\s;&|(/])rtp(?:\.mjs)?["']?\s+(?:new|phase|artifact|steps|step|debt|verify|handoff)\b/;
+const RTP_NEW = /(?:^|[\s;&|(/])rtp(?:\.mjs)?["']?\s+new\b/;
+const RTP_VERIFY = /(?:^|[\s;&|(/])rtp(?:\.mjs)?["']?\s+verify\b/;
 // Subagent transcripts live in <dir of transcript>/<session_id>/subagents/
 // agent-<agentId>.jsonl. Real sessions reach 50+ files / 25 MB per directory
 // and the Stop hook runs on every turn, so reading is capped.

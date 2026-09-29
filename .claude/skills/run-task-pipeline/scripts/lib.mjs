@@ -5,6 +5,7 @@ import { readdir, readFile, writeFile, mkdir, stat, access, rename } from 'node:
 import { constants as FS } from 'node:fs';
 import { execFile } from 'node:child_process';
 import { dirname, isAbsolute, join, resolve, basename, relative } from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 // ──────────────────────────────────────────────────────────────────────────
 // Constants
@@ -24,7 +25,9 @@ export const VALID_PHASES = [
   'blocked',
 ];
 
-export const SKILL_DIR = resolve(new URL('..', import.meta.url).pathname);
+// fileURLToPath, not .pathname: a repo checkout may live under a path with
+// spaces or Cyrillic, which .pathname leaves percent-encoded.
+export const SKILL_DIR = resolve(fileURLToPath(new URL('..', import.meta.url)));
 export const TEMPLATE_PATH = join(SKILL_DIR, 'templates', 'task.md');
 
 // ──────────────────────────────────────────────────────────────────────────
