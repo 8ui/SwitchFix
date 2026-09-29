@@ -218,7 +218,7 @@ OUTPUT
   console.log(file);
   console.error(
     `created task ${id} (pipeline=${pipeline}, type=${type})\n` +
-      `next: invoke superpowers:brainstorming, then 'rtp phase ${id} --to ${nextPhaseAfter('triage', pipeline)} --log "<what>"'`,
+      `next: invoke superpowers:brainstorming (без плагина — brainstorming), then 'rtp phase ${id} --to ${nextPhaseAfter('triage', pipeline)} --log "<what>"'`,
   );
 }
 
