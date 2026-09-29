@@ -3,16 +3,16 @@ id: 2026-09-29-rtp-generalize
 title: Обобщить rtp и перенести в SwitchFix
 type: refactor
 pipeline: full
-phase: review
+phase: impl
 created: 2026-09-29
 updated: 2026-09-29
 blocked_by: null
-steps_done: 8
+steps_done: 0
 steps_total: 8
-step_current: null
+step_current: 1
 artifacts:
-  spec: docs/features/rtp-generalize-spec.md
-  plan: docs/plans/rtp-generalize-plan.md
+  spec: docs/features/rtp-cloud-switchfix-spec.md
+  plan: docs/plans/rtp-cloud-switchfix-plan.md
   branch: null
   pr: null
 ---
@@ -23,14 +23,14 @@ _2-5 строк: что делаем и зачем. Задача этой сек
 
 ## Progress
 
-1. ✅ `loadProjectConfig` и `shQuote` в lib.mjs
-2. ✅ базовая ветка в `gitContext` и handoff
-3. ✅ подсказки verify/ревьюеров в `nextActionFor`
-4. ✅ Stop-хук не считает `.rtp.json` кодом
-5. ✅ нейтральные тексты в rtp.mjs
-6. ✅ SKILL.md, шаблон, references
-7. ✅ restoplace-frontend — конфиг и CLAUDE.md
-8. ✅ итоговая проверка и доказательства
+1. ▶ копии скиллов, лицензия, `.gitignore`
+2. ⬜ фиксы копии rtp — путь с пробелом/кириллицей и кавычечная форма
+3. ⬜ SKILL.md копии rtp
+4. ⬜ хуки и шим
+5. ⬜ `.rtp.json` и CLAUDE.md
+6. ⬜ проверка дублей скиллов вживую
+7. ⬜ PR, CI, доказательства
+8. ⬜ облачная проверка (пользователь) и закрытие
 
 ## Log
 
@@ -57,6 +57,15 @@ _2-5 строк: что делаем и зачем. Задача этой сек
 - 2026-09-29: verify: `sh /Users/andrejsokolov/.claude/skills/run-task-pipeline/scripts/regress.sh` → exit 0 ✅
 - 2026-09-29: code-review (general-purpose/opus): 0 blocker, 7 minor; исправлены 1-4,6 (узкое исключение .rtp.json, переводы строк, BOM, контроль в C4), 5 и 7 — в долг; регресс 154/0
 - 2026-09-29: шаг 8 ✅ итоговая проверка и доказательства — регресс 154/0, grep чист, restoplace проверен, код-ревью учтено
+- 2026-09-29: подзадача 1 закрыта (restoplace ae27627e9, SwitchFix 6b3f8c0); старт подзадачи 2 — копия скилла в SwitchFix для облака
+- 2026-09-29: artifacts.spec = docs/features/rtp-cloud-switchfix-spec.md
+- 2026-09-29: подзадача 2: spec drafted (решения: разовая копия, 10 скиллов superpowers, скрыть дубли локально, гвард по глобальному скиллу); ветка claude/rtp-cloud-pipeline
+- 2026-09-29: spec-review подзадачи 2 (general-purpose/opus): 0 blocker, 4 major (кавычечная форма rtp в Stop, гвард по хукам а не папке, fileURLToPath, облачная проверка до мержа) + 9 minor — учтены
+- 2026-09-29: spec подзадачи 2 одобрена
+- 2026-09-29: artifacts.plan = docs/plans/rtp-cloud-switchfix-plan.md
+- 2026-09-29: plan подзадачи 2 drafted (8 steps)
+- 2026-09-29: plan-review подзадачи 2 (Plan/opus): 2 blocker (PATH= ломает grep в гварде; jq to_entries не сортирует) + 4 major + 7 minor — учтены
+- 2026-09-29: plan-review passed, старт реализации подзадачи 2
 
 ## Decisions
 
