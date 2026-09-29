@@ -28,6 +28,12 @@ func runSuite(_ name: String, _ block: () -> Void) {
     block()
 }
 
+// `--threshold-sweep`: report-only threshold/sensitivity calibration (plan/005 §4.6).
+if CommandLine.arguments.contains("--threshold-sweep") {
+    runThresholdSweep()
+    exit(0)
+}
+
 // `--layout-eval-only`: run just the real-text layout-detection eval (plan/005).
 if CommandLine.arguments.contains("--layout-eval-only") {
     runLayoutEvalSuites()

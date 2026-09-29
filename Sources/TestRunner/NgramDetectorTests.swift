@@ -142,10 +142,21 @@ func runNgramDetectorSuites() {
         assert(bold.threshold(forLetterCount: 7)! >= DetectionThresholds.minimumThreshold, "never below the floor")
         assertEqual(DetectionThresholds.forSensitivity(2), DetectionThresholds.default, "middle position = calibrated defaults")
         assertEqual(DetectionThresholds.forSensitivity(99), DetectionThresholds.forSensitivity(4), "out of range clamps")
+    }
 
-        let detector = ngramDetector(current: .english, allowed: [.english, .russian])
-        detector.thresholds = cautious
-        detector.addCharacter("yf")
-        assert(detector.flushBuffer(boundaryCharacter: " ") == nil, "Cautious never auto-corrects short words")
+    runSuite("DetectionThresholds: calibrated for the bundled models") {
+        for language in ModelLanguage.allCases {
+            guard let url = LanguageModelStore.resourceURL(for: language),
+                  let data = try? Data(contentsOf: url), data.count > 8 else {
+                assert(false, "\(language.rawValue).sfng must be bundled")
+                continue
+            }
+            // Each .sfng ends with the little-endian FNV-1a checksum of the bytes before it.
+            let checksum = data.suffix(8).enumerated().reduce(UInt64(0)) { $0 | UInt64($1.element) << (8 * UInt64($1.offset)) }
+            assertEqual(
+                DetectionThresholds.calibratedModelChecksums[language], checksum,
+                "\(language.rawValue).sfng changed: rerun `TestRunner --threshold-sweep`, update DetectionThresholds and plan/benchmarks/thresholds_005.md, then this checksum"
+            )
+        }
     }
 }

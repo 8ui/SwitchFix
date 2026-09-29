@@ -124,8 +124,13 @@ private func loadSentences(_ language: Layout) -> [[String]] {
         .filter { !$0.isEmpty }
 }
 
-private func makeDetector(current: Layout, allowed: Set<Layout>) -> LayoutDetector {
+private func makeDetector(
+    current: Layout,
+    allowed: Set<Layout>,
+    thresholds: DetectionThresholds = .default
+) -> LayoutDetector {
     let detector = LayoutDetector()
+    detector.thresholds = thresholds
     detector.currentLayout = current
     detector.allowedLayouts = allowed
     return detector
@@ -397,6 +402,84 @@ private enum TypistModel: CaseIterable {
     }
 }
 
+private struct MixedMetrics {
+    var messages = 0
+    var fullyCorrect = 0
+    var englishMistyped = 0
+    var englishRestored = 0
+    var nativeMistyped = 0
+    var nativeRestored = 0
+    var leftWrong = 0
+    var wrongConversions = 0
+    var falsePositives = 0
+    var failures: [String] = []
+}
+
+/// Types every message as `model` would and tallies what the detector did.
+private func mixedMetrics(
+    _ messages: [[MixedToken]],
+    native: Layout,
+    model: TypistModel,
+    thresholds: DetectionThresholds = .default
+) -> MixedMetrics {
+    let detector = makeDetector(current: native, allowed: [.english, native], thresholds: thresholds)
+    var metrics = MixedMetrics()
+    metrics.messages = messages.count
+
+    for message in messages {
+        detector.reset()
+        var layout = native
+        var previousLanguage: Layout?
+        var messageOK = true
+        var rendered: [String] = []
+
+        for token in message {
+            if model == .switchesLate, previousLanguage == token.language, layout != token.language {
+                layout = token.language
+            }
+            previousLanguage = token.language
+
+            if layout == token.language {
+                if let result = detect(detector, word: token.word, current: layout) {
+                    metrics.falsePositives += 1
+                    messageOK = false
+                    rendered.append("[\(token.word)→\(result.convertedWord)]")
+                    if result.shouldSwitchLayout { layout = result.targetLayout }
+                } else {
+                    rendered.append(token.word)
+                }
+                continue
+            }
+
+            let isEnglish = token.language == .english
+            if isEnglish { metrics.englishMistyped += 1 } else { metrics.nativeMistyped += 1 }
+            let typed = typedForm(of: token.word, language: token.language, on: layout)
+            guard let result = detect(detector, word: typed, current: layout) else {
+                metrics.leftWrong += 1
+                messageOK = false
+                rendered.append("[\(typed)]")
+                continue
+            }
+            if restores(result, to: token.word, language: token.language) {
+                if isEnglish { metrics.englishRestored += 1 } else { metrics.nativeRestored += 1 }
+                rendered.append(token.word)
+            } else {
+                metrics.wrongConversions += 1
+                messageOK = false
+                rendered.append("[\(typed)→\(result.convertedWord)]")
+            }
+            if result.shouldSwitchLayout { layout = result.targetLayout }
+        }
+
+        if messageOK {
+            metrics.fullyCorrect += 1
+        } else if metrics.failures.count < 8 {
+            metrics.failures.append(rendered.joined(separator: " "))
+        }
+    }
+    return metrics
+}
+
 /// The main user scenario: native-language messages with English words
 /// ("создай новую worktree"), typed starting on the native layout.
 private func runMixedEval() {
@@ -414,71 +497,9 @@ private func runMixedEval() {
             assert(englishCount > 50, "mixed \(evalCode(native)) messages should contain English words")
 
             for model in TypistModel.allCases {
-                let detector = makeDetector(current: native, allowed: [.english, native])
-                var fullyCorrect = 0
-                var englishMistyped = 0
-                var englishRestored = 0
-                var nativeMistyped = 0
-                var nativeRestored = 0
-                var leftWrong = 0
-                var wrongConversions = 0
-                var falsePositives = 0
-                var failures: [String] = []
-
-                for message in messages {
-                    detector.reset()
-                    var layout = native
-                    var previousLanguage: Layout?
-                    var messageOK = true
-                    var rendered: [String] = []
-
-                    for token in message {
-                        if model == .switchesLate, previousLanguage == token.language, layout != token.language {
-                            layout = token.language
-                        }
-                        previousLanguage = token.language
-
-                        if layout == token.language {
-                            if let result = detect(detector, word: token.word, current: layout) {
-                                falsePositives += 1
-                                messageOK = false
-                                rendered.append("[\(token.word)→\(result.convertedWord)]")
-                                if result.shouldSwitchLayout { layout = result.targetLayout }
-                            } else {
-                                rendered.append(token.word)
-                            }
-                            continue
-                        }
-
-                        let isEnglish = token.language == .english
-                        if isEnglish { englishMistyped += 1 } else { nativeMistyped += 1 }
-                        let typed = typedForm(of: token.word, language: token.language, on: layout)
-                        guard let result = detect(detector, word: typed, current: layout) else {
-                            leftWrong += 1
-                            messageOK = false
-                            rendered.append("[\(typed)]")
-                            continue
-                        }
-                        if restores(result, to: token.word, language: token.language) {
-                            if isEnglish { englishRestored += 1 } else { nativeRestored += 1 }
-                            rendered.append(token.word)
-                        } else {
-                            wrongConversions += 1
-                            messageOK = false
-                            rendered.append("[\(typed)→\(result.convertedWord)]")
-                        }
-                        if result.shouldSwitchLayout { layout = result.targetLayout }
-                    }
-
-                    if messageOK {
-                        fullyCorrect += 1
-                    } else if failures.count < 8 {
-                        failures.append(rendered.joined(separator: " "))
-                    }
-                }
-
-                print("| \(evalCode(native)) (\(messages.count)) | \(model.name) | \(fullyCorrect) (\(pct(fullyCorrect, messages.count))) | \(englishRestored)/\(englishMistyped) (\(pct(englishRestored, englishMistyped))) | \(nativeRestored)/\(nativeMistyped) (\(pct(nativeRestored, nativeMistyped))) | \(leftWrong) | \(wrongConversions) | \(falsePositives) |")
-                for failure in failures {
+                let m = mixedMetrics(messages, native: native, model: model)
+                print("| \(evalCode(native)) (\(m.messages)) | \(model.name) | \(m.fullyCorrect) (\(pct(m.fullyCorrect, m.messages))) | \(m.englishRestored)/\(m.englishMistyped) (\(pct(m.englishRestored, m.englishMistyped))) | \(m.nativeRestored)/\(m.nativeMistyped) (\(pct(m.nativeRestored, m.nativeMistyped))) | \(m.leftWrong) | \(m.wrongConversions) | \(m.falsePositives) |")
+                for failure in m.failures {
                     print("|   ↳ \(failure) | | | | | | | |")
                 }
             }
@@ -558,4 +579,153 @@ func runLayoutEvalSuites() {
     runIsolatedEval(sentences: sentences)
     runSentenceEval(sentences: sentences)
     runEdgeCaseEval()
+}
+
+// MARK: - Threshold sweep (plan/005 §4.6, §12.10)
+//
+//   swift run -c release TestRunner --threshold-sweep
+//
+// Report-only. Machine-readable rows start with "SWEEP\t" (grep them from the CI log):
+// per length bucket for a base threshold T (every bucket set to T at once — words of
+// different lengths are independent), then per sensitivity offset and slider position.
+// Results are recorded in plan/benchmarks/thresholds_005.md.
+
+private let sweepBucketNames = ["1-2", "3", "4", "5", "6", "7+"]
+
+private func sweepBucket(_ word: String) -> Int {
+    switch word.filter(\.isLetter).count {
+    case ..<3: return 0
+    case 3: return 1
+    case 4: return 2
+    case 5: return 3
+    case 6: return 4
+    default: return 5
+    }
+}
+
+private struct IsolatedMetrics {
+    var correct = Array(repeating: 0, count: 6)
+    var falsePositives = Array(repeating: 0, count: 6)
+    var wrong = Array(repeating: 0, count: 6)
+    var fixed = Array(repeating: 0, count: 6)
+
+    func fpRate(_ buckets: ClosedRange<Int>) -> Double {
+        rate(buckets.reduce(0) { $0 + falsePositives[$1] }, buckets.reduce(0) { $0 + correct[$1] })
+    }
+
+    func recall(_ buckets: ClosedRange<Int>) -> Double {
+        rate(buckets.reduce(0) { $0 + fixed[$1] }, buckets.reduce(0) { $0 + wrong[$1] })
+    }
+}
+
+private func rate(_ part: Int, _ total: Int) -> Double {
+    total > 0 ? Double(part) * 100 / Double(total) : 0
+}
+
+private func format(_ value: Double) -> String {
+    String(format: "%.2f", value)
+}
+
+/// Isolated words, primary configuration (English + the native layout).
+private func isolatedMetrics(_ sentences: [Layout: [[String]]], thresholds: DetectionThresholds) -> IsolatedMetrics {
+    var metrics = IsolatedMetrics()
+    for language in evalLanguages {
+        let words = sentences[language, default: []].flatMap { $0 }
+        let correctDetector = makeDetector(
+            current: language,
+            allowed: EvalConfig.pair.allowedLayouts(language: language, typedOn: wrongLayouts(for: language)[0]),
+            thresholds: thresholds
+        )
+        for word in words {
+            correctDetector.reset()
+            let bucket = sweepBucket(word)
+            metrics.correct[bucket] += 1
+            if detect(correctDetector, word: word, current: language) != nil {
+                metrics.falsePositives[bucket] += 1
+            }
+        }
+        for layout in wrongLayouts(for: language) {
+            let detector = makeDetector(
+                current: layout,
+                allowed: EvalConfig.pair.allowedLayouts(language: language, typedOn: layout),
+                thresholds: thresholds
+            )
+            for word in words where isReachable(word, language: language, on: layout) {
+                detector.reset()
+                let bucket = sweepBucket(word)
+                metrics.wrong[bucket] += 1
+                let typed = typedForm(of: word, language: language, on: layout)
+                if let result = detect(detector, word: typed, current: layout),
+                   restores(result, to: word, language: language) {
+                    metrics.fixed[bucket] += 1
+                }
+            }
+        }
+    }
+    return metrics
+}
+
+func runThresholdSweep() {
+    var sentences: [Layout: [[String]]] = [:]
+    for language in evalLanguages {
+        sentences[language] = loadSentences(language)
+    }
+    let mixed = [Layout.russian, .ukrainian].map { ($0, loadMixed($0)) }
+
+    print("SWEEP\tbucket\tT\tfp%\tfp\tcorrect\trecall%\tfixed\twrong")
+    var recommended: [Int: Double] = [:]
+    for step in 2...28 {
+        let base = Double(step) / 2
+        var thresholds = DetectionThresholds.default
+        thresholds.threeLetters = base
+        thresholds.fourLetters = base
+        thresholds.fiveLetters = base
+        thresholds.sixLetters = base
+        thresholds.sevenPlusLetters = base
+        let metrics = isolatedMetrics(sentences, thresholds: thresholds)
+        for bucket in 1...5 {
+            let fp = metrics.fpRate(bucket...bucket)
+            print("SWEEP\t\(sweepBucketNames[bucket])\t\(format(base))\t\(format(fp))\t\(metrics.falsePositives[bucket])\t\(metrics.correct[bucket])\t\(format(metrics.recall(bucket...bucket)))\t\(metrics.fixed[bucket])\t\(metrics.wrong[bucket])")
+            // Rule §4.6.2: the smallest threshold whose false positives meet the target.
+            let target = bucket == 1 ? 0.5 : 0.1
+            if recommended[bucket] == nil, fp <= target {
+                recommended[bucket] = base
+            }
+        }
+    }
+    for bucket in 1...5 {
+        print("SWEEP\trecommend\t\(sweepBucketNames[bucket])\t\(recommended[bucket].map(format) ?? "none")")
+    }
+
+    print("SWEEP\tconfig\toffset\tfp1-3%\tfp4+%\trecall1-3%\trecall4-5%\trecall6+%\tmixedFP\tmixedWrong\tfullyCorrectLate%\tfullyCorrectRelies%")
+    func sweepRow(_ label: String, _ thresholds: DetectionThresholds) {
+        let isolated = isolatedMetrics(sentences, thresholds: thresholds)
+        var falsePositives = 0
+        var wrongConversions = 0
+        var late = (full: 0, total: 0)
+        var relies = (full: 0, total: 0)
+        for (native, messages) in mixed {
+            for model in TypistModel.allCases {
+                let metrics = mixedMetrics(messages, native: native, model: model, thresholds: thresholds)
+                falsePositives += metrics.falsePositives
+                wrongConversions += metrics.wrongConversions
+                if model == .switchesLate {
+                    late.full += metrics.fullyCorrect
+                    late.total += metrics.messages
+                } else {
+                    relies.full += metrics.fullyCorrect
+                    relies.total += metrics.messages
+                }
+            }
+        }
+        print("SWEEP\t\(label)\t\(format(thresholds.sensitivityOffset))\t\(format(isolated.fpRate(0...1)))\t\(format(isolated.fpRate(2...5)))\t\(format(isolated.recall(0...1)))\t\(format(isolated.recall(2...3)))\t\(format(isolated.recall(4...5)))\t\(falsePositives)\t\(wrongConversions)\t\(format(rate(late.full, late.total)))\t\(format(rate(relies.full, relies.total)))")
+    }
+    for step in -12...12 {
+        var thresholds = DetectionThresholds.default
+        thresholds.sensitivityOffset = Double(step) / 2
+        sweepRow("offset", thresholds)
+    }
+    for position in DetectionThresholds.sensitivityPositions {
+        sweepRow("position\(position)", .forSensitivity(position))
+    }
 }

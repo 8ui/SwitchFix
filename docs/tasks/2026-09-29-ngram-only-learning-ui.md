@@ -7,9 +7,9 @@ phase: impl
 created: 2026-09-29
 updated: 2026-09-29
 blocked_by: null
-steps_done: 3
+steps_done: 5
 steps_total: 8
-step_current: 4
+step_current: 6
 artifacts:
   spec: plan/005_ngram_layout_detection.md
   plan: docs/plans/ngram-only-learning-ui-plan.md
@@ -26,9 +26,9 @@ artifacts:
 1. ✅ удалить модуль `Dictionary` и словарный путь; n-gram — единственный детектор
 2. ✅ `PersonalLexicon` — модель, хранение, CRUD, обучение (Core)
 3. ✅ лексикон в детекторе
-4. ▶ происхождение коррекции, обучение в `InputEngine`
-5. ⬜ вкладка «Слова» с полным CRUD
-6. ⬜ позиции чувствительности в `DetectionThresholds` и ползунок
+4. ✅ происхождение коррекции, обучение в `InputEngine`
+5. ✅ вкладка «Слова» с полным CRUD
+6. ▶ позиции чувствительности в `DetectionThresholds` и ползунок
 7. ⬜ перебор порогов, калибровка ползунка, защита от устаревших порогов
 8. ⬜ документация и Definition of Done
 
@@ -50,6 +50,9 @@ artifacts:
 - 2026-09-29: шаг 3 ▶ лексикон в детекторе
 - 2026-09-29: шаг 3 ✅ лексикон в детекторе — Linux-харнесс 161/0
 - 2026-09-29: шаг 4 ▶ происхождение коррекции, обучение в `InputEngine`
+- 2026-09-29: verify: `CI зелёный (шаги 2–6, 234f49e): https://github.com/8ui/SwitchFix/actions/runs/36559220374` → exit 0 ✅
+- 2026-09-29: шаг 4 ✅ происхождение коррекции, обучение в `InputEngine` — CI 36559220374; был красный прогон из-за гонки в тесте last-Cyrillic (исправлено drain)
+- 2026-09-29: шаг 5 ✅ вкладка «Слова» с полным CRUD — CI 36559220374 (сборка UI); визуальная проверка на macOS — в долг
 
 ## Decisions
 
@@ -64,6 +67,7 @@ artifacts:
 - [ ] Короткие русские аббревиатуры (СМС, РФ, шт) дают 0.93% ложных при цели ≤0.5% — кандидаты для фильтра/PersonalLexicon
 - [ ] Все три раскладки без истории переключений: украинский уходит в русский (uk→en 73.65%) — нужна эвристика выбора кириллицы без истории
 - [ ] Цели §8 недобраны после Фазы 2 (uk родные после англ. 96.73%, ru FP≤3 0.93%, ru полнота 4–5 89.87%) — допуски и план в plan/005 §10.6
+- [ ] Проверить вкладку «Слова» и ползунок «Чувствительность» вживую на macOS (в облаке только сборка в CI): таблица, сортировка, форма, удаление, сброс, перевод
 
 ## Verification
 
@@ -71,6 +75,12 @@ artifacts:
 
   ```
   TestRunner 168 passed 0 failed; InputPipeline 858 passed 0 failed; build-app: Copied language model bundle (en, ru, uk); .app 3.3M
+  ```
+
+- 2026-09-29 · `CI зелёный (шаги 2–6, 234f49e): https://github.com/8ui/SwitchFix/actions/runs/36559220374` · exit 0 ✅
+
+  ```
+  все шаги success: L10n без дублей, build, TestRunner, InputPipelineTestRunner (включая 8 learning-сьютов), build-app
   ```
 
 ## Handoff

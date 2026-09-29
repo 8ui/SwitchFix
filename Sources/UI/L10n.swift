@@ -117,7 +117,7 @@ enum L10n {
         "Sensitivity": "Чувствительность",
         "Cautious": "Осторожно",
         "Bold": "Смело",
-        "Corrects only clear cases; short words are left to the hotkey.": "Исправляет только очевидное; короткие слова — только горячей клавишей.",
+        "Corrects only clear cases.": "Исправляет только очевидные случаи.",
         "Fewer corrections, fewer mistakes.": "Меньше исправлений, меньше ошибок.",
         "Balanced (recommended).": "Сбалансированно (рекомендуется).",
         "Corrects more words, occasionally by mistake.": "Исправляет больше слов, иногда по ошибке.",

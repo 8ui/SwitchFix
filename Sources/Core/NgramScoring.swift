@@ -17,17 +17,23 @@ public struct DetectionThresholds: Equatable, Sendable {
     public var sevenPlusLetters: Double = 5
     /// Shifts every threshold: negative corrects more eagerly, positive more cautiously.
     public var sensitivityOffset: Double = 0
-    /// Whether a short word whose conversion is a common short word (`ShortWordTable`)
-    /// is corrected automatically. Off only at the most cautious position.
-    public var convertsShortWords = true
 
     public static let `default` = DetectionThresholds()
 
     /// Slider positions: 0 = Cautious … 4 = Bold; 2 = the calibrated defaults.
     public static let sensitivityPositions = 0...4
     public static let defaultSensitivity = 2
-    /// Threshold shift per position (index = position).
+    /// Threshold shift per position (index = position); calibrated in
+    /// plan/benchmarks/thresholds_005.md. Short words (`ShortWordTable`) are not affected.
     public static let sensitivityOffsets: [Double] = [4, 2, 0, -2, -4]
+    /// FNV-1a checksums (the trailer of each `.sfng`) of the models these thresholds
+    /// were calibrated on. A TestRunner check fails when a model changes without a new
+    /// `TestRunner --threshold-sweep` and an update here.
+    public static let calibratedModelChecksums: [ModelLanguage: UInt64] = [
+        .english: 0x3754_c25b_b7f6_8ab8,
+        .russian: 0x3136_4434_ad8f_7cf9,
+        .ukrainian: 0x221a_b955_dead_5d54,
+    ]
     /// No position may make the model convert on a margin this small.
     public static let minimumThreshold: Double = 1
 
@@ -38,7 +44,6 @@ public struct DetectionThresholds: Equatable, Sendable {
         let clamped = min(max(position, sensitivityPositions.lowerBound), sensitivityPositions.upperBound)
         var thresholds = DetectionThresholds.default
         thresholds.sensitivityOffset = sensitivityOffsets[clamped]
-        thresholds.convertsShortWords = clamped != sensitivityPositions.lowerBound
         return thresholds
     }
 

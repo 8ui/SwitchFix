@@ -377,7 +377,7 @@ struct CorrectionSettingsView: View {
 
     private var sensitivityDescription: String {
         switch Int(model.detectionSensitivity.rounded()) {
-        case 0: return L10n.tr("Corrects only clear cases; short words are left to the hotkey.")
+        case 0: return L10n.tr("Corrects only clear cases.")
         case 1: return L10n.tr("Fewer corrections, fewer mistakes.")
         case 3: return L10n.tr("Corrects more words, occasionally by mistake.")
         case 4: return L10n.tr("Corrects as much as possible; undo mistakes with Revert Last.")

@@ -46,6 +46,12 @@ jobs:
       - name: TestRunner
         run: swift run -c release TestRunner
 
+      - name: Threshold sweep (report-only)
+        shell: bash
+        run: |
+          set -o pipefail
+          swift run -c release TestRunner --threshold-sweep | tee threshold-sweep.txt
+
       - name: InputPipelineTestRunner
         run: swift run -c release InputPipelineTestRunner
 

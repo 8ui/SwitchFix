@@ -316,8 +316,7 @@ public class LayoutDetector {
                 // letters on the converted side.
                 let letters = max(letterCount, convertedCore.filter(\.isLetter).count)
 
-                if thresholds.convertsShortWords,
-                   letters <= ShortWordTable.maxLength,
+                if letters <= ShortWordTable.maxLength,
                    ShortWordTable.contains(convertedCore, language: target.modelLanguage) {
                     SwitchFixLog.detector.debug("model: '\(word)' → common short word '\(recomposed)' in \(target.rawValue)")
                     return finishCorrection(
