@@ -1,6 +1,6 @@
 # Детекция раскладки без словарей: символьные n-граммы + обучение на отменах
 
-> **Статус**: 📋 Планирование (решения по открытым вопросам приняты 2026-09-29, см. §10)
+> **Статус**: 🚧 В работе — Фазы 0–2 выполнены; остаток (удаление словарей → `PersonalLexicon` → вкладка «Слова» → ползунок) уточнён по итогам spec-review в §12
 > **Приоритет**: Высокий
 > **Дата создания**: 2026-09-29
 > **Модули**: `Dictionary` (удаляется) → `LanguageModel` (новый), `Core`, `UI`, `SwitchFixApp`, `TestRunner`, `scripts/`
@@ -153,7 +153,7 @@ SwitchFix — в первую очередь для тех, у кого англ
   InputEngine.runDetection                                        │
         │                                                         │
         ▼                                                         ▼
-  LayoutDetector.checkBuffer ──► LayoutScorer ──► CharNgramModel (mmap)   TestRunner: eval suite
+  LayoutDetector.checkBuffer ──► NgramMarginScorer ─► CharNgramModel       TestRunner: eval suite
         │        ▲                    ▲
         │        │                    └── ShortWordTable (встроенная)
         │        └── PersonalLexicon (UserDefaults)
@@ -186,7 +186,7 @@ SwitchFix — в первую очередь для тех, у кого англ
   (`Contents/Resources` и плоский вариант) перенести из `DictionaryLoader.findDictionaryURL`
   **без изменений** и синхронно поправить `build-app.sh`.
 
-### 4.2 `LayoutScorer`
+### 4.2 `LayoutScorer` (реализован как `NgramMarginScorer`, `Sources/Core/NgramScoring.swift`)
 
 ```swift
 struct LayoutScore {
@@ -228,7 +228,7 @@ func score(word: String, source: Layout, alternatives: [(Layout, String)]) -> La
 
 5. Если сработало — `DetectionResult` как сейчас. `recentOutcomes` и
    `hasStrongCurrentContext` продолжают работать: «валидно в текущем языке» теперь
-   означает `margin < −T` (т.е. исходное слово явно правдоподобнее конвертации).
+   означает `margin < 0` (реализация Фазы 2, `LayoutDetector.swift`).
 
 ### 4.4 `ShortWordTable`
 
@@ -357,9 +357,9 @@ func score(word: String, source: Layout, alternatives: [(Layout, String)]) -> La
 | `Sources/LanguageModel/LanguageModelStore.swift` | ✅ поиск ресурсов (как `findDictionaryURL`), кеш моделей |
 | `Sources/LanguageModel/ShortWordTable.swift` | новый (замена `SuggestionEngine.shortWords`) |
 | `Sources/LanguageModel/Resources/*.sfng` | новые артефакты модели |
-| `Sources/Core/LayoutScorer.swift` | новый |
+| `Sources/Core/NgramScoring.swift` | ✅ `NgramMarginScorer` + `DetectionThresholds` (Фаза 2) |
 | `Sources/Core/PersonalLexicon.swift` | новый: CRUD-API (`add/update/remove/removeAll(origin:)`), снимок для детектора |
-| `Sources/Core/DetectionThresholds.swift` | новый: пороги по корзинам длины + сдвиг чувствительности |
+| `DetectionThresholds` (в `NgramScoring.swift`) | ✅ пороги по корзинам; добавить позицию ползунка и нижнюю границу порога (§12.9) |
 | `Sources/Core/LayoutDetector.swift` | `validator.validate` → `PersonalLexicon` + `ShortWordTable` + `LayoutScorer`; фильтры из `WordValidator.shouldSkip` переносятся сюда |
 | `Sources/Core/DictionaryReadiness.swift` | → `LanguageModelReadiness` (та же семантика: автокоррекция только для языков с загруженной моделью) |
 | `Sources/Core/InputEngine.swift` | хуки `recordRejected` (после успешного `undo`) и `recordAccepted` (после `forceConversion`) |
@@ -368,7 +368,7 @@ func score(word: String, source: Layout, alternatives: [(Layout, String)]) -> La
 | `Sources/UI/SettingsWindowController.swift` | новая вкладка «Слова» |
 | `Sources/UI/SettingsView.swift`, `L10n.swift` | ползунок «Чувствительность» во вкладке «Коррекция» + переводы всех новых строк |
 | `Sources/UI/PreferencesManager.swift` | хранение `PersonalLexicon` и `SwitchFix_detectionSensitivity` |
-| `Sources/Dictionary/**` | **удаляется** (после Фазы 3) |
+| `Sources/Dictionary/**` | **удаляется** первым шагом остатка (§10.5, §12.11) |
 | `scripts/compile_dictionary.swift` | **удаляется** |
 | `scripts/fetch-corpora.sh` | новый: загрузка корпусов с проверкой `sha256` |
 | `scripts/build-app.sh` | вместо компиляции `.bin` — копирование `.sfng`; удаление `.txt` больше не нужно |
@@ -409,18 +409,18 @@ func score(word: String, source: Layout, alternatives: [(Layout, String)]) -> La
 ### Фаза 2: Скорер, детектор за флагом, подбор порогов ⏱ ~4 ч — ✅ выполнено (`plan/benchmarks/detector_005_phase2.md`)
 - `LayoutScorer`, `ShortWordTable`, `DetectionThresholds`, новое правило в `LayoutDetector`.
 - Скрытый флаг `SwitchFix_detectionEngine = dictionary | ngram` (по умолчанию
-  `dictionary`), чтобы сравнивать в реальной работе.
+  `dictionary`), чтобы сравнивать в реальной работе. *(Историческое: флаг удаляется — §10.5.)*
 - Пороги выбраны по сетке `ModelTrainer eval` (длины 1…7+, T 0…14) и проверены на
   детекторе: T3=12, T4=T5=T6=8, T7+=5. Отдельный `--threshold-sweep` в `TestRunner`
-  отложен до Фазы 3 (калибровка ползунка).
+  делается вместе с ползунком (§12.10).
 - Логирование `margin`/порога для калибровки на реальном использовании.
-- **Критерий выхода**: eval-suite зелёный по целям §8; все существующие тесты
-  `TestRunner`/`InputPipelineTestRunner` проходят в режиме `ngram` (тесты, завязанные на
+- **Критерий выхода**: eval-suite зелёный по целям §8 (итог: три цели не добраны — §10.6); все существующие тесты
+  `TestRunner`/`InputPipelineTestRunner` проходят в режиме `ngram` *(не проверено — переносится в шаг 1 остатка, §12.12)* (тесты, завязанные на
   конкретные словарные слова, переписываются с сохранением смысла).
 - **Точка решения**: если цели §8 не достигнуты на триграммах — эксперимент с 4-граммами
   + backoff, прежде чем двигаться дальше.
 
-### Фаза 3: `PersonalLexicon`, вкладка «Слова», ползунок ⏱ ~5 ч
+### Фаза 3: `PersonalLexicon`, вкладка «Слова», ползунок ⏱ ~5 ч — выполняется **после** Фазы 4 (§10.5), детали — §12
 - Хранилище и CRUD-API, хуки в `InputEngine`.
 - Вкладка «Слова» (таблица, поиск, фильтр, создание/редактирование/удаление, сброс).
 - Ползунок «Чувствительность» во вкладке «Коррекция».
@@ -430,11 +430,11 @@ func score(word: String, source: Layout, alternatives: [(Layout, String)]) -> La
   конфликт автоматических правил — побеждает последнее действие, ручная запись не перезаписывается автоматически; ручная запись не вытесняется лимитом;
   сдвиг чувствительности меняет решение на пограничном слове.
 
-### Фаза 4: Переключение и удаление словарей ⏱ ~2 ч
-- Флаг по умолчанию → `ngram`, пожить с этим (личное использование) ≥ 1 неделю;
-  по логам `margin` и по содержимому вкладки «Слова» (что приходилось отменять) —
-  при необходимости перекалибровать пороги и повторить перебор.
-- Удалить `Sources/Dictionary`, `compile_dictionary.swift`, флаг, словарные тесты.
+### Фаза 4: Переключение и удаление словарей ⏱ ~2 ч — выполняется **первой** из оставшихся (§10.5)
+- ~~Флаг по умолчанию → `ngram`, пожить ≥ 1 неделю~~ — отменено решением §10.5; перекалибровка
+  по логам `margin` и вкладке «Слова» — после выпуска, отдельной задачей.
+- Удалить `Sources/Dictionary`, `compile_dictionary.swift`, флаг, словарные тесты — полный
+  перечень зависимостей в §12.11, миграция тестов в том же коммите — §12.12.
 - Обновить `build-app.sh`, CI, `CLAUDE.md`, `README.md`.
 - Проверить `./scripts/build-app.sh` → `.app` запускается, коррекция работает, размер DMG
   уменьшился.
@@ -466,7 +466,7 @@ func score(word: String, source: Layout, alternatives: [(Layout, String)]) -> La
 | Полнота, слова 4–5 букв | ≥ 90% |
 | Полнота на словоформах ru/en (П1) | ≥ 95% (сейчас ≈ 0% для отсутствующих форм) |
 | Порча текста при обеих кириллических раскладках (ru↔uk) | 0 (автоконвертации ru↔uk нет) |
-| Время `LayoutScorer.score` p99 | ≤ 50 мкс |
+| Время детекции слова (`NgramMarginScorer`) p99 | ≤ 50 мкс |
 | Размер моделей суммарно | ≤ 1 МБ |
 | Время загрузки моделей | ≤ 5 мс |
 
@@ -484,8 +484,8 @@ func score(word: String, source: Layout, alternatives: [(Layout, String)]) -> La
 | Короткие слова (`ns`→ты с margin 0.2) | `ShortWordTable` + подтверждение контекстом, как сейчас |
 | Модель ошибается в выборе ru/uk (~3%) | учитывать активную кириллическую раскладку пользователя как приоритет, если обе установлены; `PersonalLexicon` |
 | Лицензии корпусов | в модель попадают только агрегированные частоты n-грамм, но лицензии всё равно проверить и указать в README |
-| Регрессия по сравнению со словарём на каких-то словах | флаг `detectionEngine` на время Фаз 2–4; eval-сравнение обеих систем |
-| Рассинхрон `build-app.sh` ↔ `ModelLoader` при поиске ресурсов | перенести логику один-в-один; тест в `InputPipelineTestRunner` на отсутствие модели |
+| Регрессия по сравнению со словарём на каких-то словах | сравнение сделано в Фазе 2 (`detector_005_phase2.md`); цифры словаря из `baseline_005.md` заморожены как эталон «не хуже baseline»; точечные пробелы — `PersonalLexicon` |
+| Рассинхрон `build-app.sh` ↔ `LanguageModelStore` при поиске ресурсов | логика перенесена один-в-один; `build-app.sh` падает без бандла модели, CI проверяет наличие трёх `.sfng` в `.app` (§12.13); тест недоступности модели (§12.12) |
 
 ---
 
@@ -499,6 +499,7 @@ func score(word: String, source: Layout, alternatives: [(Layout, String)]) -> La
 | 4 | Настройка чувствительности | **Да**, ползунок из 5 положений; значение по умолчанию и шаги находятся перебором порогов на eval-наборе (§4.6), а не выставляются вручную |
 | — | Конкретные пороги | Не фиксируются в плане; определяются бенчмарками Фазы 2 и уточняются по логам в Фазе 4 |
 | 5 | Судьба словарного движка (2026-09-29, после Фазы 2) | **Удаляется полностью, без переходного периода.** n-gram — единственный детектор; скрытый флаг `SwitchFix_detectionEngine`, `DetectionEngine`, сравнение движков в `LayoutEval` и модуль `Dictionary` убираются. Выученные слова и ползунок чувствительности работают только с n-gram (другого движка нет). Порядок фаз ниже изменён: сначала удаление словарей, потом обучение и UI |
+| 6 | Недобранные цели §8 после Фазы 2 (2026-09-29, spec-review) | uk «родные после англ.» 96.73% (цель 97%), ru ложные ≤ 3 букв 0.93% (цель 0.5%), ru полнота 4–5 букв 89.87% (цель 90%). **Не блокируют** удаление словарей: словарь по тем же метрикам хуже (`baseline_005.md`). Для DoD: полнота — допуск −0.5 п.п. от цели; ложные ≤ 3 букв для ru — закрываются фильтром коротких кириллических аббревиатур в ВЕРХНЕМ регистре в шаге 1 (как английский ALLCAPS-фильтр), иначе остаются в долге задачи с явной отметкой в README. 4-граммы не делаем — пробелы точечные, не системные |
 
 ---
 
@@ -506,7 +507,7 @@ func score(word: String, source: Layout, alternatives: [(Layout, String)]) -> La
 
 - [ ] В репозитории и в `.app` нет словарей; модуль `Dictionary` удалён.
 - [ ] Модели `.sfng` ≤ 1 МБ, `ModelTrainer` + `fetch-corpora.sh` воспроизводимо собирают их.
-- [ ] Метрики §8 выполнены на eval-наборе; перебор порогов в `plan/benchmarks/thresholds_005.md`.
+- [ ] Метрики §8 выполнены на eval-наборе (с допусками §10.6); перебор порогов в `plan/benchmarks/thresholds_005.md`.
 - [ ] `PersonalLexicon` работает: revert запоминается, ручная конвертация запоминается,
       вкладка «Слова» поддерживает создание/просмотр/редактирование/удаление, строки
       локализованы.
@@ -516,3 +517,118 @@ func score(word: String, source: Layout, alternatives: [(Layout, String)]) -> La
 - [ ] Инварианты `plan/003` не нарушены: staleness-guards в `prepareCorrection` и
       `CorrectionPlan.isEligible` не изменены.
 - [ ] `CLAUDE.md` и `README.md` описывают новую детекцию.
+
+---
+
+## 12. Уточнения после spec-review (2026-09-29)
+
+Независимое ревью спецификации против кода ветки. Остаток работ — 4 шага, каждый — отдельный
+коммит с зелёным CI: **(1)** удаление словарей → **(2)** `PersonalLexicon` + хуки →
+**(3)** вкладка «Слова» → **(4)** ползунок + перебор порогов.
+
+### 12.1 Откуда revert берёт слово (шаг 2)
+`TextCorrector.undo` сейчас возвращает `Bool`, план приватен; слот undo заполняют и ручные
+коррекции, и вставка выделения, и режим переключения раскладки, и слитые короткие слова
+(`originalText` из нескольких слов). Решение: `undo` возвращает отменённый `CorrectionPlan?`;
+в план добавляется поле `provenance: .automatic | .manual | .selection | .layoutSwitch`,
+которое `CorrectionPlan.isEligible` **не читает** (staleness guards plan/003 не меняются).
+`recordRejected` — только для `.automatic` и однословного `originalText`. Отмена `.manual`
+удаляет выученную этим хоткеем `alwaysCorrect`-запись (если была), но `neverCorrect` не
+добавляет. `.selection`/`.layoutSwitch` не обучают.
+
+### 12.2 Тестовые швы (шаги 2–4)
+Сейчас инъекция `exactDetection` обходит `LayoutDetector` целиком, а `correctionEmission` —
+`corrector.apply`, поэтому undo не записывается. Добавляются: `PersonalLexicon` с
+инжектируемым хранилищем (in-memory в тестах), передаётся в `InputEngine`/`LayoutDetector`;
+замыкание `revertEmission` (возвращает отменённый план); тесты хуков гоняют **реальный**
+`LayoutDetector` на моделях из ресурсов (TestRunner) либо проверяют хуки на уровне
+`InputEngine` с инъекцией, где детекция возвращает результат, а лексикон проверяется отдельно
+на уровне `LayoutDetector`.
+
+### 12.3 Метрики (см. §10.6)
+
+### 12.4 Слои и хранение
+`PreferencesManager` живёт в `UI`, `Core` его не видит. `PersonalLexicon` (Core) сам владеет
+хранением: инжектируемый `UserDefaults` (домен `com.switchfix.app`, ключ
+`SwitchFix_personalLexicon`), `Layout` становится `Codable`. UI подписывается на
+`.personalLexiconDidChange`, уведомление постится на main.
+
+### 12.5 Счётчики и горячий путь
+Детектор читает иммутабельный снимок `[LexiconKey: Rule]`, подменяемый под локом.
+`matchCount`/`lastMatchedAt` обновляются только после **фактически применённой** коррекции
+(или для `neverCorrect` — при срабатывании правила), в памяти; запись в `UserDefaults` —
+с дебаунсом (~2 с) на фоновой очереди. На detection-очереди JSON не кодируется.
+
+### 12.6 Когда учиться на хоткее
+`recordAccepted` — только если: `apply` вернул `true`; слово из буфера (не выделение), один
+токен; пара английская ↔ кириллическая; цель — **фактически применённая** раскладка.
+Выбор цели для латиницы в ручном режиме исправляется: сначала `lastCyrillicLayout`, затем
+первая установленная (сейчас берётся первая из `[uk, ru]`). Хоткей после неудачного revert
+(fallback на ручную коррекцию) — тоже обучение, по тем же правилам. В режиме «только хоткей»
+(автокоррекция выключена) обучение `alwaysCorrect` пишется, но срабатывает только когда
+автокоррекция включена. Автоматические записи **никогда** не перезаписывают `.manual` —
+ни `neverCorrect`, ни `alwaysCorrect`.
+
+### 12.7 Ключ записи
+Единый `LexiconKey.normalize(token)`: весь токен после отделения завершающей границы (включая
+знаки-«буквы» вроде `,erdf` → `буква`), нижний регистр, `’`→`'`. `alwaysCorrect` хранит только
+целевую раскладку — конвертация пересчитывается `LayoutMapper` с текущим вариантом и
+`applyCase`. Проверка в форме UI: символы токена конвертируемы из раскладки набора (через
+`LayoutMapper`), а не «скрипт совпадает» — иначе запись `,erdf` невозможна. Лимит длины — 64
+(как лимит коррекции), не 32.
+
+### 12.8 Лексикон и правила подтверждения
+Порядок в `checkBuffer`: фильтры числа/URL/e-mail/camelCase/смешанных скриптов → **лексикон**
+→ ALLCAPS-фильтры → `ShortWordTable` → модель. То есть явное правило пользователя сильнее
+ALLCAPS-эвристики. Попадание `alwaysCorrect` обходит low-confidence подтверждение и
+подавление коротких слов (решение пользователя = уверенность); `neverCorrect` записывает
+исход `.validCurrent`.
+
+### 12.9 Семантика ползунка
+Хранится позиция 0…4 (`SwitchFix_detectionSensitivity`, по умолчанию 2), не сдвиг; таблица
+позиция → сдвиг — в `DetectionThresholds`. Сдвиг влияет на модельные пороги (≥ 3 букв);
+`ShortWordTable` и слова 1–2 буквы — вне ползунка, кроме «Осторожно» (позиция 0): там
+короткие слова (≤ 3) исправляются только с подтверждением контекстом всегда. Нижняя граница
+порога — 1.0 (итоговый порог `max(1, base + offset)`). `AppDelegate` передаёт `thresholds`
+в детектор при старте и повторно по `.preferencesDidChange`.
+
+### 12.10 Перебор и защита от устаревших порогов
+`TestRunner --threshold-sweep` (только macOS/CI, т.к. нужен Core) печатает
+машиночитаемую таблицу (TSV) recall/FP по корзинам и сдвигам, результат переносится в
+`plan/benchmarks/thresholds_005.md`. Защита: рядом с `DetectionThresholds` хранятся
+FNV-контрольные суммы `.sfng`, для которых пороги калибровались; тест TestRunner падает, если
+модели изменились без обновления сумм (= без перекалибровки). Правило выбора по умолчанию
+дополняется: 0 ложных на смешанных сообщениях и ≤ 0.5% для корзины 3 букв.
+
+### 12.11 Полный перечень зависимостей от словарей (шаг 1)
+`Sources/Dictionary/**` (включая `enum Language` — переносится в Core или заменяется на
+`ModelLanguage`/`Layout`: используется в `LayoutDetector.languageForLayout`, `containsVowel`,
+`shouldAllowAcronymFallback`); `WordValidator`, `SuggestionEngine.shortWords` →
+`ShortWordTable`; `Core/DictionaryReadiness.swift` → `LanguageModelReadiness`;
+`AppDelegate.prepareDictionaries` и `detectionEngine`; `PreferencesManager.detectionEngine`;
+`DetectionEngine`; `SwitchFixLog.dictionary` → `SwitchFixLog.model`; `Package.swift`;
+`scripts/compile_dictionary.swift`, `scripts/merge_uk_dictionaries.py`; `.gitignore`
+(словарные строки); `scripts/build-app.sh`; TestRunner: WordValidator/bloom/
+`DictionaryPerformanceTests.swift`/«Synthetic coverage», `enableTextFallbackForTesting`,
+сравнение движков в LayoutEval (словарные цифры заморожены в `baseline_005.md`);
+комментарий в `LanguageModelStore.swift`; `CLAUDE.md`, `README.md` (включая упоминания
+словарей в описании и в лицензиях).
+
+### 12.12 Миграция тестов в шаге 1
+Сьюты `LayoutDetector` в TestRunner сейчас идут на `.dictionary`; в шаге 1 они переводятся на
+n-gram в том же коммите, ожидания, завязанные на словарь, переписываются с сохранением смысла
+(в тестах задаётся `lastCyrillicLayout`, где цель ru/uk иначе неоднозначна). Тест
+«missing dictionary seam» в InputPipelineTestRunner → «missing model»: `LanguageModelReadiness`
+получает инжектируемый загрузчик (замыкание «язык → модель?»), тест подменяет его на
+недоступный без зависимости InputPipelineTestRunner от ресурсов.
+
+### 12.13 Сборка
+Без словаря потеря бандла модели = молча нет коррекции. `build-app.sh`: отсутствие
+`SwitchFix_LanguageModel.bundle` или любого из `{en,ru,uk}.sfng` — ошибка сборки (exit 1),
+а не предупреждение.
+
+### 12.14 UI вкладки «Слова»
+Окно настроек 520 pt: таблица из колонок слово · раскладка · правило · источник ·
+срабатываний; «последнее срабатывание» — в подсказке строки и в форме редактирования.
+Вытеснение по лимиту 5000: по `lastMatchedAt ?? createdAt`, только авто-записи.
+
