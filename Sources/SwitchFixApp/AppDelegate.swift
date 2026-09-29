@@ -13,6 +13,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private let inputSourceManager = InputSourceManager.shared
     private var observersRegistered = false
     private var readyLayouts: Set<Layout> = []
+    private var modelsPrepared = false
     private var previousLayout: Layout = .english
     private var previousInputSourceID = "unknown"
 
@@ -85,6 +86,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         prepareLanguageModels { [weak self] allowedLayouts in
             guard let self else { return }
             self.readyLayouts = allowedLayouts
+            self.modelsPrepared = true
             self.updateDetectionConfiguration(allowedLayouts: allowedLayouts)
             Permissions.ensureRequiredPermissions { [weak self] in
                 self?.startMonitoringAndFocusObservation()
@@ -289,6 +291,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         )
         captureState?.updateHotkeys(currentHotkeyConfiguration())
         inputEngine?.updatePreferences(currentPreferencesSnapshot())
+        // The Sensitivity slider; before the models are prepared there are no ready
+        // layouts yet, and the completion pushes the configuration itself.
+        if modelsPrepared {
+            updateDetectionConfiguration(allowedLayouts: readyLayouts)
+        }
     }
 
     @objc private func appFilterDidUpdate() {
@@ -370,7 +377,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         inputEngine?.updateDetectionConfiguration(
             allowedLayouts: allowedLayouts,
             ukrainianFromVariant: currentVariant,
-            ukrainianToVariant: preferredVariant
+            ukrainianToVariant: preferredVariant,
+            thresholds: .forSensitivity(PreferencesManager.shared.detectionSensitivity)
         )
     }
 

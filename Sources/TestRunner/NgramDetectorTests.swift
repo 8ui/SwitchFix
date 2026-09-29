@@ -1,5 +1,6 @@
 import Foundation
 import Core
+import LanguageModel
 
 // LayoutDetector on the n-gram language models (plan/005).
 
@@ -115,5 +116,36 @@ func runNgramDetectorSuites() {
         _ = lexicon.add(word: "API", sourceLayout: .english, rule: .alwaysCorrect(to: .russian))
         assertEqual(detect("API", current: .english)?.convertedWord, "ФЗШ", "user rule beats the ALLCAPS heuristic")
         assertEqual(lexicon.entries.first { $0.word == "ghbdtn" }?.matchCount, 1, "neverCorrect hits are counted")
+    }
+
+    runSuite("NgramDetector: sensitivity") {
+        let scorer = NgramMarginScorer(store: .shared)
+        // 'hf,jnftn' → 'работает', 8 letters: bucket 7+.
+        guard let margin = scorer.margin(typedCore: "hf,jnftn", source: .english, convertedCore: "работает", target: .russian) else {
+            return assert(false, "models must load")
+        }
+        func detect(offset: Double) -> DetectionResult? {
+            let detector = ngramDetector(current: .english, allowed: [.english, .russian])
+            var thresholds = DetectionThresholds.default
+            thresholds.sensitivityOffset = offset
+            detector.thresholds = thresholds
+            detector.addCharacter("hf,jnftn")
+            return detector.flushBuffer(boundaryCharacter: " ")
+        }
+        let base = DetectionThresholds.default.sevenPlusLetters
+        assert(detect(offset: margin - base + 0.5) == nil, "threshold above the margin keeps the word")
+        assert(detect(offset: margin - base - 0.5) != nil, "threshold below the margin corrects it")
+
+        let cautious = DetectionThresholds.forSensitivity(0)
+        let bold = DetectionThresholds.forSensitivity(4)
+        assert(cautious.threshold(forLetterCount: 7)! > DetectionThresholds.forSensitivity(2).threshold(forLetterCount: 7)!, "cautious is stricter")
+        assert(bold.threshold(forLetterCount: 7)! >= DetectionThresholds.minimumThreshold, "never below the floor")
+        assertEqual(DetectionThresholds.forSensitivity(2), DetectionThresholds.default, "middle position = calibrated defaults")
+        assertEqual(DetectionThresholds.forSensitivity(99), DetectionThresholds.forSensitivity(4), "out of range clamps")
+
+        let detector = ngramDetector(current: .english, allowed: [.english, .russian])
+        detector.thresholds = cautious
+        detector.addCharacter("yf")
+        assert(detector.flushBuffer(boundaryCharacter: " ") == nil, "Cautious never auto-corrects short words")
     }
 }

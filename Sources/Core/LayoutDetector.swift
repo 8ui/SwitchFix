@@ -316,7 +316,8 @@ public class LayoutDetector {
                 // letters on the converted side.
                 let letters = max(letterCount, convertedCore.filter(\.isLetter).count)
 
-                if letters <= ShortWordTable.maxLength,
+                if thresholds.convertsShortWords,
+                   letters <= ShortWordTable.maxLength,
                    ShortWordTable.contains(convertedCore, language: target.modelLanguage) {
                     SwitchFixLog.detector.debug("model: '\(word)' → common short word '\(recomposed)' in \(target.rawValue)")
                     return finishCorrection(
@@ -348,6 +349,10 @@ public class LayoutDetector {
         }
 
         if let best {
+            // Calibration data for thresholds (plan/005 §4.6.4); the word only at debug level.
+            SwitchFixLog.detector.info(
+                "model decision corrected=true margin=\(String(format: "%.1f", best.margin)) threshold=\(String(format: "%.1f", best.threshold)) letters=\(letterCount)"
+            )
             SwitchFixLog.detector.debug(
                 "model: '\(word)' → '\(best.recomposed)' margin=\(String(format: "%.1f", best.margin)) threshold=\(String(format: "%.1f", best.threshold)) letters=\(letterCount)"
             )
@@ -374,6 +379,11 @@ public class LayoutDetector {
             )
         }
 
+        if highestMargin.isFinite {
+            SwitchFixLog.detector.info(
+                "model decision corrected=false margin=\(String(format: "%.1f", highestMargin)) letters=\(letterCount)"
+            )
+        }
         if highestMargin.isFinite && highestMargin < 0 {
             // The keystrokes read better as typed: evidence for the current language.
             markValidInCurrentLanguage()

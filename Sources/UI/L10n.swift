@@ -113,6 +113,16 @@ enum L10n {
         "Cancel": "Отменить",
         "Add": "Добавить",
 
+        // Sensitivity
+        "Sensitivity": "Чувствительность",
+        "Cautious": "Осторожно",
+        "Bold": "Смело",
+        "Corrects only clear cases; short words are left to the hotkey.": "Исправляет только очевидное; короткие слова — только горячей клавишей.",
+        "Fewer corrections, fewer mistakes.": "Меньше исправлений, меньше ошибок.",
+        "Balanced (recommended).": "Сбалансированно (рекомендуется).",
+        "Corrects more words, occasionally by mistake.": "Исправляет больше слов, иногда по ошибке.",
+        "Corrects as much as possible; undo mistakes with Revert Last.": "Исправляет всё, что может; ошибки отменяйте «Отменить последнее».",
+
         // Words tab
         "Words": "Слова",
         "Learned Words": "Выученные слова",

@@ -65,6 +65,11 @@ class SettingsViewModel: ObservableObject {
         didSet { PreferencesManager.shared.correctionMode = correctionMode }
     }
     
+    /// Slider value (whole steps 0…4); stored as an Int position.
+    @Published var detectionSensitivity = Double(PreferencesManager.shared.detectionSensitivity) {
+        didSet { PreferencesManager.shared.detectionSensitivity = Int(detectionSensitivity.rounded()) }
+    }
+
     @Published var hotkeyKeyCode: UInt16 = PreferencesManager.shared.hotkeyKeyCode {
         didSet { PreferencesManager.shared.hotkeyKeyCode = hotkeyKeyCode }
     }
@@ -100,6 +105,9 @@ class SettingsViewModel: ObservableObject {
         }
         if self.correctionMode != prefs.correctionMode {
             self.correctionMode = prefs.correctionMode
+        }
+        if Int(self.detectionSensitivity.rounded()) != prefs.detectionSensitivity {
+            self.detectionSensitivity = Double(prefs.detectionSensitivity)
         }
         if self.hotkeyKeyCode != prefs.hotkeyKeyCode {
             self.hotkeyKeyCode = prefs.hotkeyKeyCode
@@ -367,6 +375,16 @@ struct CorrectionSettingsView: View {
         }
     }
 
+    private var sensitivityDescription: String {
+        switch Int(model.detectionSensitivity.rounded()) {
+        case 0: return L10n.tr("Corrects only clear cases; short words are left to the hotkey.")
+        case 1: return L10n.tr("Fewer corrections, fewer mistakes.")
+        case 3: return L10n.tr("Corrects more words, occasionally by mistake.")
+        case 4: return L10n.tr("Corrects as much as possible; undo mistakes with Revert Last.")
+        default: return L10n.tr("Balanced (recommended).")
+        }
+    }
+
     var body: some View {
         SettingsTabContainer(language: model.language) {
             SettingsSection(title: L10n.tr("Correction Mode")) {
@@ -380,6 +398,18 @@ struct CorrectionSettingsView: View {
 
                 SettingsNote(text: correctionModeDescription)
             }
+
+            SettingsSection(title: L10n.tr("Sensitivity")) {
+                Slider(value: $model.detectionSensitivity, in: 0...4, step: 1) {
+                    EmptyView()
+                } minimumValueLabel: {
+                    Text(L10n.tr("Cautious"))
+                } maximumValueLabel: {
+                    Text(L10n.tr("Bold"))
+                }
+                SettingsNote(text: sensitivityDescription)
+            }
+            .disabled(model.correctionMode != .automatic)
 
             SettingsSection(title: L10n.tr("Shortcuts")) {
                 Grid(alignment: .leading, horizontalSpacing: 20, verticalSpacing: 12) {

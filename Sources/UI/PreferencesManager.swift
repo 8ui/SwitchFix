@@ -1,6 +1,7 @@
 import Foundation
 import CoreGraphics
 import ServiceManagement
+import Core
 import Utils
 
 public enum CorrectionMode: String {
@@ -23,6 +24,26 @@ public class PreferencesManager {
         static let revertHotkeyKeyCode = "SwitchFix_revertHotkeyKeyCode"
         static let revertHotkeyModifiers = "SwitchFix_revertHotkeyModifiers"
         static let language = "SwitchFix_language"
+        static let detectionSensitivity = "SwitchFix_detectionSensitivity"
+    }
+
+    /// Detection sensitivity slider position: 0 (Cautious) … 4 (Bold); the middle is
+    /// the calibrated default (`DetectionThresholds.forSensitivity`).
+    public var detectionSensitivity: Int {
+        get {
+            let range = DetectionThresholds.sensitivityPositions
+            guard let value = defaults.object(forKey: Keys.detectionSensitivity) as? Int else {
+                return DetectionThresholds.defaultSensitivity
+            }
+            return min(max(value, range.lowerBound), range.upperBound)
+        }
+        set {
+            let range = DetectionThresholds.sensitivityPositions
+            let clamped = min(max(newValue, range.lowerBound), range.upperBound)
+            guard clamped != detectionSensitivity else { return }
+            defaults.set(clamped, forKey: Keys.detectionSensitivity)
+            NotificationCenter.default.post(name: .preferencesDidChange, object: nil)
+        }
     }
 
     /// Interface language (default: follows the system language).
