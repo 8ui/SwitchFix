@@ -62,6 +62,7 @@ artifacts:
 - 2026-09-29: security-review (субагент): уязвимостей с уверенностью ≥8 нет; secure-focus guards покрывают все пути обучения
 - 2026-09-29: verify: `CI зелёный (после code-review, c307b45): https://github.com/8ui/SwitchFix/actions/runs/36560545031` → exit 0 ✅
 - 2026-09-29: остаётся в review: нужна живая проверка вкладки «Слова» и ползунка на macOS пользователем (в облаке только сборка); код, тесты и доказательства CI готовы
+- 2026-09-29: инструкция для ручной проверки на macOS: docs/testing/ngram-lexicon-manual-test.md
 
 ## Decisions
 
