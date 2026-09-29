@@ -3,7 +3,7 @@ id: 2026-09-29-ngram-only-learning-ui
 title: "Удалить словари: n-gram единственный детектор, обучение на отменах, вкладка Слова, ползунок"
 type: feature
 pipeline: full
-phase: plan
+phase: plan-review
 created: 2026-09-29
 updated: 2026-09-29
 blocked_by: null
@@ -12,7 +12,7 @@ steps_total: 0
 step_current: null
 artifacts:
   spec: plan/005_ngram_layout_detection.md
-  plan: null
+  plan: docs/plans/ngram-only-learning-ui-plan.md
   branch: claude/epic-galileo-zq47ec
   pr: null
 ---
@@ -33,6 +33,8 @@ _Шаги не заданы. `rtp steps <id> --set "…"` или `--from-plan <�
 - 2026-09-29: spec = plan/005 (обновлён: §10.5, порядок фаз в §7); ждёт независимого ревью субагентом
 - 2026-09-29: сессия 2: пользователь подтвердил preset full и порядок (1 удаление словарей → 2 PersonalLexicon → 3 вкладка «Слова» → 4 ползунок); spec отдан ревьюеру-субагенту
 - 2026-09-29: spec-review (субагент general-purpose, свежий взгляд): 3 blocker + 10 major + 2 minor; все учтены в plan/005 §12 и §10.6, устаревший текст про флаг/переходный период исправлен
+- 2026-09-29: artifacts.plan = docs/plans/ngram-only-learning-ui-plan.md
+- 2026-09-29: план: docs/plans/ngram-only-learning-ui-plan.md, 8 шагов в 4 частях; факты сверены scratch-харнессом на Linux (2 из 51 старых проверок детектора падают на n-gram — вариант укр. раскладки и camelCase-фильтр на 'ершиЖ'; 'ghbftn' модель уже исправляет → фикстура 'rehk')
 
 ## Decisions
 
