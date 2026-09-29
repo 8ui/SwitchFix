@@ -975,13 +975,25 @@ run("learning: forced hotkey target follows the last Cyrillic layout") {
         )
         harness.engine.updateContext(next)
     }
+    func drainInput() {
+        let drained = DispatchSemaphore(value: 0)
+        harness.engine.drain { drained.signal() }
+        _ = drained.wait(timeout: .now() + 1)
+    }
     // Typing on Russian makes it the detector's last Cyrillic layout (survives reset()).
+    // Drain before switching back: keystrokes processed after the switch would be
+    // dropped as stale and never reach the detector.
     switchLayout(to: .russian)
     harness.type("привет")
+    drainInput()
     switchLayout(to: .english)
     harness.type("rehk", boundary: nil)
     harness.send(.hotkey)
-    check(waitUntil { harness.emitted.last?.targetLayout == .russian }, "forced Latin conversion prefers Russian, not the first installed (Ukrainian)")
+    check(waitUntil { harness.emitted.count == 1 }, "forced conversion is emitted")
+    check(
+        harness.emitted.last?.targetLayout == .russian,
+        "forced Latin conversion prefers Russian, not the first installed (got \(harness.emitted.last?.targetLayout?.rawValue ?? "nil"))"
+    )
 }
 
 run("learning: revert without undo state falls back to a forced hotkey conversion that teaches") {
