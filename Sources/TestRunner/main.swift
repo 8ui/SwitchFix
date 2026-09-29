@@ -111,6 +111,8 @@ runSuite("LayoutMapper: Same layout") {
     assertEqual(LayoutMapper.convert("hello", from: .english, to: .english), "hello")
 }
 
+runKeyTableTests()
+
 runSuite("Layout: input source ID matching") {
     func layout(_ id: String) -> Layout? { Layout.allCases.first { $0.matches(sourceID: id) } }
     for id in ["US", "ABC", "British", "British-PC", "Australian", "Canadian", "Irish", "IrishExtended"] {

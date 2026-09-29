@@ -62,44 +62,6 @@ public class LayoutMapper {
 
     // MARK: - Mapping tables
 
-    // EN (QWERTY) → RU (ЙЦУКЕН) — standard macOS Russian layout
-    private static let enToRu: [Character: Character] = [
-        "q": "й", "w": "ц", "e": "у", "r": "к", "t": "е", "y": "н", "u": "г", "i": "ш", "o": "щ", "p": "з",
-        "[": "х", "]": "ъ", "a": "ф", "s": "ы", "d": "в", "f": "а", "g": "п", "h": "р", "j": "о", "k": "л",
-        "l": "д", ";": "ж", "'": "э", "z": "я", "x": "ч", "c": "с", "v": "м", "b": "и", "n": "т", "m": "ь",
-        ",": "б", ".": "ю", "/": ".",
-        // Uppercase
-        "Q": "Й", "W": "Ц", "E": "У", "R": "К", "T": "Е", "Y": "Н", "U": "Г", "I": "Ш", "O": "Щ", "P": "З",
-        "{": "Х", "}": "Ъ", "A": "Ф", "S": "Ы", "D": "В", "F": "А", "G": "П", "H": "Р", "J": "О", "K": "Л",
-        "L": "Д", ":": "Ж", "\"": "Э", "Z": "Я", "X": "Ч", "C": "С", "V": "М", "B": "И", "N": "Т", "M": "Ь",
-        "<": "Б", ">": "Ю", "?": ",",
-        "`": "ё", "~": "Ё",
-    ]
-
-    // EN (QWERTY) → UK (Ukrainian) — modern macOS Ukrainian layout
-    private static let enToUkStandard: [Character: Character] = [
-        "q": "й", "w": "ц", "e": "у", "r": "к", "t": "е", "y": "н", "u": "г", "i": "ш", "o": "щ", "p": "з",
-        "[": "х", "]": "ї", "a": "ф", "s": "і", "d": "в", "f": "а", "g": "п", "h": "р", "j": "о", "k": "л",
-        "l": "д", ";": "ж", "'": "є", "z": "я", "x": "ч", "c": "с", "v": "м", "b": "и", "n": "т", "m": "ь",
-        ",": "б", ".": "ю", "/": ".",
-        // Uppercase
-        "Q": "Й", "W": "Ц", "E": "У", "R": "К", "T": "Е", "Y": "Н", "U": "Г", "I": "Ш", "O": "Щ", "P": "З",
-        "{": "Х", "}": "Ї", "A": "Ф", "S": "І", "D": "В", "F": "А", "G": "П", "H": "Р", "J": "О", "K": "Л",
-        "L": "Д", ":": "Ж", "\"": "Є", "Z": "Я", "X": "Ч", "C": "С", "V": "М", "B": "И", "N": "Т", "M": "Ь",
-        "<": "Б", ">": "Ю", "?": ",",
-        "`": "ґ", "~": "Ґ",
-    ]
-
-    // EN (QWERTY) → UK (Ukrainian Legacy) — swaps positions of и/і.
-    private static let enToUkLegacy: [Character: Character] = {
-        var map = enToUkStandard
-        map["s"] = "и"
-        map["b"] = "і"
-        map["S"] = "И"
-        map["B"] = "І"
-        return map
-    }()
-
     // RU → UK mapping for characters that differ between Russian and Ukrainian layouts.
     private static let ruToUkStandard: [Character: Character] = [
         "ы": "і", "э": "є", "ъ": "ї", "ё": "ґ",
@@ -112,9 +74,9 @@ public class LayoutMapper {
     ]
 
     // Pre-built reverse mappings
-    private static let ruToEn: [Character: Character] = buildReverse(enToRu)
-    private static let ukStandardToEn: [Character: Character] = buildReverse(enToUkStandard)
-    private static let ukLegacyToEn: [Character: Character] = buildReverse(enToUkLegacy)
+    private static let ruToEn: [Character: Character] = buildReverse(PCLayoutData.enToRu)
+    private static let ukStandardToEn: [Character: Character] = buildReverse(PCLayoutData.enToUkStandard)
+    private static let ukLegacyToEn: [Character: Character] = buildReverse(PCLayoutData.enToUkLegacy)
     private static let ukStandardToRu: [Character: Character] = buildReverse(ruToUkStandard)
     private static let ukLegacyToRu: [Character: Character] = buildReverse(ruToUkLegacy)
 
@@ -134,9 +96,9 @@ public class LayoutMapper {
         ukrainianToVariant: UkrainianKeyboardVariant
     ) -> [Character: Character]? {
         switch (from, to) {
-        case (.english, .russian):   return enToRu
+        case (.english, .russian):   return PCLayoutData.enToRu
         case (.english, .ukrainian):
-            return ukrainianToVariant == .legacy ? enToUkLegacy : enToUkStandard
+            return ukrainianToVariant == .legacy ? PCLayoutData.enToUkLegacy : PCLayoutData.enToUkStandard
         case (.russian, .english):   return ruToEn
         case (.ukrainian, .english):
             return ukrainianFromVariant == .legacy ? ukLegacyToEn : ukStandardToEn
@@ -155,7 +117,7 @@ public class LayoutMapper {
     public static func canBeTyped(_ text: String, on layout: Layout) -> Bool {
         let keys: [Character: Character]
         switch layout {
-        case .english: keys = enToRu
+        case .english: keys = PCLayoutData.enToRu
         case .russian: keys = ruToEn
         case .ukrainian: keys = ukStandardToEn.merging(ukLegacyToEn) { current, _ in current }
         }
@@ -193,6 +155,39 @@ public class LayoutMapper {
             return text
         }
         return String(text.map { table[$0] ?? $0 })
+    }
+
+    /// Convert through the physical key: `from`'s key for each character, then the
+    /// character of that key on `to`. Unmapped characters are left as-is.
+    public static func convert(_ text: String, from: Layout, to: Layout, tables: KeyboardTables) -> String {
+        guard from != to else { return text }
+        return convert(text, from: tables.primary(for: from), to: tables.primary(for: to))
+    }
+
+    public static func convert(_ text: String, from source: KeyTable, to target: KeyTable) -> String {
+        String(text.map { character in
+            source.charToKey[character].flatMap { target.keyToChar[$0] } ?? character
+        })
+    }
+
+    /// One conversion per source candidate table, deduplicated, in candidate order.
+    public static func convertCandidates(_ text: String, from: Layout, to: Layout, tables: KeyboardTables) -> [String] {
+        guard from != to else { return [text] }
+        let target = tables.primary(for: to)
+        var results: [String] = []
+        for source in tables.candidates(for: from) {
+            let converted = convert(text, from: source, to: target)
+            if !results.contains(converted) { results.append(converted) }
+        }
+        return results
+    }
+
+    public static func convertToAlternatives(_ text: String, from: Layout, tables: KeyboardTables) -> [(Layout, String)] {
+        Layout.allCases.compactMap { target in
+            guard target != from else { return nil }
+            let converted = convert(text, from: from, to: target, tables: tables)
+            return converted == text ? nil : (target, converted)
+        }
     }
 
     /// Try converting text from the given layout to all other layouts,
