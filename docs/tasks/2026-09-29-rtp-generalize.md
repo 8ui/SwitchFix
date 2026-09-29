@@ -7,9 +7,9 @@ phase: review
 created: 2026-09-29
 updated: 2026-09-29
 blocked_by: null
-steps_done: 6
+steps_done: 7
 steps_total: 8
-step_current: 7
+step_current: 8
 artifacts:
   spec: docs/features/rtp-cloud-switchfix-spec.md
   plan: docs/plans/rtp-cloud-switchfix-plan.md
@@ -33,8 +33,8 @@ restoplace `ae27627e9`). Подзадача 2: облачные сессии Swi
 4. ✅ хуки и шим
 5. ✅ `.rtp.json` и CLAUDE.md
 6. ✅ проверка дублей скиллов вживую
-7. ▶ PR, CI, доказательства
-8. ⬜ облачная проверка (пользователь) и закрытие
+7. ✅ PR, CI, доказательства
+8. ▶ облачная проверка (пользователь) и закрытие
 
 ## Log
 
@@ -87,6 +87,9 @@ restoplace `ae27627e9`). Подзадача 2: облачные сессии Swi
 - 2026-09-29: artifacts.branch = claude/rtp-cloud-pipeline; artifacts.pr = https://github.com/8ui/SwitchFix/pull/4
 - 2026-09-29: code-review ветки (general-purpose/opus): 0 blocker/major, 6 minor; исправлены 1-5 (симлинк шима, кавычки в env-строке, нет node, шире гвард, без дублей PATH), 6 — в NOTICE
 - 2026-09-29: verify: `повторная проверка rtp-hook.sh/шима после ревью` → exit 0 ✅
+- 2026-09-29: verify: `CI зелёный: https://github.com/8ui/SwitchFix/actions/runs/36546484268 (pull_request, b8e8154) и /runs/36546460611 (push)` → exit 0 ✅
+- 2026-09-29: verify: `CI зелёный: https://github.com/8ui/SwitchFix/actions/runs/36547719023 (pull_request, c022bce)` → exit 0 ✅
+- 2026-09-29: шаг 7 ✅ PR, CI, доказательства — PR #4, CI зелёный на c022bce, код-ревью учтено
 
 ## Decisions
 
@@ -228,6 +231,18 @@ _Нетривиальные решения по ходу задачи. Одна 
 
   ```
   гвард локально exit 0; env-строка одна, source даёт .claude/bin/rtp; без node — сообщение + exit 1; шим через симлинк работает; Stop без транскрипта exit 0
+  ```
+
+- 2026-09-29 · `CI зелёный: https://github.com/8ui/SwitchFix/actions/runs/36546484268 (pull_request, b8e8154) и /runs/36546460611 (push)` · exit 0 ✅
+
+  ```
+  Build and test (macos-15): swift build, TestRunner, InputPipelineTestRunner, build-app.sh — success
+  ```
+
+- 2026-09-29 · `CI зелёный: https://github.com/8ui/SwitchFix/actions/runs/36547719023 (pull_request, c022bce)` · exit 0 ✅
+
+  ```
+  Build and test (macos-15) — success
   ```
 
 ## Handoff
