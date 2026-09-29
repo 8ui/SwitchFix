@@ -60,6 +60,8 @@ artifacts:
 - 2026-09-29: шаг 8 ✅ документация и Definition of Done — CLAUDE.md, README, plan/005 DoD
 - 2026-09-29: impl complete: 8/8 шагов; code-review субагентом: 0 blocker, 3 major + 7 minor — все исправлены в c307b45
 - 2026-09-29: security-review (субагент): уязвимостей с уверенностью ≥8 нет; secure-focus guards покрывают все пути обучения
+- 2026-09-29: verify: `CI зелёный (после code-review, c307b45): https://github.com/8ui/SwitchFix/actions/runs/36560545031` → exit 0 ✅
+- 2026-09-29: остаётся в review: нужна живая проверка вкладки «Слова» и ползунка на macOS пользователем (в облаке только сборка); код, тесты и доказательства CI готовы
 
 ## Decisions
 
@@ -73,8 +75,9 @@ artifacts:
 - [ ] LayoutMapper не знает клавишу украинского апострофа на macOS — слова с ' / ї / є частично недостижимы (п'ятницю, цієї); см. plan/benchmarks/detector_005_phase2.md
 - [ ] Короткие русские аббревиатуры (СМС, РФ, шт) дают 0.93% ложных при цели ≤0.5% — кандидаты для фильтра/PersonalLexicon
 - [ ] Все три раскладки без истории переключений: украинский уходит в русский (uk→en 73.65%) — нужна эвристика выбора кириллицы без истории
-- [ ] Цели §8 недобраны после Фазы 2 (uk родные после англ. 96.73%, ru FP≤3 0.93%, ru полнота 4–5 89.87%) — допуски и план в plan/005 §10.6
+- [x] Цели §8 недобраны после Фазы 2 (uk родные после англ. 96.73%, ru FP≤3 0.93%, ru полнота 4–5 89.87%) — допуски и план в plan/005 §10.6 — закрыто 2026-09-29: plan/005 §10.6 — допуски приняты, DoD отмечен
 - [ ] Проверить вкладку «Слова» и ползунок «Чувствительность» вживую на macOS (в облаке только сборка в CI): таблица, сортировка, форма, удаление, сброс, перевод
+- [ ] Базовые пороги: перебор по правилу §4.6.2 рекомендует ниже текущих (T4 3 вместо 8 и т. д., thresholds_005.md) — решение пользователя: оставить или сдвинуть «по умолчанию» к позиции 3; пересмотреть по логам 'model decision' (info)
 
 ## Verification
 
@@ -96,15 +99,33 @@ artifacts:
   L10n ok; build; TestRunner ok (checksum guard); Threshold sweep 24s, строки SWEEP совпадают с Linux-харнессом; InputPipeline 878 passed 0 failed; build-app ok, .app 3.8M
   ```
 
+- 2026-09-29 · `CI зелёный (после code-review, c307b45): https://github.com/8ui/SwitchFix/actions/runs/36560545031` · exit 0 ✅
+
+  ```
+  conclusion success: L10n, build, TestRunner (+новые тесты лексикона), sweep, InputPipeline (+learning-тесты), build-app
+  ```
+
 ## Handoff
 
 **Сгенерировано:** 2026-09-29 · `rtp handoff`
 
 - **Задача:** `2026-09-29-ngram-only-learning-ui` — Удалить словари: n-gram единственный детектор, обучение на отменах, вкладка Слова, ползунок
-- **Фаза:** spec-review (pipeline `full`, type `feature`)
+- **Фаза:** review (pipeline `full`, type `feature`)
+- **Прогресс:** 8/8 ▰▰▰▰▰▰▰▰
 - **Worktree:** `/home/user/SwitchFix`
-- **Ветка:** `claude/epic-galileo-zq47ec` — своих коммитов 12, отставание от origin/master 0
+- **Ветка:** `claude/epic-galileo-zq47ec` — своих коммитов 30, отставание от origin/master 0
 - **Незакоммиченного:** 2 файл(ов)
+
+**Шаги плана**
+
+1. ✅ удалить модуль `Dictionary` и словарный путь; n-gram — единственный детектор
+2. ✅ `PersonalLexicon` — модель, хранение, CRUD, обучение (Core)
+3. ✅ лексикон в детекторе
+4. ✅ происхождение коррекции, обучение в `InputEngine`
+5. ✅ вкладка «Слова» с полным CRUD
+6. ✅ позиции чувствительности в `DetectionThresholds` и ползунок
+7. ✅ перебор порогов, калибровка ползунка, защита от устаревших порогов
+8. ✅ документация и Definition of Done
 
 **Файлы в работе**
 
@@ -114,33 +135,36 @@ artifacts:
 **git diff HEAD --stat**
 
 ```
-docs/tasks/2026-09-29-ngram-only-learning-ui.md | 51 ++++++++++++++++++++++++-
+docs/tasks/2026-09-29-ngram-only-learning-ui.md | 11 ++++++++++-
  docs/tasks/index.md                             |  2 +-
- 2 files changed, 51 insertions(+), 2 deletions(-)
+ 2 files changed, 11 insertions(+), 2 deletions(-)
 ```
 
 **Последние коммиты**
 
-- `b5c3393 docs(plan): drop the dictionary engine entirely; track next phase in rtp`
-- `b5410ae Merge remote-tracking branch 'origin/master' into claude/epic-galileo-zq47ec`
-- `9ab1ff6 docs(plan): record n-gram vs dictionary detector results (plan 005 phase 2)`
+- `f6e2220 docs(tasks): ngram-only-learning-ui in review`
+- `c307b45 fix(lexicon): address code review of learning and the Words tab`
+- `995568c docs(plan): app size after the Words tab`
 
 **Последние записи лога**
 
-- 2026-09-29: triage — pipeline `full`, reason: Новая фича + удаление модуля Dictionary, >5 файлов (Core, UI, Package.swift, build-app.sh, тесты, L10n) → full. Спецификация — plan/005 (§4.5, §4.6, §10.5).
-- 2026-09-29: artifacts.spec = plan/005_ngram_layout_detection.md; artifacts.branch = claude/epic-galileo-zq47ec
-- 2026-09-29: brainstorm: что/зачем/критерии из plan/005 и ответов пользователя; решение удалить словари полностью — plan/005 §10.5
-- 2026-09-29: spec = plan/005 (обновлён: §10.5, порядок фаз в §7); ждёт независимого ревью субагентом
+- 2026-09-29: шаг 8 ✅ документация и Definition of Done — CLAUDE.md, README, plan/005 DoD
+- 2026-09-29: impl complete: 8/8 шагов; code-review субагентом: 0 blocker, 3 major + 7 minor — все исправлены в c307b45
+- 2026-09-29: security-review (субагент): уязвимостей с уверенностью ≥8 нет; secure-focus guards покрывают все пути обучения
+- 2026-09-29: verify: `CI зелёный (после code-review, c307b45): https://github.com/8ui/SwitchFix/actions/runs/36560545031` → exit 0 ✅
+- 2026-09-29: остаётся в review: нужна живая проверка вкладки «Слова» и ползунка на macOS пользователем (в облаке только сборка); код, тесты и доказательства CI готовы
 
-**Открытые долги (3)**
+**Открытые долги (5)**
 
 - LayoutMapper не знает клавишу украинского апострофа на macOS — слова с ' / ї / є частично недостижимы (п'ятницю, цієї); см. plan/benchmarks/detector_005_phase2.md
 - Короткие русские аббревиатуры (СМС, РФ, шт) дают 0.93% ложных при цели ≤0.5% — кандидаты для фильтра/PersonalLexicon
 - Все три раскладки без истории переключений: украинский уходит в русский (uk→en 73.65%) — нужна эвристика выбора кириллицы без истории
+- Проверить вкладку «Слова» и ползунок «Чувствительность» вживую на macOS (в облаке только сборка в CI): таблица, сортировка, форма, удаление, сброс, перевод
+- Базовые пороги: перебор по правилу §4.6.2 рекомендует ниже текущих (T4 3 вместо 8 и т. д., thresholds_005.md) — решение пользователя: оставить или сдвинуть «по умолчанию» к позиции 3; пересмотреть по логам 'model decision' (info)
 
 **Следующее действие**
 
-- дать spec независимому субагенту-ревьюеру, потом rtp phase 2026-09-29-ngram-only-learning-ui --to plan
+- rtp verify по командам проекта (rtp next 2026-09-29-ngram-only-learning-ui), затем ревью субагентом → rtp phase 2026-09-29-ngram-only-learning-ui --to done
 
 **Заметки агента** (не выводятся из кода — грабли, тупики, договорённости)
 
@@ -148,6 +172,7 @@ docs/tasks/2026-09-29-ngram-only-learning-ui.md | 51 ++++++++++++++++++++++++-
 - 2026-09-29: Swift в облаке ставится вручную: curl download.swift.org swift-6.1.2 ubuntu24.04 → /opt/swift, PATH=/opt/swift/usr/bin. На Linux собираются только LanguageModel и ModelTrainer (Core/UI/App — AppKit/Carbon); Core и тесты проверяет только CI macOS (push в claude/** запускает CI, ~4 мин; логи — GitHub MCP get_job_logs, таблицы LayoutEval в хвосте лога TestRunner).
 - 2026-09-29: Корпуса: scripts/fetch-corpora.sh (Leipzig/OPUS/github-docs, сверка scripts/corpora.sha256); обучение детерминировано, ModelTrainer train перегенерирует и ShortWordTable+Generated.swift. Быстрая оценка без macOS: .build/release/ModelTrainer eval / score.
 - 2026-09-29: Удаление словарей затрагивает: Package.swift (Dictionary target), Core/LayoutDetector (словарный путь, WordValidator, import Dictionary), Core/DictionaryReadiness, AppDelegate.prepareDictionaries, build-app.sh (compile_dictionary, SFDICT2), scripts/compile_dictionary.swift, TestRunner (WordValidator/Bloom/Dictionary perf suites, enableTextFallbackForTesting), InputPipelineTestRunner ('missing dictionary seam' — AutomaticDictionaryReadiness), CLAUDE.md/README. Инварианты plan/003 (staleness guards в prepareCorrection/CorrectionPlan.isEligible) не трогать.
+- 2026-09-29: Linux-харнесс для детектора/лексикона/LayoutEval/sweep: scratchpad/harness (Sources/Core — симлинки LayoutDetector/LayoutMapper/NgramScoring/PersonalLexicon, Harness — симлинки тестов TestRunner и LayoutEval, заглушка Utils.SwitchFixLog); после swift build: ln -sfn H_LanguageModel.resources .build/release/SwitchFix_LanguageModel.bundle; запускать из корня репо (--threshold-sweep ~40 с). InputEngine/UI на Linux не собираются — только CI. В SwiftUI-файлах Layout конфликтует с SwiftUI.Layout — использовать KeyboardLayout. security-review скиллу нужен origin/HEAD: git remote set-head origin master.
 <!-- /handoff-notes -->
 
 ## Blockers
