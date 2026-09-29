@@ -15,4 +15,5 @@ Nothing else changed. One-off copy — not synced with the plugin.
 Known dangling references (accepted): `executing-plans` → `../using-superpowers/references/`;
 `test-driven-development` → `writing-skills`; `using-superpowers` and the plugin's SessionStart
 hook are not copied. `brainstorming/scripts/server.cjs` looks for the plugin `package.json`
-three levels up and runs without a version when it is absent.
+three levels up and runs without a version when it is absent. `writing-plans` still says
+`docs/superpowers/plans/`; in this repo the `run-task-pipeline` flow puts plans in `docs/plans/`.

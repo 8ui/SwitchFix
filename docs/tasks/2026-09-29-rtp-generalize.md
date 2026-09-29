@@ -13,8 +13,8 @@ step_current: 7
 artifacts:
   spec: docs/features/rtp-cloud-switchfix-spec.md
   plan: docs/plans/rtp-cloud-switchfix-plan.md
-  branch: null
-  pr: null
+  branch: claude/rtp-cloud-pipeline
+  pr: "https://github.com/8ui/SwitchFix/pull/4"
 ---
 
 ## Context
@@ -84,6 +84,9 @@ restoplace `ae27627e9`). Подзадача 2: облачные сессии Swi
 - 2026-09-29: verify: `git ls-files -s .claude | awk '$1=="100755"{print $4}'` → exit 0 ✅
 - 2026-09-29: verify: `критерий 4: гвард локально — PATH=/usr/bin:/bin sh .claude/rtp-hook.sh hook-stop` → exit 0 ✅
 - 2026-09-29: verify: `критерий 5: без глобальных хуков (CLAUDE_CONFIG_DIR пуст)` → exit 0 ✅
+- 2026-09-29: artifacts.branch = claude/rtp-cloud-pipeline; artifacts.pr = https://github.com/8ui/SwitchFix/pull/4
+- 2026-09-29: code-review ветки (general-purpose/opus): 0 blocker/major, 6 minor; исправлены 1-5 (симлинк шима, кавычки в env-строке, нет node, шире гвард, без дублей PATH), 6 — в NOTICE
+- 2026-09-29: verify: `повторная проверка rtp-hook.sh/шима после ревью` → exit 0 ✅
 
 ## Decisions
 
@@ -219,6 +222,12 @@ _Нетривиальные решения по ходу задачи. Одна 
 
   ```
   SessionStart дописал export PATH=<repo>/.claude/bin; Stop t1 (правка Sources без rtp) exit 2 + «задачи в этой сессии нет»; t2 (+ node "…/rtp.mjs" phase) exit 0; .claude/bin/rtp list печатает задачи
+  ```
+
+- 2026-09-29 · `повторная проверка rtp-hook.sh/шима после ревью` · exit 0 ✅
+
+  ```
+  гвард локально exit 0; env-строка одна, source даёт .claude/bin/rtp; без node — сообщение + exit 1; шим через симлинк работает; Stop без транскрипта exit 0
   ```
 
 ## Handoff
