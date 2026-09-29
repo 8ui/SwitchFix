@@ -3,13 +3,13 @@ id: 2026-09-29-ngram-only-learning-ui
 title: "Удалить словари: n-gram единственный детектор, обучение на отменах, вкладка Слова, ползунок"
 type: feature
 pipeline: full
-phase: impl
+phase: review
 created: 2026-09-29
 updated: 2026-09-29
 blocked_by: null
-steps_done: 7
+steps_done: 8
 steps_total: 8
-step_current: 8
+step_current: null
 artifacts:
   spec: plan/005_ngram_layout_detection.md
   plan: docs/plans/ngram-only-learning-ui-plan.md
@@ -30,7 +30,7 @@ artifacts:
 5. ✅ вкладка «Слова» с полным CRUD
 6. ✅ позиции чувствительности в `DetectionThresholds` и ползунок
 7. ✅ перебор порогов, калибровка ползунка, защита от устаревших порогов
-8. ▶ документация и Definition of Done
+8. ✅ документация и Definition of Done
 
 ## Log
 
@@ -57,6 +57,9 @@ artifacts:
 - 2026-09-29: шаг 6 ✅ позиции чувствительности в `DetectionThresholds` и ползунок — CI 36559786804
 - 2026-09-29: шаг 7 ✅ перебор порогов, калибровка ползунка, защита от устаревших порогов — positions +4/+2/0/-2/-4; базовые пороги не менялись; thresholds_005.md
 - 2026-09-29: шаг 8 ▶ документация и Definition of Done
+- 2026-09-29: шаг 8 ✅ документация и Definition of Done — CLAUDE.md, README, plan/005 DoD
+- 2026-09-29: impl complete: 8/8 шагов; code-review субагентом: 0 blocker, 3 major + 7 minor — все исправлены в c307b45
+- 2026-09-29: security-review (субагент): уязвимостей с уверенностью ≥8 нет; secure-focus guards покрывают все пути обучения
 
 ## Decisions
 
