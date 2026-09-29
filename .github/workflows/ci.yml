@@ -34,6 +34,12 @@ jobs:
       - name: Show Swift version
         run: swift --version
 
+      - name: L10n has no duplicate keys
+        # A repeated key in the dictionary literal crashes the first Russian lookup.
+        run: |
+          dups=$(grep -oE '^ *"([^"\\]|\\.)*":( |$)' Sources/UI/L10n.swift | sed -E 's/^ *//; s/ $//' | sort | uniq -d)
+          if [ -n "$dups" ]; then echo "Duplicate L10n keys:"; echo "$dups"; exit 1; fi
+
       - name: Build (release)
         run: swift build -c release
 

@@ -5,6 +5,7 @@ public enum SettingsTab: Int, CaseIterable {
     case general
     case correction
     case apps
+    case words
     case about
 
     /// Width shared by all tabs, so switching tabs only changes the window height.
@@ -15,6 +16,7 @@ public enum SettingsTab: Int, CaseIterable {
         case .general: return L10n.tr("General")
         case .correction: return L10n.tr("Correction")
         case .apps: return L10n.tr("Apps")
+        case .words: return L10n.tr("Words")
         case .about: return L10n.tr("About")
         }
     }
@@ -24,6 +26,7 @@ public enum SettingsTab: Int, CaseIterable {
         case .general: return "gearshape"
         case .correction: return "character.cursor.ibeam"
         case .apps: return "square.grid.2x2"
+        case .words: return "text.book.closed"
         case .about: return "info.circle"
         }
     }
@@ -33,6 +36,7 @@ public enum SettingsTab: Int, CaseIterable {
         case .general: return AnyView(GeneralSettingsView(model: model))
         case .correction: return AnyView(CorrectionSettingsView(model: model))
         case .apps: return AnyView(AppsSettingsView(settings: model))
+        case .words: return AnyView(LearnedWordsView(settings: model))
         case .about: return AnyView(AboutSettingsView(model: model))
         }
     }
