@@ -124,8 +124,12 @@ private func loadSentences(_ language: Layout) -> [[String]] {
         .filter { !$0.isEmpty }
 }
 
+/// Engine under evaluation; every suite runs once per engine (plan/005 Phase 2).
+private var evalEngine: DetectionEngine = .dictionary
+
 private func makeDetector(current: Layout, allowed: Set<Layout>) -> LayoutDetector {
     let detector = LayoutDetector()
+    detector.engine = evalEngine
     detector.currentLayout = current
     detector.allowedLayouts = allowed
     return detector
@@ -553,8 +557,12 @@ func runLayoutEvalSuites() {
     for language in evalLanguages {
         sentences[language] = loadSentences(language)
     }
-    runMixedEval()
-    runIsolatedEval(sentences: sentences)
-    runSentenceEval(sentences: sentences)
-    runEdgeCaseEval()
+    for engine in [DetectionEngine.dictionary, .ngram] {
+        evalEngine = engine
+        print("\n========== LayoutEval engine: \(engine.rawValue) ==========")
+        runMixedEval()
+        runIsolatedEval(sentences: sentences)
+        runSentenceEval(sentences: sentences)
+        runEdgeCaseEval()
+    }
 }

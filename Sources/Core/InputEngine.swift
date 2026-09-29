@@ -38,6 +38,8 @@ public final class InputEngine {
         var allowedLayouts = Set(Layout.allCases)
         var ukrainianFromVariant: UkrainianKeyboardVariant = .standard
         var ukrainianToVariant: UkrainianKeyboardVariant = .standard
+        var engine: DetectionEngine = .dictionary
+        var thresholds: DetectionThresholds = .default
     }
 
     private let inputQueue = DispatchQueue(label: "com.switchfix.input-engine", qos: .userInteractive)
@@ -228,12 +230,16 @@ public final class InputEngine {
     public func updateDetectionConfiguration(
         allowedLayouts: Set<Layout>,
         ukrainianFromVariant: UkrainianKeyboardVariant,
-        ukrainianToVariant: UkrainianKeyboardVariant
+        ukrainianToVariant: UkrainianKeyboardVariant,
+        engine: DetectionEngine = .dictionary,
+        thresholds: DetectionThresholds = .default
     ) {
         detectionConfiguration.withLock { value in
             value.allowedLayouts = allowedLayouts
             value.ukrainianFromVariant = ukrainianFromVariant
             value.ukrainianToVariant = ukrainianToVariant
+            value.engine = engine
+            value.thresholds = thresholds
         }
     }
 
@@ -343,6 +349,8 @@ public final class InputEngine {
                 self.detector.allowedLayouts = configuration.allowedLayouts
                 self.detector.ukrainianFromVariant = configuration.ukrainianFromVariant
                 self.detector.ukrainianToVariant = configuration.ukrainianToVariant
+                self.detector.engine = configuration.engine
+                self.detector.thresholds = configuration.thresholds
                 self.detector.discardBuffer()
                 self.detector.addCharacter(request.word)
                 result = self.detector.flushBuffer(

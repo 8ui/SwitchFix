@@ -96,13 +96,22 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         keyboardMonitor?.stop()
     }
 
+    /// Detection engine chosen at launch (hidden preference, plan/005).
+    private lazy var detectionEngine: DetectionEngine =
+        DetectionEngine(rawValue: PreferencesManager.shared.detectionEngine) ?? .dictionary
+
     private func prepareDictionaries(completion: @escaping (Set<Layout>) -> Void) {
         let installedLayouts = inputSourceManager.availableLayouts()
+        let engine = detectionEngine
+        SwitchFixLog.app.notice("detection engine: \(engine.rawValue)")
         DispatchQueue.global(qos: .utility).async {
             var readyLayouts: Set<Layout> = []
             var unavailable: [String] = []
             for layout in installedLayouts {
-                if AutomaticDictionaryReadiness.prepare(layout) {
+                let ready = engine == .ngram
+                    ? LanguageModelReadiness.prepare(layout)
+                    : AutomaticDictionaryReadiness.prepare(layout)
+                if ready {
                     readyLayouts.insert(layout)
                 } else {
                     unavailable.append(layout.rawValue)
@@ -366,7 +375,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         inputEngine?.updateDetectionConfiguration(
             allowedLayouts: allowedLayouts,
             ukrainianFromVariant: currentVariant,
-            ukrainianToVariant: preferredVariant
+            ukrainianToVariant: preferredVariant,
+            engine: detectionEngine
         )
     }
 

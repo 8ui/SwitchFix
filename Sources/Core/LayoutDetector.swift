@@ -1,5 +1,6 @@
 import Foundation
 import Dictionary
+import LanguageModel
 import Utils
 
 /// Represents a detection result — the target layout and converted word.
@@ -98,7 +99,22 @@ public class LayoutDetector {
     private static let cyrillicRange: ClosedRange<UInt32> = 0x0400...0x052F
 
     /// The currently active keyboard layout (set externally by InputSourceManager).
-    public var currentLayout: Layout = .english
+    public var currentLayout: Layout = .english {
+        didSet {
+            if currentLayout != .english { lastCyrillicLayout = currentLayout }
+        }
+    }
+
+    /// Word classifier for automatic correction (plan/005). Manual hotkey conversion
+    /// does not depend on it.
+    public var engine: DetectionEngine = .dictionary
+    /// Margin thresholds of the `.ngram` engine.
+    public var thresholds: DetectionThresholds = .default
+    /// Source of the n-gram models (injectable for tests).
+    public var languageModels: LanguageModelStore = .shared
+    /// The Cyrillic layout the user typed on most recently: the target for Latin words
+    /// when both Russian and Ukrainian are installed. Survives `reset()`.
+    private var lastCyrillicLayout: Layout?
 
     public init() {}
 
@@ -207,6 +223,10 @@ public class LayoutDetector {
             return nil
         }
 
+        if engine == .ngram {
+            return checkBufferNgram(word: word, sourceLayout: sourceLayout, suppressedShort: suppressedShort)
+        }
+
         // Check if the word is valid in the current layout's language
         let currentWordParts = splitTokenForValidation(word)
         let currentValidationInput = currentWordParts.core.isEmpty ? word : currentWordParts.core
@@ -276,108 +296,24 @@ public class LayoutDetector {
                     allowSuggestion: false
                 )
                 if validation.isValid {
-                    let correctedCore = validationInput
-                    let recomposedWord = tokenParts.prefix + correctedCore + tokenParts.suffix
-                    var finalWord = applyCase(from: word, to: recomposedWord)
-                    var originalForCorrection = word
-                    let isLowConfidence = word.count <= lowConfidenceMaxLength
-                    let shouldSwitch = shouldSwitchLayout(isLowConfidence: isLowConfidence, targetLayout: targetLayout)
-
-                    if shouldSuppressLowConfidenceCorrection(
-                        original: word,
-                        converted: finalWord,
-                        targetLayout: targetLayout,
-                        sourceLayout: sourceLayout,
-                        isLowConfidence: isLowConfidence,
-                        shouldSwitch: shouldSwitch
-                    ) {
-                        SwitchFixLog.detector.info("suppressed short word '\(word)' -> '\(finalWord)' (weak evidence, deferring)")
-                        consecutiveWrongCount = 0
-                        lastDetectionResult = nil
-                        if let boundary = pendingBoundaryCharacter, !boundary.isEmpty {
-                            pendingSuppressedShort = SuppressedShort(
-                                originalWord: word,
-                                convertedWord: finalWord,
-                                targetLayout: targetLayout,
-                                boundaryAfterWord: boundary
-                            )
-                        }
-                        recordOutcome(.unknown)
-                        state = .buffering
-                        return nil
-                    }
-
-                    if let merged = mergeSuppressedShort(
-                        suppressedShort,
-                        currentOriginal: word,
-                        currentConverted: finalWord,
-                        targetLayout: targetLayout,
-                        isLowConfidence: isLowConfidence,
-                        shouldSwitch: shouldSwitch
-                    ) {
-                        originalForCorrection = merged.original
-                        finalWord = merged.converted
-                    }
-
-                    consecutiveWrongCount += 1
-                    lastDetectionResult = DetectionResult(
+                    let recomposedWord = tokenParts.prefix + validationInput + tokenParts.suffix
+                    return finishCorrection(
+                        word: word,
+                        recomposedWord: recomposedWord,
                         sourceLayout: sourceLayout,
                         targetLayout: targetLayout,
-                        convertedWord: finalWord,
-                        originalWord: originalForCorrection,
-                        shouldSwitchLayout: shouldSwitch
+                        suppressedShort: suppressedShort
                     )
-
-                    if consecutiveWrongCount >= consecutiveThreshold {
-                        let result = lastDetectionResult
-                        consecutiveWrongCount = 0
-                        recordOutcome(.corrected)
-                        state = .buffering
-                        return result
-                    }
-
-                    recordOutcome(.corrected)
-                    state = .buffering
-                    return nil
                 }
             }
 
             if shouldAllowAcronymFallback(original: word, converted: converted, currentLanguage: currentLanguage) {
-                let finalWord = applyCase(from: word, to: converted)
-                let shouldSwitch = shouldSwitchLayout(isLowConfidence: true, targetLayout: targetLayout)
-
-                if shouldSuppressAcronymFallback(
-                    targetLayout: targetLayout,
+                return finishAcronymFallback(
+                    word: word,
+                    converted: converted,
                     sourceLayout: sourceLayout,
-                    shouldSwitch: shouldSwitch
-                ) {
-                    consecutiveWrongCount = 0
-                    lastDetectionResult = nil
-                    recordOutcome(.unknown)
-                    state = .buffering
-                    return nil
-                }
-
-                consecutiveWrongCount += 1
-                lastDetectionResult = DetectionResult(
-                    sourceLayout: sourceLayout,
-                    targetLayout: targetLayout,
-                    convertedWord: finalWord,
-                    originalWord: word,
-                    shouldSwitchLayout: shouldSwitch
+                    targetLayout: targetLayout
                 )
-
-                if consecutiveWrongCount >= consecutiveThreshold {
-                    let result = lastDetectionResult
-                    consecutiveWrongCount = 0
-                    recordOutcome(.corrected)
-                    state = .buffering
-                    return result
-                }
-
-                recordOutcome(.corrected)
-                state = .buffering
-                return nil
             }
         }
 
@@ -386,6 +322,270 @@ public class LayoutDetector {
         pendingSwitchLayout = nil
         pendingSwitchCount = 0
         recordOutcome(.unknown)
+        state = .buffering
+        return nil
+    }
+
+    // MARK: - N-gram engine
+
+    /// Automatic detection without dictionaries (plan/005 §4.3): converts only between
+    /// English and the native Cyrillic layout; short words go through
+    /// `ShortWordTable`, longer ones through the language-model margin.
+    private func checkBufferNgram(word: String, sourceLayout: Layout, suppressedShort: SuppressedShort?) -> DetectionResult? {
+        let originalParts = splitTokenForValidation(word)
+        let core = originalParts.core.isEmpty ? word : originalParts.core
+
+        if AutomaticCorrectionSkipRules.shouldSkip(core)
+            || shouldSkipAutomaticEnglishAcronymCorrection(word: word, sourceLayout: sourceLayout) {
+            markValidInCurrentLanguage()
+            return nil
+        }
+
+        let letterCount = core.filter(\.isLetter).count
+        if letterCount <= ShortWordTable.maxLength,
+           ShortWordTable.contains(core, language: sourceLayout.modelLanguage) {
+            SwitchFixLog.detector.debug("ngram: common short word '\(word)' in \(sourceLayout.rawValue) — no correction")
+            markValidInCurrentLanguage()
+            return nil
+        }
+
+        let scorer = NgramMarginScorer(store: languageModels)
+        let threshold = thresholds.threshold(forLetterCount: letterCount)
+        var best: (target: Layout, recomposed: String, margin: Double)?
+        var highestMargin = -Double.infinity
+        var firstConversion: (target: Layout, converted: String)?
+
+        for target in ngramTargets(for: sourceLayout) {
+            var conversions = [LayoutMapper.convert(
+                word,
+                from: sourceLayout,
+                to: target,
+                ukrainianFromVariant: ukrainianFromVariant,
+                ukrainianToVariant: ukrainianToVariant
+            )]
+            if sourceLayout == .ukrainian && target == .english {
+                let fallbackVariant: UkrainianKeyboardVariant = (ukrainianFromVariant == .legacy) ? .standard : .legacy
+                let fallback = LayoutMapper.convert(
+                    word,
+                    from: .ukrainian,
+                    to: .english,
+                    ukrainianFromVariant: fallbackVariant,
+                    ukrainianToVariant: ukrainianToVariant
+                )
+                if !conversions.contains(fallback) { conversions.append(fallback) }
+            }
+            if firstConversion == nil, let first = conversions.first {
+                firstConversion = (target, first)
+            }
+
+            for conversion in conversions {
+                let parts = splitTokenForValidation(conversion)
+                // A letter key that maps to punctuation at the start is a fake switch
+                // ('бігу' → ',sue').
+                if parts.prefix.count > originalParts.prefix.count { continue }
+                let convertedCore = parts.core.isEmpty ? conversion : parts.core
+                let recomposed = parts.prefix + convertedCore + parts.suffix
+
+                if letterCount <= ShortWordTable.maxLength,
+                   ShortWordTable.contains(convertedCore, language: target.modelLanguage) {
+                    SwitchFixLog.detector.debug("ngram: '\(word)' → common short word '\(recomposed)' in \(target.rawValue)")
+                    return finishCorrection(
+                        word: word,
+                        recomposedWord: recomposed,
+                        sourceLayout: sourceLayout,
+                        targetLayout: target,
+                        suppressedShort: suppressedShort
+                    )
+                }
+
+                guard let threshold,
+                      let margin = scorer.margin(
+                        typedCore: core,
+                        source: sourceLayout,
+                        convertedCore: convertedCore,
+                        target: target
+                      ) else { continue }
+                highestMargin = max(highestMargin, margin)
+                if margin > threshold, margin > (best?.margin ?? -.infinity) {
+                    best = (target, recomposed, margin)
+                }
+            }
+        }
+
+        if let best {
+            SwitchFixLog.detector.debug(
+                "ngram: '\(word)' → '\(best.recomposed)' margin=\(String(format: "%.1f", best.margin)) threshold=\(String(format: "%.1f", threshold ?? 0)) letters=\(letterCount)"
+            )
+            return finishCorrection(
+                word: word,
+                recomposedWord: best.recomposed,
+                sourceLayout: sourceLayout,
+                targetLayout: best.target,
+                suppressedShort: suppressedShort
+            )
+        }
+
+        if let firstConversion,
+           shouldAllowAcronymFallback(
+            original: word,
+            converted: firstConversion.converted,
+            currentLanguage: languageForLayout(sourceLayout)
+           ) {
+            return finishAcronymFallback(
+                word: word,
+                converted: firstConversion.converted,
+                sourceLayout: sourceLayout,
+                targetLayout: firstConversion.target
+            )
+        }
+
+        if highestMargin.isFinite && highestMargin < 0 {
+            // The keystrokes read better as typed: evidence for the current language.
+            markValidInCurrentLanguage()
+        } else {
+            pendingSwitchLayout = nil
+            pendingSwitchCount = 0
+            recordOutcome(.unknown)
+            state = .buffering
+        }
+        return nil
+    }
+
+    /// Layouts a word typed on `source` may be converted to automatically: only
+    /// English ↔ Cyrillic, never Russian ↔ Ukrainian (plan/005 «Целевой сценарий»).
+    private func ngramTargets(for source: Layout) -> [Layout] {
+        if source != .english {
+            return allowedLayouts.contains(.english) ? [.english] : []
+        }
+        let cyrillic = [Layout.russian, .ukrainian].filter { allowedLayouts.contains($0) }
+        if cyrillic.count > 1, let last = lastCyrillicLayout, cyrillic.contains(last) {
+            return [last]
+        }
+        return cyrillic
+    }
+
+    private func markValidInCurrentLanguage() {
+        consecutiveWrongCount = 0
+        lastDetectionResult = nil
+        pendingSwitchLayout = nil
+        pendingSwitchCount = 0
+        recordOutcome(.validCurrent)
+        state = .buffering
+    }
+
+    /// Shared tail of a detected correction: case restoration, low-confidence
+    /// confirmation and suppression, merging a deferred short word, and the
+    /// consecutive-word threshold. Used by both detection engines.
+    private func finishCorrection(
+        word: String,
+        recomposedWord: String,
+        sourceLayout: Layout,
+        targetLayout: Layout,
+        suppressedShort: SuppressedShort?
+    ) -> DetectionResult? {
+        var finalWord = applyCase(from: word, to: recomposedWord)
+        var originalForCorrection = word
+        let isLowConfidence = word.count <= lowConfidenceMaxLength
+        let shouldSwitch = shouldSwitchLayout(isLowConfidence: isLowConfidence, targetLayout: targetLayout)
+
+        if shouldSuppressLowConfidenceCorrection(
+            original: word,
+            converted: finalWord,
+            targetLayout: targetLayout,
+            sourceLayout: sourceLayout,
+            isLowConfidence: isLowConfidence,
+            shouldSwitch: shouldSwitch
+        ) {
+            SwitchFixLog.detector.info("suppressed short word '\(word)' -> '\(finalWord)' (weak evidence, deferring)")
+            consecutiveWrongCount = 0
+            lastDetectionResult = nil
+            if let boundary = pendingBoundaryCharacter, !boundary.isEmpty {
+                pendingSuppressedShort = SuppressedShort(
+                    originalWord: word,
+                    convertedWord: finalWord,
+                    targetLayout: targetLayout,
+                    boundaryAfterWord: boundary
+                )
+            }
+            recordOutcome(.unknown)
+            state = .buffering
+            return nil
+        }
+
+        if let merged = mergeSuppressedShort(
+            suppressedShort,
+            currentOriginal: word,
+            currentConverted: finalWord,
+            targetLayout: targetLayout,
+            isLowConfidence: isLowConfidence,
+            shouldSwitch: shouldSwitch
+        ) {
+            originalForCorrection = merged.original
+            finalWord = merged.converted
+        }
+
+        consecutiveWrongCount += 1
+        lastDetectionResult = DetectionResult(
+            sourceLayout: sourceLayout,
+            targetLayout: targetLayout,
+            convertedWord: finalWord,
+            originalWord: originalForCorrection,
+            shouldSwitchLayout: shouldSwitch
+        )
+
+        if consecutiveWrongCount >= consecutiveThreshold {
+            let result = lastDetectionResult
+            consecutiveWrongCount = 0
+            recordOutcome(.corrected)
+            state = .buffering
+            return result
+        }
+
+        recordOutcome(.corrected)
+        state = .buffering
+        return nil
+    }
+
+    /// Shared tail of the uppercase-acronym fallback ("СШ" → "CI").
+    private func finishAcronymFallback(
+        word: String,
+        converted: String,
+        sourceLayout: Layout,
+        targetLayout: Layout
+    ) -> DetectionResult? {
+        let finalWord = applyCase(from: word, to: converted)
+        let shouldSwitch = shouldSwitchLayout(isLowConfidence: true, targetLayout: targetLayout)
+
+        if shouldSuppressAcronymFallback(
+            targetLayout: targetLayout,
+            sourceLayout: sourceLayout,
+            shouldSwitch: shouldSwitch
+        ) {
+            consecutiveWrongCount = 0
+            lastDetectionResult = nil
+            recordOutcome(.unknown)
+            state = .buffering
+            return nil
+        }
+
+        consecutiveWrongCount += 1
+        lastDetectionResult = DetectionResult(
+            sourceLayout: sourceLayout,
+            targetLayout: targetLayout,
+            convertedWord: finalWord,
+            originalWord: word,
+            shouldSwitchLayout: shouldSwitch
+        )
+
+        if consecutiveWrongCount >= consecutiveThreshold {
+            let result = lastDetectionResult
+            consecutiveWrongCount = 0
+            recordOutcome(.corrected)
+            state = .buffering
+            return result
+        }
+
+        recordOutcome(.corrected)
         state = .buffering
         return nil
     }

@@ -23,6 +23,14 @@ public class PreferencesManager {
         static let revertHotkeyKeyCode = "SwitchFix_revertHotkeyKeyCode"
         static let revertHotkeyModifiers = "SwitchFix_revertHotkeyModifiers"
         static let language = "SwitchFix_language"
+        static let detectionEngine = "SwitchFix_detectionEngine"
+    }
+
+    /// Automatic detection engine: "dictionary" (default) or "ngram" (plan/005).
+    /// Hidden setting read at launch — switch with
+    /// `defaults write com.switchfix.app SwitchFix_detectionEngine ngram` and restart.
+    public var detectionEngine: String {
+        defaults.string(forKey: Keys.detectionEngine) ?? "dictionary"
     }
 
     /// Interface language (default: follows the system language).

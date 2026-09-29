@@ -117,6 +117,15 @@ if [ -d "$PRODUCTS_DIR/SwitchFix_Dictionary.bundle" ]; then
     echo "Copied compiled dictionary binaries and removed text fallbacks."
 fi
 
+# Copy the language model bundle (plan/005 n-gram engine). Same bundle layout
+# rules as the dictionary bundle; LanguageModelStore.resourceURL handles both.
+if [ -d "$PRODUCTS_DIR/SwitchFix_LanguageModel.bundle" ]; then
+    cp -R "$PRODUCTS_DIR/SwitchFix_LanguageModel.bundle" "$APP_BUNDLE/Contents/Resources/"
+    echo "Copied language model bundle to Contents/Resources/."
+else
+    echo "WARNING: SwitchFix_LanguageModel.bundle not found; the n-gram engine will be unavailable."
+fi
+
 # Code sign
 # Prefer a stable signing identity so macOS TCC permissions (Accessibility,
 # Input Monitoring) survive across rebuilds. Resolution order:

@@ -809,6 +809,7 @@ runSuite("Synthetic: EN → UK coverage") {
 // =============================================================================
 
 runLanguageModelSuites()
+runNgramDetectorSuites()
 
 // =============================================================================
 // Layout-detection eval on real text (report-only, see Tests/LayoutEval)

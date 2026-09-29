@@ -9,12 +9,12 @@ let package = Package(
     targets: [
         .executableTarget(
             name: "SwitchFixApp",
-            dependencies: ["Core", "Dictionary", "UI", "Utils"],
+            dependencies: ["Core", "Dictionary", "LanguageModel", "UI", "Utils"],
             path: "Sources/SwitchFixApp"
         ),
         .target(
             name: "Core",
-            dependencies: ["Dictionary", "Utils"],
+            dependencies: ["Dictionary", "LanguageModel", "Utils"],
             path: "Sources/Core"
         ),
         .target(
