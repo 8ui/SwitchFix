@@ -119,7 +119,7 @@ mmap, логика поиска бандла в двух раскладках (`
 
 ```
                         ── офлайн (разработчик) ──
-  корпуса (Leipzig / OpenSubtitles / Wikipedia)          plan/benchmarks/eval/*.tsv
+  корпуса (Leipzig / OpenSubtitles / Wikipedia)          Tests/LayoutEval/*
         │  swift run -c release ModelTrainer                      │
         ▼                                                         │
   Sources/LanguageModel/Resources/{en,ru,uk}.sfng  (коммитится, ≤ 1 МБ)
@@ -345,10 +345,12 @@ func score(word: String, source: Layout, alternatives: [(Layout, String)]) -> La
 ## 7. Этапы реализации
 
 ### Фаза 0: Eval-набор и baseline ⏱ ~1 ч
-- Собрать `plan/benchmarks/eval/{en,ru,uk}.tsv` из реальных фраз (не из словарей):
-  ~2000 слов на язык с частотным распределением живого текста, включая словоформы,
-  техтермины, имена, сленг; плюс набор «опасных» строк (идентификаторы кода, аббревиатуры,
-  транслит).
+- Собрать `Tests/LayoutEval/{en,ru,uk}.txt` из реальных фраз (не из словарей):
+  ~5000 слов на язык с частотным распределением живого текста — предложения из тестовых
+  частей UD-трибанков (CC BY-SA 4.0, см. `Tests/LayoutEval/README.md`); плюс
+  `edge_cases.tsv` — «опасные» строки (идентификаторы кода, аббревиатуры, сленг, имена,
+  транслит) и техтермины/словоформы в неправильной раскладке.
+- UD-трибанки **не** используются для обучения модели — eval остаётся отложенным.
 - Добавить в `TestRunner` eval-suite, прогоняемый против **текущего** словарного
   детектора → baseline recall/FP по длинам в `plan/benchmarks/baseline_005.md`.
 

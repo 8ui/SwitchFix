@@ -51,6 +51,14 @@ func forEachDictionaryWord(language: Language, _ block: (String) -> Void) {
     }
 }
 
+// `--layout-eval-only`: run just the real-text layout-detection eval (plan/005).
+if CommandLine.arguments.contains("--layout-eval-only") {
+    runLayoutEvalSuites()
+    print("\n========================================")
+    print("Results: \(passed) passed, \(failed) failed")
+    exit(failed > 0 ? 1 : 0)
+}
+
 // =============================================================================
 // LayoutMapper Tests
 // =============================================================================
@@ -795,6 +803,12 @@ runSuite("Synthetic: EN → UK coverage") {
     print("  ambiguous: \(ambiguous) (\(String(format: "%.2f", ambiguousRate * 100))%), invalid target: \(invalidTarget)")
     assert(total > 0, "english dictionary should not be empty")
 }
+
+// =============================================================================
+// Layout-detection eval on real text (report-only, see Tests/LayoutEval)
+// =============================================================================
+
+runLayoutEvalSuites()
 
 // =============================================================================
 // Performance
