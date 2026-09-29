@@ -313,6 +313,23 @@ run("layout-switch selection source script") {
     )
 }
 
+run("selection source order") {
+    check(
+        ScriptAnalyzer.selectionSourceOrder(for: "привет, мир", currentLayout: .english) == [.russian, .ukrainian, .english],
+        "Cyrillic text starts from a Cyrillic layout"
+    )
+    check(
+        ScriptAnalyzer.selectionSourceOrder(for: "hello", currentLayout: .russian) == [.english, .russian, .ukrainian],
+        "Latin text starts from English"
+    )
+    // No letters: ';' exists on both US and RussianWin (Shift+4), so only the layout the
+    // text was typed on can decide — ';5' typed on Russian must become '$5', not 'ж5'.
+    check(
+        ScriptAnalyzer.selectionSourceOrder(for: ";5", currentLayout: .russian).first == .russian,
+        "letterless text starts from the current layout"
+    )
+}
+
 run("64 grapheme cap") {
     let current = context()
     var machine = automaticMachine(current)

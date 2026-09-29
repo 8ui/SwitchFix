@@ -113,4 +113,26 @@ public struct ScriptAnalyzer {
             return currentLayout
         }
     }
+
+    /// Source layouts to try when converting a selection, most likely first. The text's
+    /// dominant script decides ("привет, мир" "converted" from English only turns the
+    /// comma into "б"); text without letters (";5") exists on several layouts, so the
+    /// layout it was typed on goes first.
+    public static func selectionSourceOrder(for text: String, currentLayout: Layout) -> [Layout] {
+        let cyrillic = text.unicodeScalars.filter { (0x0400...0x04FF).contains($0.value) }.count
+        let latin = text.unicodeScalars.filter { $0.isASCII && CharacterSet.letters.contains($0) }.count
+        let scriptLayouts: [Layout]
+        if cyrillic == 0 && latin == 0 {
+            scriptLayouts = [currentLayout]
+        } else if cyrillic > latin {
+            scriptLayouts = currentLayout == .english ? [.russian, .ukrainian] : [currentLayout, .russian, .ukrainian]
+        } else {
+            scriptLayouts = [.english]
+        }
+        var sources: [Layout] = []
+        for layout in scriptLayouts + [currentLayout] + Layout.allCases where !sources.contains(layout) {
+            sources.append(layout)
+        }
+        return sources
+    }
 }

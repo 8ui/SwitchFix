@@ -637,17 +637,7 @@ public final class InputEngine {
         currentLayout: Layout,
         configuration: DetectionConfiguration
     ) -> (source: Layout, target: Layout, converted: String)? {
-        // Try the layout matching the text's dominant script first, otherwise e.g.
-        // "привет, мир" "converted" from English only turns the comma into "б".
-        let cyrillic = text.unicodeScalars.filter { (0x0400...0x04FF).contains($0.value) }.count
-        let latin = text.unicodeScalars.filter { $0.isASCII && CharacterSet.letters.contains($0) }.count
-        let scriptLayouts: [Layout] = cyrillic > latin
-            ? (currentLayout == .english ? [.russian, .ukrainian] : [currentLayout, .russian, .ukrainian])
-            : [.english]
-        var sources: [Layout] = []
-        for layout in scriptLayouts + [currentLayout] + Layout.allCases where !sources.contains(layout) {
-            sources.append(layout)
-        }
+        let sources = ScriptAnalyzer.selectionSourceOrder(for: text, currentLayout: currentLayout)
         for source in sources {
             let alternatives = LayoutMapper.convertToAlternatives(
                 text,
