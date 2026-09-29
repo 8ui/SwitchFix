@@ -111,6 +111,19 @@ runSuite("LayoutMapper: Same layout") {
     assertEqual(LayoutMapper.convert("hello", from: .english, to: .english), "hello")
 }
 
+runSuite("Layout: input source ID matching") {
+    func layout(_ id: String) -> Layout? { Layout.allCases.first { $0.matches(sourceID: id) } }
+    for id in ["US", "ABC", "British", "British-PC", "Australian", "Canadian", "Irish", "IrishExtended"] {
+        assertEqual(layout("com.apple.keylayout.\(id)"), .english, "\(id) is an English QWERTY layout")
+    }
+    assertEqual(layout("com.apple.keylayout.RussianWin"), .russian)
+    assertEqual(layout("com.apple.keylayout.Ukrainian-PC"), .ukrainian)
+    // Non-QWERTY Latin layouts put letters on other keys; LayoutMapper would mistranslate them.
+    assertEqual(layout("com.apple.keylayout.German"), nil)
+    assertEqual(layout("com.apple.keylayout.French"), nil)
+    assertEqual(layout("com.apple.keylayout.Canadian-CSA"), nil, "French Canadian must not match the Canadian suffix")
+}
+
 runSuite("LayoutMapper: Alternatives") {
     let results = LayoutMapper.convertToAlternatives("ghbdtn", from: .english)
     assert(results.contains(where: { $0.0 == .russian && $0.1 == "привет" }), "alternatives should include russian 'привет'")
