@@ -38,8 +38,7 @@ public final class InputEngine {
 
     private struct DetectionConfiguration {
         var allowedLayouts = Set(Layout.allCases)
-        var ukrainianFromVariant: UkrainianKeyboardVariant = .standard
-        var ukrainianToVariant: UkrainianKeyboardVariant = .standard
+        var keyboardTables: KeyboardTables = .pc
         var thresholds: DetectionThresholds = .default
     }
 
@@ -136,8 +135,7 @@ public final class InputEngine {
         from oldLayout: Layout,
         to newLayout: Layout,
         context: InputContextSnapshot,
-        fromVariant: UkrainianKeyboardVariant,
-        toVariant: UkrainianKeyboardVariant
+        keyboardTables: KeyboardTables
     ) {
         inputQueue.async { [weak self] in
             guard let self else { return }
@@ -163,8 +161,7 @@ public final class InputEngine {
                     bufferedWord,
                     from: oldLayout,
                     to: newLayout,
-                    ukrainianFromVariant: fromVariant,
-                    ukrainianToVariant: toVariant
+                    tables: keyboardTables
                 )
                 guard converted != bufferedWord else { return }
                 let result = DetectionResult(
@@ -211,8 +208,7 @@ public final class InputEngine {
                                 selectedText,
                                 from: oldLayout,
                                 to: newLayout,
-                                ukrainianFromVariant: fromVariant,
-                                ukrainianToVariant: toVariant
+                                tables: keyboardTables
                             )
                             guard converted != selectedText else { return }
                             self.corrector.performSelectionCorrection(
@@ -238,14 +234,12 @@ public final class InputEngine {
 
     public func updateDetectionConfiguration(
         allowedLayouts: Set<Layout>,
-        ukrainianFromVariant: UkrainianKeyboardVariant,
-        ukrainianToVariant: UkrainianKeyboardVariant,
+        keyboardTables: KeyboardTables = .pc,
         thresholds: DetectionThresholds = .default
     ) {
         detectionConfiguration.withLock { value in
             value.allowedLayouts = allowedLayouts
-            value.ukrainianFromVariant = ukrainianFromVariant
-            value.ukrainianToVariant = ukrainianToVariant
+            value.keyboardTables = keyboardTables
             value.thresholds = thresholds
         }
     }
@@ -366,8 +360,7 @@ public final class InputEngine {
                 let configuration = self.detectionConfiguration.withLock { $0 }
                 self.detector.currentLayout = request.context.layout
                 self.detector.allowedLayouts = configuration.allowedLayouts
-                self.detector.ukrainianFromVariant = configuration.ukrainianFromVariant
-                self.detector.ukrainianToVariant = configuration.ukrainianToVariant
+                self.detector.keyboardTables = configuration.keyboardTables
                 self.detector.thresholds = configuration.thresholds
                 self.detector.discardBuffer()
                 self.detector.addCharacter(request.word)
@@ -388,8 +381,7 @@ public final class InputEngine {
                     ? LayoutMapper.convertToAlternatives(
                         request.word,
                         from: sourceLayout,
-                        ukrainianFromVariant: configuration.ukrainianFromVariant,
-                        ukrainianToVariant: configuration.ukrainianToVariant
+                        tables: configuration.keyboardTables
                     ).filter { $0.1 != request.word }
                     : []
                 if forceConversion, result == nil {
@@ -660,8 +652,7 @@ public final class InputEngine {
             let alternatives = LayoutMapper.convertToAlternatives(
                 text,
                 from: source,
-                ukrainianFromVariant: configuration.ukrainianFromVariant,
-                ukrainianToVariant: configuration.ukrainianToVariant
+                tables: configuration.keyboardTables
             ).filter { $0.1 != text }
             if let (target, converted) = alternatives.first(where: { configuration.allowedLayouts.contains($0.0) })
                 ?? alternatives.first {

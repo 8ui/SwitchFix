@@ -175,6 +175,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             object: nil,
             suspensionBehavior: .deliverImmediately
         )
+        DistributedNotificationCenter.default().addObserver(
+            self,
+            selector: #selector(enabledInputSourcesChanged),
+            name: NSNotification.Name(kTISNotifyEnabledKeyboardInputSourcesChanged as String),
+            object: nil,
+            suspensionBehavior: .deliverImmediately
+        )
+    }
+
+    /// A layout was added or removed in System Settings: rebuild the key tables.
+    @objc private func enabledInputSourcesChanged() {
+        inputSourceManager.refreshInstalledSources()
+        inputSourceManager.refreshCurrentInputSource()
+        keyboardMonitor?.refreshInputTranslations()
+        updateDetectionConfiguration(allowedLayouts: readyLayouts)
     }
 
     @objc private func activeApplicationChanged(_ notification: Notification) {
@@ -230,10 +245,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             inputSourceID: newSourceID,
             secureFocus: expectedGeneratedSelection ? .unknown : current.secureFocus
         )
-        let fromVariant = inputSourceManager.ukrainianVariant(forInputSourceID: oldSourceID)
-            ?? inputSourceManager.preferredUkrainianVariant()
-        let toVariant = inputSourceManager.ukrainianVariant(forInputSourceID: newSourceID)
-            ?? inputSourceManager.preferredUkrainianVariant()
+        // Not a dictionary literal: old and new can share a layout (RussianWin → Russian).
+        var overrides = [oldLayout: oldSourceID]
+        overrides[newLayout] = newSourceID
+        let keyboardTables = inputSourceManager.keyboardTables(overrides: overrides)
         if expectedGeneratedSelection {
             inputEngine?.handleGeneratedLayoutContext(context)
             focusCoordinator?.focusMayChange(pid: context.frontmostPID, epoch: context.epoch)
@@ -242,8 +257,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 from: oldLayout,
                 to: newLayout,
                 context: context,
-                fromVariant: fromVariant,
-                toVariant: toVariant
+                keyboardTables: keyboardTables
             )
             // The switch key (e.g. Globe) is captured as navigation and leaves focus
             // unknown; the new epoch orphans that pending query, so re-resolve here —
@@ -369,15 +383,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     private func updateDetectionConfiguration(allowedLayouts: Set<Layout>) {
-        let currentLayout = inputSourceManager.currentLayout()
-        let preferredVariant = inputSourceManager.preferredUkrainianVariant()
-        let currentVariant = currentLayout == .ukrainian
-            ? inputSourceManager.currentUkrainianVariant() ?? preferredVariant
-            : preferredVariant
         inputEngine?.updateDetectionConfiguration(
             allowedLayouts: allowedLayouts,
-            ukrainianFromVariant: currentVariant,
-            ukrainianToVariant: preferredVariant,
+            keyboardTables: inputSourceManager.keyboardTables(),
             thresholds: .forSensitivity(PreferencesManager.shared.detectionSensitivity)
         )
     }

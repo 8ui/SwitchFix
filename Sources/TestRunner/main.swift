@@ -71,42 +71,6 @@ runSuite("LayoutMapper: codex EN ↔ UK") {
     assertEqual(LayoutMapper.convert("сщвуч", from: .ukrainian, to: .english), "codex")
 }
 
-runSuite("LayoutMapper: Ukrainian variants") {
-    assertEqual(
-        LayoutMapper.convert(
-            "seems",
-            from: .english,
-            to: .ukrainian,
-            ukrainianFromVariant: .standard,
-            ukrainianToVariant: .standard
-        ),
-        "іууьі",
-        "standard Ukrainian should map 'seems' to 'іууьі'"
-    )
-    assertEqual(
-        LayoutMapper.convert(
-            "seems",
-            from: .english,
-            to: .ukrainian,
-            ukrainianFromVariant: .standard,
-            ukrainianToVariant: .legacy
-        ),
-        "иууьи",
-        "legacy Ukrainian should map 'seems' to 'иууьи'"
-    )
-    assertEqual(
-        LayoutMapper.convert(
-            "иууьи",
-            from: .ukrainian,
-            to: .english,
-            ukrainianFromVariant: .legacy,
-            ukrainianToVariant: .standard
-        ),
-        "seems",
-        "legacy Ukrainian text should map back to English correctly"
-    )
-}
-
 runSuite("LayoutMapper: Same layout") {
     assertEqual(LayoutMapper.convert("hello", from: .english, to: .english), "hello")
 }
@@ -282,7 +246,7 @@ runSuite("LayoutDetector: Convert English 'gjlsdsvjcm' to Ukrainian 'подив�
     let mockDelegate = MockDetectorDelegate()
     detector.delegate = mockDelegate
     detector.currentLayout = .english
-    detector.ukrainianToVariant = .legacy
+    detector.keyboardTables = .pc.with(.ukrainian, [.pcUkrainianLegacy, .pcUkrainian])
 
     for char in "gjlsdsvjcm" {
         detector.addCharacter(String(char))
@@ -338,7 +302,7 @@ runSuite("LayoutDetector: Convert Ukrainian 'ершиЖ' to English 'this:'") {
     detector.delegate = mockDelegate
     detector.currentLayout = .ukrainian
     // Legacy Ukrainian: 'ерши' is 'this'; shifted 'Ж' is the colon key, not part of an identifier.
-    detector.ukrainianFromVariant = .legacy
+    detector.keyboardTables = .pc.with(.ukrainian, [.pcUkrainianLegacy, .pcUkrainian])
 
     for char in "ершиЖ" {
         detector.addCharacter(String(char))
@@ -378,8 +342,7 @@ runSuite("LayoutDetector: Legacy Ukrainian variant converts to English") {
     detector.currentLayout = .ukrainian
     // The user's own variant decides; the fallback variant must not beat the primary
     // one on score alone ('Иууьи' on standard reads as 'Beemb', see commit 592ea8c).
-    detector.ukrainianFromVariant = .legacy
-    detector.ukrainianToVariant = .standard
+    detector.keyboardTables = .pc.with(.ukrainian, [.pcUkrainianLegacy, .pcUkrainian])
 
     for char in "Иууьи" {
         detector.addCharacter(String(char))
@@ -541,7 +504,7 @@ runSuite("LayoutDetector: Merge suppressed short word when next word confirms la
     let mockDelegate = MockDetectorDelegate()
     detector.delegate = mockDelegate
     detector.currentLayout = .ukrainian
-    detector.ukrainianFromVariant = .legacy
+    detector.keyboardTables = .pc.with(.ukrainian, [.pcUkrainianLegacy, .pcUkrainian])
 
     func typeWord(_ word: String) {
         for char in word {
@@ -577,7 +540,7 @@ runSuite("LayoutDetector: Reset drops suppressed cross-context history") {
     let mockDelegate = MockDetectorDelegate()
     detector.delegate = mockDelegate
     detector.currentLayout = .ukrainian
-    detector.ukrainianFromVariant = .legacy
+    detector.keyboardTables = .pc.with(.ukrainian, [.pcUkrainianLegacy, .pcUkrainian])
 
     func typeWord(_ word: String) {
         for char in word {

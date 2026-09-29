@@ -47,8 +47,8 @@ public class LayoutDetector {
     public var consecutiveThreshold: Int = 1
     public var lowConfidenceMaxLength: Int = 3
     public var lowConfidenceConfirmations: Int = 2
-    public var ukrainianFromVariant: UkrainianKeyboardVariant = .standard
-    public var ukrainianToVariant: UkrainianKeyboardVariant = .standard
+    /// Key tables for conversion; candidates of the source layout are tried in order.
+    public var keyboardTables: KeyboardTables = .pc
     public var shortWordSuppressionLength: Int = 2
     public var shortWordSuppressionMinValidContext: Int = 2
     public var shortWordSuppressionContextWindow: Int = 6
@@ -275,31 +275,15 @@ public class LayoutDetector {
         var firstConversion: (target: Layout, converted: String)?
 
         for target in automaticTargets(for: sourceLayout) {
-            var conversions = [LayoutMapper.convert(
-                word,
-                from: sourceLayout,
-                to: target,
-                ukrainianFromVariant: ukrainianFromVariant,
-                ukrainianToVariant: ukrainianToVariant
-            )]
-            if sourceLayout == .ukrainian && target == .english {
-                let fallbackVariant: UkrainianKeyboardVariant = (ukrainianFromVariant == .legacy) ? .standard : .legacy
-                let fallback = LayoutMapper.convert(
-                    word,
-                    from: .ukrainian,
-                    to: .english,
-                    ukrainianFromVariant: fallbackVariant,
-                    ukrainianToVariant: ukrainianToVariant
-                )
-                if !conversions.contains(fallback) { conversions.append(fallback) }
-            }
+            let conversions = LayoutMapper.convertCandidates(word, from: sourceLayout, to: target, tables: keyboardTables)
             if firstConversion == nil, let first = conversions.first {
                 firstConversion = (target, first)
             }
 
-            // Conversions are tried in order (the user's Ukrainian variant first) and
-            // the first one that clears its threshold wins: the fallback variant must
-            // not beat the primary one on score alone ('іукмшсу' → 'bervice').
+            // Conversions are tried in candidate-table order (the source the user last
+            // typed on first) and the first one that clears its threshold wins: a
+            // fallback table must not beat the primary one on score alone
+            // ('іукмшсу' → 'bervice').
             conversionLoop: for conversion in conversions {
                 let parts = splitTokenForValidation(conversion)
                 // A letter key that maps to punctuation at the start is a fake switch
@@ -496,13 +480,7 @@ public class LayoutDetector {
         guard (sourceLayout == .english) != (target == .english), allowedLayouts.contains(target) else {
             return nil
         }
-        let converted = LayoutMapper.convert(
-            word,
-            from: sourceLayout,
-            to: target,
-            ukrainianFromVariant: ukrainianFromVariant,
-            ukrainianToVariant: ukrainianToVariant
-        )
+        let converted = LayoutMapper.convert(word, from: sourceLayout, to: target, tables: keyboardTables)
         guard converted != word else { return nil }
         let result = DetectionResult(
             sourceLayout: sourceLayout,

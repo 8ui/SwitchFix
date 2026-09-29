@@ -899,11 +899,7 @@ private struct LearningHarness {
             lexicon: lexicon,
             revertEmission: { _, _ in revertReturnsNothing ? nil : emitted.last }
         )
-        engine.updateDetectionConfiguration(
-            allowedLayouts: [.english, .russian],
-            ukrainianFromVariant: .standard,
-            ukrainianToVariant: .standard
-        )
+        engine.updateDetectionConfiguration(allowedLayouts: [.english, .russian])
     }
 
     mutating func send(_ kind: CapturedInput.Kind) {
@@ -965,9 +961,7 @@ run("learning: manual entries are not overwritten by reverts") {
 
 run("learning: forced hotkey target follows the last Cyrillic layout") {
     var harness = LearningHarness()
-    harness.engine.updateDetectionConfiguration(
-        allowedLayouts: Set(Layout.allCases), ukrainianFromVariant: .standard, ukrainianToVariant: .standard
-    )
+    harness.engine.updateDetectionConfiguration(allowedLayouts: Set(Layout.allCases))
     func switchLayout(to layout: Layout) {
         let next = harness.store.replaceContext(
             frontmostPID: 100, appAllowed: true, layout: layout,
@@ -994,6 +988,38 @@ run("learning: forced hotkey target follows the last Cyrillic layout") {
         harness.emitted.last?.targetLayout == .russian,
         "forced Latin conversion prefers Russian, not the first installed (got \(harness.emitted.last?.targetLayout?.rawValue ?? "nil"))"
     )
+}
+
+run("key tables: hotkey converts a shifted digit-row symbol through the key") {
+    var harness = LearningHarness()
+    // RussianWin: Shift+2 is '"'; US: '@'. `.pc` has no key for '"' on Russian.
+    let russianWin = KeyTable.pcRussian.replacing(KeyStroke(19, shift: true), with: "\"")
+    harness.engine.updateDetectionConfiguration(
+        allowedLayouts: [.english, .russian],
+        keyboardTables: KeyboardTables.pc.with(.russian, [russianWin])
+    )
+    let russian = harness.store.replaceContext(
+        frontmostPID: 100, appAllowed: true, layout: .russian,
+        inputSourceID: "com.test.russian", secureFocus: .notSecure
+    )
+    harness.engine.updateContext(russian)
+    harness.type("\"ьфшд", boundary: nil)
+    harness.send(.hotkey)
+    check(waitUntil { harness.emitted.count == 1 }, "hotkey converts")
+    check(harness.emitted.last?.correctedText == "@mail", "got \(harness.emitted.last?.correctedText ?? "nil")")
+}
+
+run("key tables: .pc keeps today's result for the same input") {
+    var harness = LearningHarness()
+    let russian = harness.store.replaceContext(
+        frontmostPID: 100, appAllowed: true, layout: .russian,
+        inputSourceID: "com.test.russian", secureFocus: .notSecure
+    )
+    harness.engine.updateContext(russian)
+    harness.type("\"ьфшд", boundary: nil)
+    harness.send(.hotkey)
+    check(waitUntil { harness.emitted.count == 1 }, "hotkey converts")
+    check(harness.emitted.last?.correctedText == "\"mail", "got \(harness.emitted.last?.correctedText ?? "nil")")
 }
 
 run("learning: the revert hotkey's fallback conversion does not teach") {

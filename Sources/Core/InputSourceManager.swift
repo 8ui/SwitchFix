@@ -24,9 +24,7 @@ public final class InputSourceManager {
         /// The source each layout was last typed on; `switchTo` and the key tables follow it.
         var lastUsedSourceID: [Layout: String] = [:]
         var loggedTableFallbacks: Set<String> = []
-        var sourceIDs: [Layout: String] = [:]
         var descriptors: [Layout: [InputSourceDescriptor]] = [:]
-        var ukrainianVariants: [String: UkrainianKeyboardVariant] = [:]
         var currentLayout: Layout?
         var currentInputSourceID: String?
         var pendingSelectionID: String?
@@ -39,8 +37,6 @@ public final class InputSourceManager {
 
     private let state = OSAllocatedUnfairLock(initialState: State())
     private let selectionCallbacks = OSAllocatedUnfairLock(initialState: SelectionCallbacks())
-    private static let sKeyCode: UInt16 = 1
-    private static let bKeyCode: UInt16 = 11
 
     private init() {
         refreshInstalledSources()
@@ -56,9 +52,7 @@ public final class InputSourceManager {
         var layoutSources: [Layout: [String]] = [:]
         var tables: [String: KeyTable] = [:]
         var fallbacks: [String] = []
-        var ids: [Layout: String] = [:]
         var descriptors: [Layout: [InputSourceDescriptor]] = [:]
-        var variants: [String: UkrainianKeyboardVariant] = [:]
         let keyboardType = UInt32(LMGetKbdType())
 
         for source in sources {
@@ -72,9 +66,6 @@ public final class InputSourceManager {
                 continue
             }
 
-            if ids[layout] == nil {
-                ids[layout] = sourceID
-            }
             discovered[sourceID] = source
             layoutSources[layout, default: []].append(sourceID)
             // Phonetic layouts are not ЙЦУКЕН-shaped; thresholds were never calibrated on them.
@@ -84,9 +75,6 @@ public final class InputSourceManager {
             if systemTable == nil { fallbacks.append(sourceID) }
             tables[sourceID] = systemTable ?? KeyboardTables.pc.primary(for: layout)
             descriptors[layout, default: []].append(InputSourceDescriptor(id: sourceID, name: sourceName))
-            if layout == .ukrainian {
-                variants[sourceID] = Self.detectUkrainianVariant(for: source, sourceName: sourceName)
-            }
         }
 
         for (layout, list) in descriptors {
@@ -96,19 +84,22 @@ public final class InputSourceManager {
         }
 
         let currentSourceID = Self.fetchCurrentInputSourceID()
+        let discoveredSources = discovered
+        let discoveredLayoutSources = layoutSources
+        let discoveredTables = tables
+        let discoveredDescriptors = descriptors
+        let fallbackIDs = fallbacks
         let newFallbacks = state.withLock { value -> [String] in
-            value.sources = discovered
-            value.layoutSources = layoutSources
-            value.tablesBySource = tables
-            value.sourceIDs = ids
-            value.descriptors = descriptors
-            value.ukrainianVariants = variants
-            value.lastUsedSourceID = value.lastUsedSourceID.filter { discovered[$0.value] != nil }
-            if discovered[currentSourceID] != nil {
+            value.sources = discoveredSources
+            value.layoutSources = discoveredLayoutSources
+            value.tablesBySource = discoveredTables
+            value.descriptors = discoveredDescriptors
+            value.lastUsedSourceID = value.lastUsedSourceID.filter { discoveredSources[$0.value] != nil }
+            if discoveredSources[currentSourceID] != nil {
                 let layout = Self.layout(for: currentSourceID)
                 if value.lastUsedSourceID[layout] == nil { value.lastUsedSourceID[layout] = currentSourceID }
             }
-            let fresh = fallbacks.filter { !value.loggedTableFallbacks.contains($0) }
+            let fresh = fallbackIDs.filter { !value.loggedTableFallbacks.contains($0) }
             value.loggedTableFallbacks.formUnion(fresh)
             return fresh
         }
@@ -226,23 +217,6 @@ public final class InputSourceManager {
         state.withLock { $0.descriptors }
     }
 
-    public func currentUkrainianVariant() -> UkrainianKeyboardVariant? {
-        let sourceID = currentInputSourceID()
-        guard Layout.ukrainian.matches(sourceID: sourceID) else { return nil }
-        return ukrainianVariant(forInputSourceID: sourceID)
-    }
-
-    public func preferredUkrainianVariant() -> UkrainianKeyboardVariant {
-        state.withLock { value in
-            guard let id = value.sourceIDs[.ukrainian] else { return .standard }
-            return value.ukrainianVariants[id] ?? .standard
-        }
-    }
-
-    public func ukrainianVariant(forInputSourceID sourceID: String) -> UkrainianKeyboardVariant? {
-        state.withLock { $0.ukrainianVariants[sourceID] }
-    }
-
     private static func fetchCurrentInputSourceID() -> String {
         guard let source = TISCopyCurrentKeyboardInputSource()?.takeRetainedValue(),
               let id = stringProperty(source, kTISPropertyInputSourceID) else {
@@ -264,48 +238,5 @@ public final class InputSourceManager {
     private static func stringProperty(_ source: TISInputSource, _ key: CFString) -> String? {
         guard let pointer = TISGetInputSourceProperty(source, key) else { return nil }
         return Unmanaged<CFString>.fromOpaque(pointer).takeUnretainedValue() as String
-    }
-
-    private static func detectUkrainianVariant(
-        for source: TISInputSource,
-        sourceName: String?
-    ) -> UkrainianKeyboardVariant {
-        if let sCharacter = translatedCharacter(for: source, keyCode: sKeyCode),
-           let bCharacter = translatedCharacter(for: source, keyCode: bKeyCode) {
-            if sCharacter == "и", bCharacter == "і" { return .legacy }
-            if sCharacter == "і", bCharacter == "и" { return .standard }
-        }
-        if sourceName?.lowercased().contains("legacy") == true {
-            return .legacy
-        }
-        return .standard
-    }
-
-    private static func translatedCharacter(for source: TISInputSource, keyCode: UInt16) -> Character? {
-        guard let layoutDataReference = TISGetInputSourceProperty(source, kTISPropertyUnicodeKeyLayoutData) else {
-            return nil
-        }
-        let layoutData = unsafeBitCast(layoutDataReference, to: CFData.self) as Data
-        var deadKeyState: UInt32 = 0
-        var characters = [UniChar](repeating: 0, count: 4)
-        var actualLength = 0
-        // The layout pointer is only valid inside withUnsafeBytes.
-        let status = layoutData.withUnsafeBytes { pointer -> OSStatus in
-            guard let baseAddress = pointer.baseAddress else { return OSStatus(paramErr) }
-            return UCKeyTranslate(
-                baseAddress.assumingMemoryBound(to: UCKeyboardLayout.self),
-                keyCode,
-                UInt16(kUCKeyActionDown),
-                0,
-                UInt32(LMGetKbdType()),
-                UInt32(kUCKeyTranslateNoDeadKeysBit),
-                &deadKeyState,
-                characters.count,
-                &actualLength,
-                &characters
-            )
-        }
-        guard status == noErr, actualLength > 0 else { return nil }
-        return String(utf16CodeUnits: characters, count: actualLength).first
     }
 }
