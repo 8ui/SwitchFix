@@ -4,6 +4,21 @@ import Foundation
 import os
 import Utils
 
+/// Why a correction happened; decides whether applying or reverting it teaches the
+/// personal lexicon. Staleness checks (`isEligible`) never read it.
+public enum CorrectionProvenance: Equatable, Sendable {
+    /// Boundary-triggered automatic detection.
+    case automatic
+    /// Hotkey, and the detector itself recognized the word.
+    case hotkey
+    /// Hotkey converted a word the detector did not recognize.
+    case hotkeyForced
+    /// Selected text replaced via paste.
+    case selection
+    /// Correction on a system layout switch.
+    case layoutSwitch
+}
+
 public struct CorrectionPlan: Equatable {
     public let boundarySequence: UInt64
     public let contextEpoch: UInt64
@@ -17,6 +32,7 @@ public struct CorrectionPlan: Equatable {
     public let boundaryText: String
     public let originalLayout: Layout
     public let targetLayout: Layout?
+    public let provenance: CorrectionProvenance
 
     public init(
         boundarySequence: UInt64,
@@ -30,7 +46,8 @@ public struct CorrectionPlan: Equatable {
         correctedText: String,
         boundaryText: String,
         originalLayout: Layout,
-        targetLayout: Layout?
+        targetLayout: Layout?,
+        provenance: CorrectionProvenance = .automatic
     ) {
         self.boundarySequence = boundarySequence
         self.contextEpoch = contextEpoch
@@ -44,6 +61,7 @@ public struct CorrectionPlan: Equatable {
         self.boundaryText = boundaryText
         self.originalLayout = originalLayout
         self.targetLayout = targetLayout
+        self.provenance = provenance
     }
 
     public func isEligible(using state: CaptureStateSnapshot) -> Bool {
@@ -194,20 +212,22 @@ public final class TextCorrector {
                 correctedText: plan.correctedText,
                 boundaryText: plan.boundaryText,
                 originalLayout: plan.originalLayout,
-                targetLayout: plan.targetLayout
+                targetLayout: plan.targetLayout,
+                provenance: plan.provenance
             ))
         }
     }
 
+    /// Reverts the last correction; returns the plan that was reverted, or nil.
     @discardableResult
     public func undo(
         sequence: UInt64,
         context: InputContextSnapshot,
         latestCaptureState: () -> CaptureStateSnapshot
-    ) -> Bool {
+    ) -> CorrectionPlan? {
         guard let undo = undoState.withLock({ $0 }) else {
             logger.info("undo skipped: no recorded correction")
-            return false
+            return nil
         }
         let latest = latestCaptureState()
         guard Self.isUndoEligible(
@@ -218,7 +238,7 @@ public final class TextCorrector {
         ) else {
             logger.info("undo skipped: state stale since correction '\(undo.plan.correctedText)'")
             undoState.withLock { $0 = nil }
-            return false
+            return nil
         }
 
         let replacement = undo.plan.originalText + undo.plan.boundaryText
@@ -239,7 +259,7 @@ public final class TextCorrector {
         guard let events = makeCorrectionEvents(plan: inverse),
               inverse.isEligible(using: latestCaptureState()) else {
             logger.debug("undo rejected: could not build inverse events or state changed")
-            return false
+            return nil
         }
         post(events, targetPID: inverse.targetPID)
         undoState.withLock { $0 = nil }
@@ -253,7 +273,7 @@ public final class TextCorrector {
                 inputSourceManager.switchTo(undoLayout)
             }
         }
-        return true
+        return undo.plan
     }
 
     public func performSelectionCorrection(
@@ -332,7 +352,8 @@ public final class TextCorrector {
                 correctedText: convertedText,
                 boundaryText: "",
                 originalLayout: originalLayout,
-                targetLayout: shouldSwitchLayout ? targetLayout : nil
+                targetLayout: shouldSwitchLayout ? targetLayout : nil,
+                provenance: .selection
             )
             let finalState = latestCaptureState()
             if finalState.editGeneration == editGeneration,

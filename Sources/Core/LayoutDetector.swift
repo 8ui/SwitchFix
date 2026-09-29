@@ -841,8 +841,18 @@ public class LayoutDetector {
         return (prefix, core, suffix)
     }
 
+    /// The word the detector looks up in the personal lexicon for a flushed token: the
+    /// token without trailing boundary punctuation ("ghbdtn!" → "ghbdtn").
+    public static func lexiconWord(from token: String) -> String {
+        splitTrailingBoundary(from: token).core
+    }
+
     /// Split trailing punctuation/symbols from a word.
     private func splitTrailingBoundary(from text: String) -> (core: String, trailing: String) {
+        Self.splitTrailingBoundary(from: text)
+    }
+
+    private static func splitTrailingBoundary(from text: String) -> (core: String, trailing: String) {
         var core = text
         var trailing = ""
         while let last = core.last, isBoundaryChar(last) {
@@ -852,8 +862,8 @@ public class LayoutDetector {
         return (core, trailing)
     }
 
-    private func isBoundaryChar(_ char: Character) -> Bool {
+    private static func isBoundaryChar(_ char: Character) -> Bool {
         guard let scalar = char.unicodeScalars.first else { return false }
-        return LayoutDetector.boundaryCharacterSet.contains(scalar)
+        return boundaryCharacterSet.contains(scalar)
     }
 }

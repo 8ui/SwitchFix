@@ -859,6 +859,159 @@ private func runIntegrationSmoke() {
     application.run()
 }
 
+// MARK: - Personal lexicon learning (plan/005 §4.5, §12)
+
+private final class EmissionLog {
+    private let lock = NSLock()
+    private var plans: [CorrectionPlan] = []
+    func append(_ plan: CorrectionPlan) { lock.lock(); plans.append(plan); lock.unlock() }
+    var last: CorrectionPlan? { lock.lock(); defer { lock.unlock() }; return plans.last }
+    var count: Int { lock.lock(); defer { lock.unlock() }; return plans.count }
+}
+
+private func waitUntil(_ timeout: TimeInterval = 2, _ condition: () -> Bool) -> Bool {
+    let deadline = Date().addingTimeInterval(timeout)
+    while Date() < deadline {
+        if condition() { return true }
+        Thread.sleep(forTimeInterval: 0.01)
+    }
+    return condition()
+}
+
+private struct LearningHarness {
+    let store: CaptureStateStore
+    let engine: InputEngine
+    let lexicon: PersonalLexicon
+    let emitted: EmissionLog
+    var timestamp: UInt64 = 0
+
+    init(mode: InputCorrectionMode = .automatic, revertReturnsNothing: Bool = false) {
+        let current = context()
+        store = CaptureStateStore(context: current, hotkeys: HotkeyConfiguration(hotkeyModifiers: 0))
+        lexicon = PersonalLexicon(storage: InMemoryLexiconStorage(), saveDelay: 0)
+        let emitted = EmissionLog()
+        self.emitted = emitted
+        engine = InputEngine(
+            captureState: store,
+            initialContext: current,
+            preferences: InputPreferencesSnapshot(isEnabled: true, correctionMode: mode),
+            correctionEmission: { plan in emitted.append(plan); return true },
+            lexicon: lexicon,
+            revertEmission: { _, _ in revertReturnsNothing ? nil : emitted.last }
+        )
+        engine.updateDetectionConfiguration(
+            allowedLayouts: [.english, .russian],
+            ukrainianFromVariant: .standard,
+            ukrainianToVariant: .standard
+        )
+    }
+
+    mutating func send(_ kind: CapturedInput.Kind) {
+        timestamp += 1
+        engine.enqueue(store.capture(
+            timestamp: timestamp, kind: kind, keyCode: 0, flagsRawValue: 0,
+            isAutorepeat: false, sourcePID: 1, sourceUserData: 0
+        ))
+    }
+
+    mutating func type(_ word: String, boundary: String? = " ") {
+        for character in word { send(.character(String(character))) }
+        if let boundary { send(.boundary(boundary)) }
+    }
+}
+
+run("learning: revert of an automatic correction teaches neverCorrect") {
+    var harness = LearningHarness()
+    harness.type("ghbdtn")
+    check(waitUntil { harness.emitted.count == 1 }, "automatic correction is emitted")
+    check(harness.emitted.last?.provenance == .automatic, "boundary correction is automatic")
+    harness.send(.revertHotkey)
+    check(waitUntil { harness.lexicon.rule(for: "ghbdtn", sourceLayout: .english) == .neverCorrect }, "revert is learned")
+    harness.type("ghbdtn")
+    check(!waitUntil(0.3) { harness.emitted.count > 1 }, "the reverted word is not corrected again")
+}
+
+run("learning: forced hotkey conversion teaches alwaysCorrect") {
+    var harness = LearningHarness()
+    harness.type("rehk", boundary: nil)
+    harness.send(.hotkey)
+    check(waitUntil { harness.emitted.count == 1 }, "hotkey converts the unrecognized word")
+    check(harness.emitted.last?.provenance == .hotkeyForced, "forced conversion is marked")
+    check(waitUntil { harness.lexicon.rule(for: "rehk", sourceLayout: .english) == .alwaysCorrect(to: .russian) }, "hotkey lesson is learned")
+    harness.send(.boundary(" "))
+    harness.type("rehk")
+    check(waitUntil { harness.emitted.count == 2 }, "the learned word is corrected automatically")
+    check(harness.emitted.last?.provenance == .automatic, "second correction is automatic")
+    check(waitUntil { harness.lexicon.entries.first?.matchCount == 1 }, "applied rule is counted")
+}
+
+run("learning: reverting a forced hotkey conversion forgets the lesson") {
+    var harness = LearningHarness()
+    harness.type("rehk", boundary: nil)
+    harness.send(.hotkey)
+    check(waitUntil { harness.lexicon.rule(for: "rehk", sourceLayout: .english) != nil }, "learned")
+    harness.send(.revertHotkey)
+    check(waitUntil { harness.lexicon.rule(for: "rehk", sourceLayout: .english) == nil }, "revert of a hotkey fix forgets, never adds neverCorrect")
+}
+
+run("learning: manual entries are not overwritten by reverts") {
+    var harness = LearningHarness()
+    _ = harness.lexicon.add(word: "ghbdtn", sourceLayout: .english, rule: .alwaysCorrect(to: .russian))
+    harness.type("ghbdtn")
+    check(waitUntil { harness.emitted.count == 1 }, "corrected by the manual rule")
+    harness.send(.revertHotkey)
+    check(!waitUntil(0.3) { harness.lexicon.rule(for: "ghbdtn", sourceLayout: .english) != .alwaysCorrect(to: .russian) }, "manual rule stays")
+}
+
+run("learning: forced hotkey target follows the last Cyrillic layout") {
+    var harness = LearningHarness()
+    harness.engine.updateDetectionConfiguration(
+        allowedLayouts: Set(Layout.allCases), ukrainianFromVariant: .standard, ukrainianToVariant: .standard
+    )
+    func switchLayout(to layout: Layout) {
+        let next = harness.store.replaceContext(
+            frontmostPID: 100, appAllowed: true, layout: layout,
+            inputSourceID: "com.test.\(layout.rawValue)", secureFocus: .notSecure
+        )
+        harness.engine.updateContext(next)
+    }
+    // Typing on Russian makes it the detector's last Cyrillic layout (survives reset()).
+    switchLayout(to: .russian)
+    harness.type("привет")
+    switchLayout(to: .english)
+    harness.type("rehk", boundary: nil)
+    harness.send(.hotkey)
+    check(waitUntil { harness.emitted.last?.targetLayout == .russian }, "forced Latin conversion prefers Russian, not the first installed (Ukrainian)")
+}
+
+run("learning: revert without undo state falls back to a forced hotkey conversion that teaches") {
+    var harness = LearningHarness(revertReturnsNothing: true)
+    harness.type("rehk", boundary: nil)
+    harness.send(.revertHotkey)
+    check(waitUntil { harness.lexicon.rule(for: "rehk", sourceLayout: .english) == .alwaysCorrect(to: .russian) }, "fallback conversion is a lesson too")
+}
+
+run("learning: trailing punctuation is not part of the learned word") {
+    var harness = LearningHarness()
+    harness.type("rehk!", boundary: nil)
+    harness.send(.hotkey)
+    check(waitUntil { harness.lexicon.rule(for: "rehk", sourceLayout: .english) != nil }, "learned without '!'")
+}
+
+run("learning: merged multi-word corrections are not learned") {
+    let plan = CorrectionPlan(
+        boundarySequence: 1, contextEpoch: 1, targetPID: 100, editGeneration: 1, correctionEpoch: 1,
+        deleteCount: 9, replacementText: "it works ", originalText: "ше цщкли", correctedText: "it works",
+        boundaryText: " ", originalLayout: .ukrainian, targetLayout: .english, provenance: .automatic
+    )
+    check(!InputEngine.isLearnable(plan), "a merged phrase is not a single token")
+    check(!InputEngine.isLearnable(CorrectionPlan(
+        boundarySequence: 1, contextEpoch: 1, targetPID: 100, editGeneration: 1, correctionEpoch: 1,
+        deleteCount: 5, replacementText: "hello", originalText: "руддщ", correctedText: "hello",
+        boundaryText: "", originalLayout: .russian, targetLayout: .english, provenance: .selection
+    )), "selection replacements do not teach")
+}
+
 if CommandLine.arguments.contains("--integration-smoke") {
     runIntegrationSmoke()
 }

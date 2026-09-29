@@ -62,7 +62,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                     epoch: epoch,
                     completion: completion
                 ) ?? completion(nil)
-            }
+            },
+            lexicon: PersonalLexicon.shared
         )
         engine.onFocusMayChange = { [weak self] pid, epoch in
             DispatchQueue.main.async {
@@ -92,6 +93,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationWillTerminate(_ notification: Notification) {
+        PersonalLexicon.shared.flush()
         focusCoordinator?.stop()
         keyboardMonitor?.stop()
     }

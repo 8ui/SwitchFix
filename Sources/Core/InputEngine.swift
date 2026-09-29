@@ -31,6 +31,8 @@ public final class InputEngine {
     public typealias ExactDetection = (DetectionRequest) -> DetectionResult?
     public typealias CorrectionEmission = (CorrectionPlan) -> Bool
     public typealias SelectedTextRequest = (pid_t, UInt64, @escaping (String?) -> Void) -> Void
+    /// Reverts the last correction; returns the reverted plan (tests replace `TextCorrector.undo`).
+    public typealias RevertEmission = (UInt64, InputContextSnapshot) -> CorrectionPlan?
 
     public var onFocusMayChange: ((pid_t, UInt64) -> Void)?
 
@@ -52,6 +54,8 @@ public final class InputEngine {
     private let customDetection: ExactDetection?
     private let customEmission: CorrectionEmission?
     private let selectedTextRequest: SelectedTextRequest?
+    private let revertEmission: RevertEmission?
+    private let lexicon: PersonalLexicon?
     private let detectionConfiguration = OSAllocatedUnfairLock(initialState: DetectionConfiguration())
     private var correctionEpoch: UInt64
     private var latestProcessedSequence: UInt64 = 0
@@ -66,7 +70,9 @@ public final class InputEngine {
         corrector: TextCorrector = TextCorrector(),
         exactDetection: ExactDetection? = nil,
         correctionEmission: CorrectionEmission? = nil,
-        selectedTextRequest: SelectedTextRequest? = nil
+        selectedTextRequest: SelectedTextRequest? = nil,
+        lexicon: PersonalLexicon? = nil,
+        revertEmission: RevertEmission? = nil
     ) {
         self.captureState = captureState
         self.stateMachine = InputStateMachine(context: initialContext, preferences: preferences)
@@ -75,6 +81,9 @@ public final class InputEngine {
         self.customDetection = exactDetection
         self.customEmission = correctionEmission
         self.selectedTextRequest = selectedTextRequest
+        self.lexicon = lexicon
+        self.revertEmission = revertEmission
+        detector.lexicon = lexicon
         correctionEpoch = captureState.updateCorrectionEnabled(preferences.isEnabled)
     }
 
@@ -174,7 +183,8 @@ public final class InputEngine {
                         editGeneration: latest.editGeneration,
                         correctionEpoch: requestCorrectionEpoch,
                         context: context
-                    )
+                    ),
+                    provenance: .layoutSwitch
                 )
             }
 
@@ -316,11 +326,19 @@ public final class InputEngine {
             logger.notice("revert hotkey pressed word='\(word ?? "nil")' seq=\(sequence)")
             correctionQueue.async { [weak self] in
                 guard let self else { return }
-                if !self.corrector.undo(
-                    sequence: sequence,
-                    context: context,
-                    latestCaptureState: self.captureState.snapshot
-                ) {
+                let reverted: CorrectionPlan?
+                if let revertEmission = self.revertEmission {
+                    reverted = revertEmission(sequence, context)
+                } else {
+                    reverted = self.corrector.undo(
+                        sequence: sequence,
+                        context: context,
+                        latestCaptureState: self.captureState.snapshot
+                    )
+                }
+                if let reverted {
+                    self.learnFromReverted(reverted)
+                } else {
                     self.inputQueue.async {
                         self.requestManualCorrection(word: word, sequence: sequence, context: context)
                     }
@@ -338,6 +356,7 @@ public final class InputEngine {
             guard let self else { return }
             let startedAt = DispatchTime.now().uptimeNanoseconds
             var result: DetectionResult?
+            var provenance: CorrectionProvenance = forceConversion ? .hotkey : .automatic
             if let customDetection = self.customDetection {
                 result = customDetection(request)
             } else {
@@ -352,6 +371,7 @@ public final class InputEngine {
                 result = self.detector.flushBuffer(
                     boundaryCharacter: request.boundary.isEmpty ? nil : request.boundary
                 )
+                let detectorResult = result
                 // Manual hotkey = explicit user intent: convert even when the
                 // model does not recognize the word (typos, rare words).
                 // The source layout comes from the word's script, not the current input
@@ -374,8 +394,13 @@ public final class InputEngine {
                         "force: source=\(sourceLayout.rawValue) current=\(request.context.layout.rawValue) allowed=\(configuration.allowedLayouts.map(\.rawValue).sorted()) alternatives=\(alternatives.map { $0.0.rawValue })"
                     )
                 }
-                // Prefer a layout that is installed; fall back to any conversion.
-                if let (target, converted) = alternatives.first(where: { configuration.allowedLayouts.contains($0.0) })
+                // Prefer the Cyrillic layout typed on last, then any installed layout,
+                // then any conversion.
+                let preferred = self.detector.preferredCyrillicLayout
+                let allowed = configuration.allowedLayouts
+                if detectorResult == nil,
+                   let (target, converted) = alternatives.first(where: { $0.0 == preferred && allowed.contains($0.0) })
+                    ?? alternatives.first(where: { allowed.contains($0.0) })
                     ?? alternatives.first {
                     result = DetectionResult(
                         sourceLayout: sourceLayout,
@@ -384,6 +409,7 @@ public final class InputEngine {
                         originalWord: request.word,
                         shouldSwitchLayout: true
                     )
+                    provenance = .hotkeyForced
                 }
             }
             let duration = DispatchTime.now().uptimeNanoseconds &- startedAt
@@ -397,13 +423,18 @@ public final class InputEngine {
                 )
             }
             guard let result else { return }
+            let resultProvenance = provenance
             self.inputQueue.async {
-                self.prepareCorrection(result: result, request: request)
+                self.prepareCorrection(result: result, request: request, provenance: resultProvenance)
             }
         }
     }
 
-    private func prepareCorrection(result: DetectionResult, request: DetectionRequest) {
+    private func prepareCorrection(
+        result: DetectionResult,
+        request: DetectionRequest,
+        provenance: CorrectionProvenance
+    ) {
         let latest = captureState.snapshot()
         var cancelReason: String?
         if latest.latestPhysicalSequence != request.sequence {
@@ -445,7 +476,8 @@ public final class InputEngine {
             correctedText: result.convertedWord,
             boundaryText: boundary,
             originalLayout: result.sourceLayout,
-            targetLayout: result.shouldSwitchLayout ? result.targetLayout : nil
+            targetLayout: result.shouldSwitchLayout ? result.targetLayout : nil,
+            provenance: provenance
         )
 
         correctionQueue.async { [weak self] in
@@ -454,11 +486,57 @@ public final class InputEngine {
                 SwitchFixLog.corrector.debug("emission skipped: state changed before apply '\(plan.originalText)'")
                 return
             }
-            if let customEmission = self.customEmission {
-                _ = customEmission(plan)
-            } else {
-                _ = self.corrector.apply(plan, latestCaptureState: self.captureState.snapshot)
+            let applied = self.customEmission.map { $0(plan) }
+                ?? self.corrector.apply(plan, latestCaptureState: self.captureState.snapshot)
+            if applied {
+                self.learnFromApplied(plan)
             }
+        }
+    }
+
+    // MARK: - Learning (plan/005 §4.5, §12.1, §12.6)
+
+    /// Only single-token automatic corrections and forced hotkey conversions teach the
+    /// personal lexicon; selection, layout-switch and merged multi-word corrections don't.
+    public static func isLearnable(_ plan: CorrectionPlan) -> Bool {
+        guard !plan.originalText.isEmpty,
+              !plan.originalText.contains(where: \.isWhitespace) else { return false }
+        switch plan.provenance {
+        case .automatic, .hotkeyForced: return true
+        case .hotkey, .selection, .layoutSwitch: return false
+        }
+    }
+
+    /// Runs on the correction queue after a correction reached the app.
+    private func learnFromApplied(_ plan: CorrectionPlan) {
+        guard let lexicon, Self.isLearnable(plan) else { return }
+        // The key the detector looks up: the token without trailing punctuation.
+        let word = LayoutDetector.lexiconWord(from: plan.originalText)
+        guard !word.isEmpty else { return }
+        switch plan.provenance {
+        case .automatic:
+            lexicon.noteMatch(word: word, sourceLayout: plan.originalLayout)
+        case .hotkeyForced:
+            guard let target = plan.targetLayout,
+                  (plan.originalLayout == .english) != (target == .english) else { return }
+            lexicon.recordAccepted(word: word, sourceLayout: plan.originalLayout, target: target)
+        case .hotkey, .selection, .layoutSwitch:
+            break
+        }
+    }
+
+    /// Runs on the correction queue after the revert hotkey undid `plan`.
+    private func learnFromReverted(_ plan: CorrectionPlan) {
+        guard let lexicon, Self.isLearnable(plan) else { return }
+        let word = LayoutDetector.lexiconWord(from: plan.originalText)
+        guard !word.isEmpty else { return }
+        switch plan.provenance {
+        case .automatic:
+            lexicon.recordRejected(word: word, sourceLayout: plan.originalLayout)
+        case .hotkeyForced:
+            lexicon.forgetAccepted(word: word, sourceLayout: plan.originalLayout)
+        case .hotkey, .selection, .layoutSwitch:
+            break
         }
     }
 
