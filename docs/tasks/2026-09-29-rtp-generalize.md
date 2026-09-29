@@ -3,7 +3,7 @@ id: 2026-09-29-rtp-generalize
 title: Обобщить rtp и перенести в SwitchFix
 type: refactor
 pipeline: full
-phase: impl
+phase: review
 created: 2026-09-29
 updated: 2026-09-29
 blocked_by: null
@@ -94,6 +94,8 @@ restoplace `ae27627e9`). Подзадача 2: облачные сессии Swi
 - 2026-09-29: по отчёту облака: фиксы 1-3 ($0 в рецепте шима, verify.only local/cloud, paths-ignore docs/tasks в CI); тест облака остаётся в PR
 - 2026-09-29: verify: `sh .claude/skills/run-task-pipeline/scripts/regress.sh` → exit 0 ✅
 - 2026-09-29: verify: `! grep -nE '\$[0-9@#*]|\$ARGUMENTS' .claude/skills/run-task-pipeline/SKILL.md` → exit 0 ✅
+- 2026-09-29: фиксы по отчёту облака: рецепт шима без $0, verify.only local/cloud (C6), paths-ignore docs/tasks для push в CI; b75a889
+- 2026-09-29: verify: `CI зелёный: https://github.com/8ui/SwitchFix/actions/runs/36549828578 (push, b75a889)` → exit 0 ✅
 
 ## Decisions
 
@@ -279,6 +281,12 @@ _Нетривиальные решения по ходу задачи. Одна 
 
   ```
   (пустой вывод)
+  ```
+
+- 2026-09-29 · `CI зелёный: https://github.com/8ui/SwitchFix/actions/runs/36549828578 (push, b75a889)` · exit 0 ✅
+
+  ```
+  Build and test (macos-15) — success
   ```
 
 ## Handoff
