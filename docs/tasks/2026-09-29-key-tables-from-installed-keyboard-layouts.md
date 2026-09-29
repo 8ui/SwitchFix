@@ -3,13 +3,13 @@ id: 2026-09-29-key-tables-from-installed-keyboard-layouts
 title: Key tables from installed keyboard layouts
 type: bug
 pipeline: full
-phase: impl
+phase: review
 created: 2026-09-29
 updated: 2026-09-29
 blocked_by: null
-steps_done: 4
+steps_done: 5
 steps_total: 5
-step_current: 5
+step_current: null
 artifacts:
   spec: docs/features/key-tables-from-installed-layouts-spec.md
   plan: docs/plans/key-tables-from-installed-layouts-plan.md
@@ -27,7 +27,7 @@ _2-5 строк: что делаем и зачем. Задача этой сек
 2. ✅ Task 2: KeyTableBuilder + sanity
 3. ✅ Task 3: InputSourceManager per-source tables
 4. ✅ Task 4: замена UkrainianKeyboardVariant
-5. ▶ Task 5: docs, сборка, ручная проверка
+5. ✅ Task 5: docs, сборка, ручная проверка
 
 ## Log
 
@@ -43,6 +43,16 @@ _2-5 строк: что делаем и зачем. Задача этой сек
 - 2026-09-29: шаг 2 ✅ Task 2: KeyTableBuilder + sanity — 533 passed; найдено: ISO-клавиша 10 дублирует ё в RussianWin, mac Ukrainian = legacy
 - 2026-09-29: шаг 3 ✅ Task 3: InputSourceManager per-source tables — 536 passed, app builds
 - 2026-09-29: шаг 4 ✅ Task 4: замена UkrainianKeyboardVariant — 533+886 passed; eval без изменений (кроме таймингов), sweep идентичен
+- 2026-09-29: verify: `Проверено пользователем на macOS (RussianWin+Australian, ISO kbd type 91)` → exit 0 ✅
+- 2026-09-29: шаг 5 ✅ Task 5: docs, сборка, ручная проверка
+- 2026-09-29: impl complete, manual verified; доп. фикс selectionSourceOrder для выделений без букв
+- 2026-09-29: verify: `swift build -c release` → exit 0 ✅
+- 2026-09-29: verify: `swift run -c release TestRunner` → exit 0 ✅
+- 2026-09-29: verify: `swift run -c release InputPipelineTestRunner` → exit 0 ✅
+- 2026-09-29: verify: `swift build -c release` → exit 0 ✅
+- 2026-09-29: verify: `swift run -c release TestRunner` → exit 0 ✅
+- 2026-09-29: verify: `swift run -c release InputPipelineTestRunner` → exit 0 ✅
+- 2026-09-29: code-review (general-purpose opus): 2 medium исправлены (тавтологичный тест → эталон из старого кода; legacy-фолбэк uk), low #4 исправлен, #3/#5 → debt
 
 ## Decisions
 
@@ -55,10 +65,107 @@ _Нетривиальные решения по ходу задачи. Одна 
 - [ ] Report-only LayoutEval на реальных (не .pc) таблицах — спека key-tables M4
 - [ ] Общий dependency-free таргет с ключевыми данными для Core и ModelTrainer — спека key-tables B2
 - [ ] Автодетекция перебирает все таблицы исходной раскладки (US+Colemak/Dvorak): первая прошедшая порог побеждает — не измерено LayoutEval
+- [ ] Выделение без букв (';5') при .pc-фолбэке источника (Phonetic, нечитаемый uchr) всё ещё идёт через English → 'ж5'; end-to-end теста ';5'→'$5' через движок нет — ревью key-tables, low
+- [ ] Тесты KeyTableBuilder: нет проверки пропуска dead keys; suite 'system tables agree' пропускает клавиши 10/50 целиком (ё/ґ на 50 не покрыты на ANSI) — ревью key-tables, low
 
 ## Verification
 
-_Доказательства, а не утверждения. Заполняется `rtp verify <id> --run "<команда>"`: команда, exit code, хвост вывода._
+- 2026-09-29 · `Проверено пользователем на macOS (RussianWin+Australian, ISO kbd type 91)` · exit 0 ✅
+
+  ```
+  "ьфшд+хоткей → @mail; выделение гыук"ьфшдюсщь → user@mail.com; №1 ;5 → #1 $5 и обратно; сценарий A (worktree, привет) с переключением раскладки
+  ```
+
+- 2026-09-29 · `swift build -c release` · exit 0 ✅
+
+  ```
+  Building for production...
+  Build complete! (0,41 с)
+  ```
+
+- 2026-09-29 · `swift run -c release TestRunner` · exit 0 ✅
+
+  ```
+  | fix uk←en tech | 12/14 | пшерги (want github), згірув (want pushed) |
+  | fix uk←en word-forms | 10/11 | сфеі (want cats) |
+  | fix en←ru word-forms | 9/10 | pfdnhf→завтра (want завтра) |
+  | fix en←ru slang-tech | 5/7 | ofc (want щас), rhby; (want кринж) |
+  | fix en←uk word-forms | 6/6 |  |
+  | fix en←uk slang-tech | 3/4 | yjhv→норм (want норм) |
+  
+  ========================================
+  Results: 533 passed, 0 failed
+  ALL TESTS PASSED
+  
+  Building for production...
+  [1 / 9]
+  Build complete! (0,32 с)
+  ```
+
+- 2026-09-29 · `swift run -c release InputPipelineTestRunner` · exit 0 ✅
+
+  ```
+  --- learning: reverting a forced hotkey conversion forgets the lesson ---
+  --- learning: manual entries are not overwritten by reverts ---
+  --- learning: forced hotkey target follows the last Cyrillic layout ---
+  --- key tables: hotkey converts a shifted digit-row symbol through the key ---
+  --- key tables: .pc keeps today's result for the same input ---
+  --- learning: the revert hotkey's fallback conversion does not teach ---
+  --- learning: one- and two-key hotkey conversions are not learned ---
+  --- learning: trailing punctuation is not part of the learned word ---
+  --- learning: merged multi-word corrections are not learned ---
+  
+  Input pipeline: 889 passed, 0 failed
+  
+  Building for production...
+  Build complete! (0,19 с)
+  ```
+
+- 2026-09-29 · `swift build -c release` · exit 0 ✅
+
+  ```
+  Building for production...
+  [2 / 12] SwitchFix_LanguageModel
+  Build complete! (0,25 с)
+  ```
+
+- 2026-09-29 · `swift run -c release TestRunner` · exit 0 ✅
+
+  ```
+  | fix ru←en word-forms | 11/11 |  |
+  | fix uk←en tech | 12/14 | пшерги (want github), згірув (want pushed) |
+  | fix uk←en word-forms | 10/11 | сфеі (want cats) |
+  | fix en←ru word-forms | 9/10 | pfdnhf→завтра (want завтра) |
+  | fix en←ru slang-tech | 5/7 | ofc (want щас), rhby; (want кринж) |
+  | fix en←uk word-forms | 6/6 |  |
+  | fix en←uk slang-tech | 3/4 | yjhv→норм (want норм) |
+  
+  ========================================
+  Results: 522 passed, 0 failed
+  ALL TESTS PASSED
+  
+  Building for production...
+  Build complete! (0,19 с)
+  ```
+
+- 2026-09-29 · `swift run -c release InputPipelineTestRunner` · exit 0 ✅
+
+  ```
+  --- learning: reverting a forced hotkey conversion forgets the lesson ---
+  --- learning: manual entries are not overwritten by reverts ---
+  --- learning: forced hotkey target follows the last Cyrillic layout ---
+  --- key tables: hotkey converts a shifted digit-row symbol through the key ---
+  --- key tables: .pc keeps today's result for the same input ---
+  --- learning: the revert hotkey's fallback conversion does not teach ---
+  --- learning: one- and two-key hotkey conversions are not learned ---
+  --- learning: trailing punctuation is not part of the learned word ---
+  --- learning: merged multi-word corrections are not learned ---
+  
+  Input pipeline: 889 passed, 0 failed
+  
+  Building for production...
+  Build complete! (0,19 с)
+  ```
 
 ## Handoff
 
