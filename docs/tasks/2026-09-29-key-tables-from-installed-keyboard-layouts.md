@@ -3,7 +3,7 @@ id: 2026-09-29-key-tables-from-installed-keyboard-layouts
 title: Key tables from installed keyboard layouts
 type: bug
 pipeline: full
-phase: review
+phase: done
 created: 2026-09-29
 updated: 2026-09-29
 blocked_by: null
@@ -53,6 +53,8 @@ _2-5 строк: что делаем и зачем. Задача этой сек
 - 2026-09-29: verify: `swift run -c release TestRunner` → exit 0 ✅
 - 2026-09-29: verify: `swift run -c release InputPipelineTestRunner` → exit 0 ✅
 - 2026-09-29: code-review (general-purpose opus): 2 medium исправлены (тавтологичный тест → эталон из старого кода; legacy-фолбэк uk), low #4 исправлен, #3/#5 → debt
+- 2026-09-29: verify: `CI зелёный: https://github.com/8ui/SwitchFix/actions/runs/36572313534` → exit 0 ✅
+- 2026-09-29: pushed 83cc15c, CI green, manual verified, review addressed
 
 ## Decisions
 
@@ -165,6 +167,12 @@ _Нетривиальные решения по ходу задачи. Одна 
   
   Building for production...
   Build complete! (0,19 с)
+  ```
+
+- 2026-09-29 · `CI зелёный: https://github.com/8ui/SwitchFix/actions/runs/36572313534` · exit 0 ✅
+
+  ```
+  (без вывода)
   ```
 
 ## Handoff
