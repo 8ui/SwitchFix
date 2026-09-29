@@ -48,6 +48,23 @@ Module graph (Package.swift): `Utils` ← `Dictionary` ← `Core` ← `UI` ← `
 
 **Localization**: `L10n.tr("English text")` looks up a Russian translation from an in-code dictionary keyed by the English string, falling back to English. Every new user-facing string must go through `L10n.tr` and get a Russian entry in `Sources/UI/L10n.swift`.
 
+## Process
+
+- Every code change goes through the `run-task-pipeline` skill (its triage picks the preset). Process
+  skills are `superpowers:*`; in cloud sessions the same skills exist without the prefix (vendored in
+  `.claude/skills/`, one-off copies — edit `rtp` there and run its `scripts/regress.sh`).
+- Task tracker: `docs/tasks/`. CLI: `rtp`, **never `npx rtp`** (an unrelated npm package). If `rtp` is not
+  on PATH, from the repo root: `node .claude/skills/run-task-pipeline/scripts/rtp.mjs <sub>` (no quotes
+  around the path). `rtp next <id>` in the review phase prints this project's checks from `docs/tasks/.rtp.json`.
+- Cloud sessions (`CLAUDE_CODE_REMOTE=true`, Ubuntu) have no Swift: `rtp next` hides the swift checks there
+  (`"only": "local"` in `.rtp.json`); push the branch and record the green CI run
+  (`.github/workflows/ci.yml` runs on `claude/**`): `rtp verify <id> --record "CI зелёный: <run url>"`.
+  Link the **push** run of the code commit: a commit that touches only `docs/tasks/**` starts no push run,
+  so recording the evidence does not cancel it (pull_request runs of an open PR still cancel each other).
+- Cloud sessions cannot push tags: a release there = bump the version in `Resources/Info.plist` on master;
+  the `v*` tag and the GitHub release are made locally.
+- Never push to `upstream` (`rundax/SwitchFix`).
+
 ## Debugging
 
 Logs go through `SwitchFixLog.<category>` (subsystem `com.switchfix`), every message prefixed `[SwitchFix]` with public values:
