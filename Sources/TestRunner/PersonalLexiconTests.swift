@@ -14,6 +14,9 @@ func runPersonalLexiconSuites() {
         assertEqual(LexiconKey.normalize("Ghbdtn"), "ghbdtn")
         assertEqual(LexiconKey.normalize("П’ятниця"), "п'ятниця")
         assertEqual(LexiconKey(word: "Hf,jnftn", sourceLayout: .english), LexiconKey(word: "hf,jnftn", sourceLayout: .english))
+        // Shifted punctuation keys are the same key as unshifted ones (Хорошо / хорошо).
+        assertEqual(LexiconKey.normalize("{jhjij"), "[jhjij")
+        assertEqual(LexiconKey.normalize("Hf<jnf:"), "hf,jnf;")
     }
 
     runSuite("PersonalLexicon: validation") {
@@ -24,6 +27,7 @@ func runPersonalLexiconSuites() {
         assertEqual(PersonalLexicon.validate(word: "было", sourceLayout: .russian, rule: .alwaysCorrect(to: .ukrainian)), .unsupportedPair, "no ru ↔ uk rules")
         assert(PersonalLexicon.validate(word: ",erdf", sourceLayout: .english, rule: .alwaysCorrect(to: .russian)) == nil, "punctuation keys are letters on the other layout")
         assert(PersonalLexicon.validate(word: "п'ятниця", sourceLayout: .ukrainian, rule: .neverCorrect) == nil, "apostrophe is allowed")
+        assert(PersonalLexicon.validate(word: "rjt-xnj", sourceLayout: .english, rule: .alwaysCorrect(to: .russian)) == nil, "hyphenated words are one token")
     }
 
     runSuite("PersonalLexicon: CRUD") {
@@ -43,8 +47,15 @@ func runPersonalLexiconSuites() {
         edited.rule = .alwaysCorrect(to: .russian)
         assert(lexicon.update(edited) == nil, "update should succeed")
         assertEqual(lexicon.rule(for: "kubectl", sourceLayout: .english), .alwaysCorrect(to: .russian))
+        guard case .added(let other) = lexicon.add(word: "helm", sourceLayout: .english, rule: .neverCorrect) else {
+            return assert(false, "second add should succeed")
+        }
+        var clash = other
+        clash.word = "kubectl"
+        assertEqual(lexicon.update(clash), .duplicate, "an edit must not silently replace another entry")
         lexicon.remove(ids: [entry.id])
         assert(lexicon.rule(for: "kubectl", sourceLayout: .english) == nil, "removed")
+        assertEqual(lexicon.update(edited), .missing, "editing a removed entry reports it")
     }
 
     runSuite("PersonalLexicon: learning never overrides manual entries") {
@@ -106,9 +117,52 @@ func runPersonalLexiconSuites() {
         assert(lexicon.entries.isEmpty, "all removed")
     }
 
-    runSuite("PersonalLexicon: corrupt storage starts empty") {
+    runSuite("PersonalLexicon: unreadable storage is backed up, readable entries kept") {
         let storage = InMemoryLexiconStorage()
         storage.save(Data("not json".utf8))
-        assert(makeLexicon(storage).entries.isEmpty, "corrupt data must not crash")
+        let empty = makeLexicon(storage)
+        assert(empty.entries.isEmpty, "corrupt data must not crash")
+        assertEqual(storage.unreadableBackup, Data("not json".utf8), "unreadable data is backed up before any save")
+
+        // One entry from a newer version (unknown origin) must not drop the others.
+        let mixed = """
+        [{"id":"\(UUID().uuidString)","word":"rehk","sourceLayout":"english","rule":{"neverCorrect":{}},"origin":"learnedFromRevert","createdAt":"2026-09-29T10:00:00Z","matchCount":0},
+         {"id":"\(UUID().uuidString)","word":"ghbdtn","sourceLayout":"english","rule":{"neverCorrect":{}},"origin":"fromTheFuture","createdAt":"2026-09-29T10:00:00Z","matchCount":0}]
+        """
+        let partial = InMemoryLexiconStorage()
+        partial.save(Data(mixed.utf8))
+        let lexicon = makeLexicon(partial)
+        assertEqual(lexicon.entries.map(\.word), ["rehk"], "readable entries survive")
+        assert(partial.unreadableBackup != nil, "the original is backed up")
+    }
+
+    runSuite("PersonalLexicon: counters are saved lazily") {
+        let storage = InMemoryLexiconStorage()
+        let lexicon = makeLexicon(storage)
+        lexicon.recordRejected(word: "rehk", sourceLayout: .english)
+        let saves = storage.saveCount
+        lexicon.noteMatch(word: "rehk", sourceLayout: .english)
+        assertEqual(storage.saveCount, saves, "a counter update does not rewrite the lexicon")
+        lexicon.flush()
+        assertEqual(storage.saveCount, saves + 1, "flush writes pending counters")
+        assertEqual(makeLexicon(storage).entries.first?.matchCount, 1)
+    }
+
+    runSuite("PersonalLexicon: a recently matched entry survives eviction") {
+        var tick = 0.0
+        let lexicon = makeLexicon(saveDelay: 3600, clock: { tick += 1; return Date(timeIntervalSince1970: tick) })
+        func word(_ index: Int) -> String {
+            let letters = Array("abcdefghijklmnopqrstuvwxyz")
+            var value = index, result = "q"
+            repeat { result.append(letters[value % 26]); value /= 26 } while value > 0
+            return result
+        }
+        for index in 0..<PersonalLexicon.maxLearnedEntries {
+            lexicon.recordRejected(word: word(index), sourceLayout: .english)
+        }
+        lexicon.noteMatch(word: word(0), sourceLayout: .english)
+        lexicon.recordRejected(word: word(PersonalLexicon.maxLearnedEntries), sourceLayout: .english)
+        assert(lexicon.rule(for: word(0), sourceLayout: .english) != nil, "the matched entry is recent")
+        assert(lexicon.rule(for: word(1), sourceLayout: .english) == nil, "the least recently used one goes")
     }
 }

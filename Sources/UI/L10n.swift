@@ -163,6 +163,7 @@ enum L10n {
         "Choose a different target layout.": "Выберите другую целевую раскладку.",
         "SwitchFix converts only between English and Russian or Ukrainian.": "SwitchFix переводит только между английской и русской или украинской раскладками.",
         "This word is already in the list. Edit the existing entry instead.": "Это слово уже есть в списке — измените существующую запись.",
+        "This entry has changed meanwhile. Close the form and try again.": "Запись тем временем изменилась. Закройте форму и попробуйте снова.",
         "SwitchFix learns from your actions: undoing an automatic correction adds “Don't correct”, converting a word with the hotkey adds “Correct”. Your own entries are never changed automatically.": "SwitchFix учится на ваших действиях: отмена автоматического исправления добавляет «Не исправлять», перевод слова горячей клавишей — «Исправлять». Добавленные вами записи автоматически не меняются.",
     ]
 }

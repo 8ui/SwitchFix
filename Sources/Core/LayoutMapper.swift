@@ -144,7 +144,8 @@ public class LayoutMapper {
     }
 
     /// Whether every character of `text` is a key of `layout`: letters of its script,
-    /// punctuation keys that are letters on another layout (',' → 'б'), or apostrophes.
+    /// punctuation keys that are letters on another layout (',' → 'б'), apostrophes or
+    /// hyphens (the detector keeps "rjt-xnj" / "кое-что" as one token).
     /// The tables already hold the shifted keys, so no case folding is needed.
     public static func canBeTyped(_ text: String, on layout: Layout) -> Bool {
         let keys: [Character: Character]
@@ -154,7 +155,7 @@ public class LayoutMapper {
         case .ukrainian: keys = ukStandardToEn.merging(ukLegacyToEn) { current, _ in current }
         }
         return text.contains(where: \.isLetter)
-            && text.allSatisfy { keys[$0] != nil || $0 == "'" || $0 == "’" }
+            && text.allSatisfy { keys[$0] != nil || $0 == "'" || $0 == "’" || $0 == "-" }
     }
 
     /// Convert text from one layout to another.

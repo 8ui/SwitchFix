@@ -243,13 +243,13 @@ public class LayoutDetector {
         if let rule = lexicon?.rule(for: word, sourceLayout: sourceLayout) {
             switch rule {
             case .neverCorrect:
-                SwitchFixLog.detector.debug("lexicon: keep '\(word)'")
+                SwitchFixLog.detector.debug("lexicon: keep (length \(word.count))")
                 lexicon?.noteMatch(word: word, sourceLayout: sourceLayout)
                 markValidInCurrentLanguage()
                 return nil
             case .alwaysCorrect(let target):
                 if let result = finishLexiconCorrection(word: word, sourceLayout: sourceLayout, target: target) {
-                    SwitchFixLog.detector.debug("lexicon: '\(word)' → '\(result.convertedWord)'")
+                    SwitchFixLog.detector.debug("lexicon: convert to \(target.rawValue) (length \(word.count))")
                     return result
                 }
             }

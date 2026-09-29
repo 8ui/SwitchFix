@@ -46,9 +46,15 @@ public struct LexiconKey: Hashable, Sendable {
         self.sourceLayout = sourceLayout
     }
 
+    /// Lowercases, unifies apostrophes and folds shifted punctuation keys of the English
+    /// layout to their unshifted key ("{jhjij" and "[jhjij" are the same word, Хорошо).
     public static func normalize(_ token: String) -> String {
-        token.lowercased().replacingOccurrences(of: "’", with: "'")
+        String(token.lowercased().map { shiftedKeys[$0] ?? $0 })
     }
+
+    private static let shiftedKeys: [Character: Character] = [
+        "’": "'", "{": "[", "}": "]", ":": ";", "\"": "'", "<": ",", ">": ".", "~": "`",
+    ]
 }
 
 public enum LexiconValidationError: Error, Equatable, Sendable {
@@ -59,6 +65,10 @@ public enum LexiconValidationError: Error, Equatable, Sendable {
     case sameLayoutTarget
     /// Only English ↔ Cyrillic conversions exist; never Russian ↔ Ukrainian.
     case unsupportedPair
+    /// Another entry already has this word + layout.
+    case duplicate
+    /// The edited entry no longer exists (e.g. it was relearned meanwhile).
+    case missing
 }
 
 public enum LexiconAddResult: Equatable, Sendable {
@@ -68,9 +78,20 @@ public enum LexiconAddResult: Equatable, Sendable {
     case invalid(LexiconValidationError)
 }
 
+/// Decodes one stored entry, or nil when it holds values this version does not know.
+private struct DecodedEntry: Decodable {
+    let entry: LexiconEntry?
+
+    init(from decoder: Decoder) throws {
+        entry = try? LexiconEntry(from: decoder)
+    }
+}
+
 public protocol PersonalLexiconStorage: AnyObject {
     func load() -> Data?
     func save(_ data: Data)
+    /// Keeps data that could not be decoded, so a later save cannot destroy it.
+    func backUpUnreadable(_ data: Data)
 }
 
 public final class UserDefaultsLexiconStorage: PersonalLexiconStorage {
@@ -83,15 +104,19 @@ public final class UserDefaultsLexiconStorage: PersonalLexiconStorage {
 
     public func load() -> Data? { defaults.data(forKey: Self.key) }
     public func save(_ data: Data) { defaults.set(data, forKey: Self.key) }
+    public func backUpUnreadable(_ data: Data) { defaults.set(data, forKey: Self.key + ".unreadable") }
 }
 
 public final class InMemoryLexiconStorage: PersonalLexiconStorage {
     private let lock = NSLock()
     private var data: Data?
     private var saves = 0
+    private var backup: Data?
 
     public init() {}
 
+    public var unreadableBackup: Data? { lock.locked { backup } }
+    public func backUpUnreadable(_ data: Data) { lock.locked { backup = data } }
     public var saveCount: Int { lock.locked { saves } }
     public func load() -> Data? { lock.locked { data } }
     public func save(_ data: Data) {
@@ -120,6 +145,7 @@ public final class PersonalLexicon: @unchecked Sendable {
     private var items: [LexiconEntry] = []
     private var index: [LexiconKey: Int] = [:]
     private var learnedCount = 0
+    private var countersDirty = false
     private let saveQueue = DispatchQueue(label: "com.switchfix.lexicon", qos: .utility)
     /// Accessed only on `saveQueue`.
     private var pendingSave: DispatchWorkItem?
@@ -129,14 +155,22 @@ public final class PersonalLexicon: @unchecked Sendable {
         self.saveDelay = saveDelay
         self.now = now
         guard let data = storage.load() else { return }
-        do {
-            let decoder = JSONDecoder()
-            decoder.dateDecodingStrategy = .iso8601
-            for entry in try decoder.decode([LexiconEntry].self, from: data) where index[entry.key] == nil {
-                insert(entry)
-            }
-        } catch {
-            SwitchFixLog.lexicon.error("lexicon decode failed, starting empty")
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .iso8601
+        // Entry by entry: one unknown value (e.g. written by a newer version) must not
+        // drop the rest. Anything unreadable is backed up before the next save.
+        guard let decoded = try? decoder.decode([DecodedEntry].self, from: data) else {
+            storage.backUpUnreadable(data)
+            SwitchFixLog.lexicon.error("lexicon unreadable, backed up and starting empty")
+            return
+        }
+        for case let entry? in decoded.map(\.entry) where index[entry.key] == nil {
+            insert(entry)
+        }
+        let skipped = decoded.filter { $0.entry == nil }.count
+        if skipped > 0 {
+            storage.backUpUnreadable(data)
+            SwitchFixLog.lexicon.error("lexicon: \(skipped) unreadable entries skipped, original backed up")
         }
     }
 
@@ -192,8 +226,8 @@ public final class PersonalLexicon: @unchecked Sendable {
         return result
     }
 
-    /// Replaces the entry with the same id. An edited entry becomes the user's own
-    /// (`manual`); another entry that now has the same word + layout is dropped.
+    /// Replaces the entry with the same id; an edited entry becomes the user's own
+    /// (`manual`). Fails when the entry is gone or another entry has the new word + layout.
     @discardableResult
     public func update(_ entry: LexiconEntry) -> LexiconValidationError? {
         if let error = Self.validate(word: entry.word, sourceLayout: entry.sourceLayout, rule: entry.rule) {
@@ -202,17 +236,15 @@ public final class PersonalLexicon: @unchecked Sendable {
         var edited = entry
         edited.word = LexiconKey.normalize(entry.word)
         edited.origin = .manual
-        let changed: Bool = lock.locked {
-            guard let position = items.firstIndex(where: { $0.id == entry.id }) else { return false }
+        let error: LexiconValidationError? = lock.locked {
+            guard let position = items.firstIndex(where: { $0.id == entry.id }) else { return .missing }
+            if let clash = index[edited.key], items[clash].id != entry.id { return .duplicate }
             removeEntry(at: position)
-            if let clash = index[edited.key] {
-                removeEntry(at: clash)
-            }
             insert(edited)
-            return true
+            return nil
         }
-        if changed { scheduleSave() }
-        return nil
+        if error == nil { scheduleSave() }
+        return error
     }
 
     public func remove(ids: Set<UUID>) {
@@ -253,21 +285,24 @@ public final class PersonalLexicon: @unchecked Sendable {
     }
 
     /// A rule was applied; updates its counters. No-op for words without a rule.
+    /// Counters are kept in memory and written with the next rule change or `flush()`,
+    /// so typing never triggers a full rewrite of the lexicon.
     public func noteMatch(word: String, sourceLayout: Layout) {
         let key = LexiconKey(word: word, sourceLayout: sourceLayout)
-        mutate {
-            guard let position = index[key] else { return false }
+        lock.locked {
+            guard let position = index[key] else { return }
             items[position].matchCount += 1
             items[position].lastMatchedAt = now()
-            return true
+            countersDirty = true
         }
     }
 
-    /// Writes a pending change now (e.g. at app termination).
+    /// Writes pending changes, including counters, now (e.g. at app termination).
     public func flush() {
+        let dirty = lock.locked { countersDirty }
         saveQueue.sync {
-            guard let pending = pendingSave else { return }
-            pending.cancel()
+            guard pendingSave != nil || dirty else { return }
+            pendingSave?.cancel()
             pendingSave = nil
             performSave()
         }
@@ -374,7 +409,10 @@ public final class PersonalLexicon: @unchecked Sendable {
 
     // Runs on `saveQueue`.
     private func performSave() {
-        let snapshot = entries
+        let snapshot: [LexiconEntry] = lock.locked {
+            countersDirty = false
+            return items
+        }
         let encoder = JSONEncoder()
         encoder.dateEncodingStrategy = .iso8601
         guard let data = try? encoder.encode(snapshot) else {

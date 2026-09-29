@@ -58,6 +58,8 @@ enum LexiconText {
         case .notTypable: return L10n.tr("These characters can't be typed on the selected layout.")
         case .sameLayoutTarget: return L10n.tr("Choose a different target layout.")
         case .unsupportedPair: return L10n.tr("SwitchFix converts only between English and Russian or Ukrainian.")
+        case .duplicate: return L10n.tr("This word is already in the list. Edit the existing entry instead.")
+        case .missing: return L10n.tr("This entry has changed meanwhile. Close the form and try again.")
         }
     }
 }
@@ -180,8 +182,11 @@ final class LearnedWordsViewModel: ObservableObject {
         }
     }
 
+    /// Deletes the selected rows that are visible: rows hidden by the search or filter
+    /// stay, even if they were selected earlier.
     func removeSelected() {
-        lexicon.remove(ids: selection)
+        let visible = Set(rows.map(\.id))
+        lexicon.remove(ids: selection.intersection(visible))
         selection = []
         reload()
     }

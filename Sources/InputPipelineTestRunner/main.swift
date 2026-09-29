@@ -996,11 +996,21 @@ run("learning: forced hotkey target follows the last Cyrillic layout") {
     )
 }
 
-run("learning: revert without undo state falls back to a forced hotkey conversion that teaches") {
+run("learning: the revert hotkey's fallback conversion does not teach") {
     var harness = LearningHarness(revertReturnsNothing: true)
     harness.type("rehk", boundary: nil)
     harness.send(.revertHotkey)
-    check(waitUntil { harness.lexicon.rule(for: "rehk", sourceLayout: .english) == .alwaysCorrect(to: .russian) }, "fallback conversion is a lesson too")
+    check(waitUntil { harness.emitted.count == 1 }, "with nothing to revert the word is converted")
+    check(harness.emitted.last?.provenance == .hotkey, "the fallback is not a forced lesson")
+    check(!waitUntil(0.3) { harness.lexicon.rule(for: "rehk", sourceLayout: .english) != nil }, "pressing Revert never teaches 'always correct'")
+}
+
+run("learning: one- and two-key hotkey conversions are not learned") {
+    var harness = LearningHarness()
+    harness.type("b", boundary: nil)
+    harness.send(.hotkey)
+    check(waitUntil { harness.emitted.count == 1 }, "the hotkey converts a single letter")
+    check(!waitUntil(0.3) { !harness.lexicon.entries.isEmpty }, "too short to learn")
 }
 
 run("learning: trailing punctuation is not part of the learned word") {

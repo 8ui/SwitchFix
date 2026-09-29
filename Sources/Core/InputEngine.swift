@@ -340,7 +340,9 @@ public final class InputEngine {
                     self.learnFromReverted(reverted)
                 } else {
                     self.inputQueue.async {
-                        self.requestManualCorrection(word: word, sequence: sequence, context: context)
+                        // Nothing to revert: convert instead, but the user asked to reject,
+                        // so this conversion must not teach "always correct".
+                        self.requestManualCorrection(word: word, sequence: sequence, context: context, teaches: false)
                     }
                 }
             }
@@ -351,7 +353,8 @@ public final class InputEngine {
         }
     }
 
-    private func runDetection(_ request: DetectionRequest, forceConversion: Bool = false) {
+    /// - Parameter teaches: whether a forced conversion may teach the personal lexicon.
+    private func runDetection(_ request: DetectionRequest, forceConversion: Bool = false, teaches: Bool = true) {
         detectionQueue.async { [weak self] in
             guard let self else { return }
             let startedAt = DispatchTime.now().uptimeNanoseconds
@@ -396,7 +399,8 @@ public final class InputEngine {
                 }
                 // Prefer the Cyrillic layout typed on last, then any installed layout,
                 // then any conversion.
-                let preferred = self.detector.preferredCyrillicLayout
+                // (only for Latin words: a Cyrillic word must never go Russian ↔ Ukrainian).
+                let preferred = sourceLayout == .english ? self.detector.preferredCyrillicLayout : nil
                 let allowed = configuration.allowedLayouts
                 if detectorResult == nil,
                    let (target, converted) = alternatives.first(where: { $0.0 == preferred && allowed.contains($0.0) })
@@ -409,7 +413,7 @@ public final class InputEngine {
                         originalWord: request.word,
                         shouldSwitchLayout: true
                     )
-                    provenance = .hotkeyForced
+                    provenance = teaches ? .hotkeyForced : .hotkey
                 }
             }
             let duration = DispatchTime.now().uptimeNanoseconds &- startedAt
@@ -496,6 +500,9 @@ public final class InputEngine {
 
     // MARK: - Learning (plan/005 §4.5, §12.1, §12.6)
 
+    /// Shortest word a forced hotkey conversion may teach.
+    static let minimumLearnedLength = 3
+
     /// Only single-token automatic corrections and forced hotkey conversions teach the
     /// personal lexicon; selection, layout-switch and merged multi-word corrections don't.
     public static func isLearnable(_ plan: CorrectionPlan) -> Bool {
@@ -515,9 +522,16 @@ public final class InputEngine {
         guard !word.isEmpty else { return }
         switch plan.provenance {
         case .automatic:
-            lexicon.noteMatch(word: word, sourceLayout: plan.originalLayout)
+            // Credit the rule only when it is what produced this correction (a rule to a
+            // layout that is not installed falls through to the model).
+            if let target = plan.targetLayout,
+               lexicon.rule(for: word, sourceLayout: plan.originalLayout) == .alwaysCorrect(to: target) {
+                lexicon.noteMatch(word: word, sourceLayout: plan.originalLayout)
+            }
         case .hotkeyForced:
-            guard let target = plan.targetLayout,
+            // One or two keys ("b" → "и") are too little evidence to convert them forever.
+            guard word.count >= Self.minimumLearnedLength,
+                  let target = plan.targetLayout,
                   (plan.originalLayout == .english) != (target == .english) else { return }
             lexicon.recordAccepted(word: word, sourceLayout: plan.originalLayout, target: target)
         case .hotkey, .selection, .layoutSwitch:
@@ -543,7 +557,8 @@ public final class InputEngine {
     private func requestManualCorrection(
         word: String?,
         sequence: UInt64,
-        context: InputContextSnapshot
+        context: InputContextSnapshot,
+        teaches: Bool = true
     ) {
         SwitchFixLog.engine.notice(
             "manual: bufferLen=\(word?.count ?? 0) secureFocus=\(String(describing: context.secureFocus)) appAllowed=\(context.appAllowed) seq=\(sequence)"
@@ -561,7 +576,7 @@ public final class InputEngine {
                     editGeneration: generation,
                     correctionEpoch: requestCorrectionEpoch,
                     context: context
-                ), forceConversion: true)
+                ), forceConversion: true, teaches: teaches)
             }
             return
         }
@@ -609,7 +624,7 @@ public final class InputEngine {
                         editGeneration: generation,
                         correctionEpoch: requestCorrectionEpoch,
                         context: context
-                    ), forceConversion: true)
+                    ), forceConversion: true, teaches: teaches)
                 }
                 }
             }
