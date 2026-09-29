@@ -1,5 +1,4 @@
 import Foundation
-import Dictionary
 import LanguageModel
 import Utils
 
@@ -65,8 +64,6 @@ public class LayoutDetector {
     private var pendingSuppressedShort: SuppressedShort?
     private var isOutOfSync: Bool = false
 
-    private let validator = WordValidator.shared
-
     /// Layouts that are allowed as correction targets (defaults to all).
     public var allowedLayouts: Set<Layout> = Set(Layout.allCases)
 
@@ -105,10 +102,7 @@ public class LayoutDetector {
         }
     }
 
-    /// Word classifier for automatic correction (plan/005). Manual hotkey conversion
-    /// does not depend on it.
-    public var engine: DetectionEngine = .dictionary
-    /// Margin thresholds of the `.ngram` engine.
+    /// Margin thresholds of the language-model decision (plan/005 §4.6).
     public var thresholds: DetectionThresholds = .default
     /// Source of the n-gram models (injectable for tests).
     public var languageModels: LanguageModelStore = .shared
@@ -149,7 +143,7 @@ public class LayoutDetector {
         let boundary = trailingPunctuation + (boundaryCharacter ?? "")
         pendingBoundaryCharacter = boundary.isEmpty ? nil : boundary
 
-        // Check buffer at word boundaries (short words are handled by WordValidator whitelist)
+        // Check buffer at word boundaries (short words are handled by ShortWordTable)
         let result = isOutOfSync ? nil : checkBuffer()
         if let result {
             delegate?.layoutDetector(self, didDetectWrongLayout: result, boundaryCharacter: pendingBoundaryCharacter)
@@ -223,115 +217,15 @@ public class LayoutDetector {
             return nil
         }
 
-        if engine == .ngram {
-            return checkBufferNgram(word: word, sourceLayout: sourceLayout, suppressedShort: suppressedShort)
-        }
-
-        // Check if the word is valid in the current layout's language
-        let currentWordParts = splitTokenForValidation(word)
-        let currentValidationInput = currentWordParts.core.isEmpty ? word : currentWordParts.core
-
-        let currentLanguage = languageForLayout(sourceLayout)
-        if validator.validate(currentValidationInput, language: currentLanguage, allowSuggestion: false).isValid {
-            SwitchFixLog.detector.debug("valid in \(currentLanguage.rawValue): '\(word)' — no correction")
-            consecutiveWrongCount = 0
-            lastDetectionResult = nil
-            pendingSwitchLayout = nil
-            pendingSwitchCount = 0
-            recordOutcome(.validCurrent)
-            state = .buffering
-            return nil
-        }
-
-        if shouldSkipAutomaticEnglishAcronymCorrection(word: word, sourceLayout: sourceLayout) {
-            consecutiveWrongCount = 0
-            lastDetectionResult = nil
-            pendingSwitchLayout = nil
-            pendingSwitchCount = 0
-            recordOutcome(.validCurrent)
-            state = .buffering
-            return nil
-        }
-
-        // Try converting to alternative layouts
-        let alternatives = LayoutMapper.convertToAlternatives(
-            word,
-            from: sourceLayout,
-            ukrainianFromVariant: ukrainianFromVariant,
-            ukrainianToVariant: ukrainianToVariant
-        )
-            .filter { allowedLayouts.contains($0.0) }
-        for (targetLayout, converted) in alternatives {
-            let targetLanguage = languageForLayout(targetLayout)
-            var candidateConversions: [String] = [converted]
-            if sourceLayout == .ukrainian && targetLayout == .english {
-                let fallbackVariant: UkrainianKeyboardVariant = (ukrainianFromVariant == .legacy) ? .standard : .legacy
-                let fallbackConverted = LayoutMapper.convert(
-                    word,
-                    from: .ukrainian,
-                    to: .english,
-                    ukrainianFromVariant: fallbackVariant,
-                    ukrainianToVariant: ukrainianToVariant
-                )
-                if fallbackConverted != converted && !candidateConversions.contains(fallbackConverted) {
-                    candidateConversions.append(fallbackConverted)
-                }
-            }
-
-            for candidate in candidateConversions {
-                let tokenParts = splitTokenForValidation(candidate)
-                let originalParts = splitTokenForValidation(word)
-
-                // Prevent 'fake switches' where a letter key maps to punctuation at the start of a word.
-                // e.g. 'бігу' (no prefix) -> ',sue' (prefix ',').
-                if tokenParts.prefix.count > originalParts.prefix.count {
-                    continue
-                }
-
-                let validationInput = tokenParts.core.isEmpty ? candidate : tokenParts.core
-
-                let validation = validator.validate(
-                    validationInput,
-                    language: targetLanguage,
-                    allowSuggestion: false
-                )
-                if validation.isValid {
-                    let recomposedWord = tokenParts.prefix + validationInput + tokenParts.suffix
-                    return finishCorrection(
-                        word: word,
-                        recomposedWord: recomposedWord,
-                        sourceLayout: sourceLayout,
-                        targetLayout: targetLayout,
-                        suppressedShort: suppressedShort
-                    )
-                }
-            }
-
-            if shouldAllowAcronymFallback(original: word, converted: converted, currentLanguage: currentLanguage) {
-                return finishAcronymFallback(
-                    word: word,
-                    converted: converted,
-                    sourceLayout: sourceLayout,
-                    targetLayout: targetLayout
-                )
-            }
-        }
-
-        // No valid alternative found — unknown word, do nothing
-        SwitchFixLog.detector.debug("unknown word '\(word)' — no valid alternative in any layout")
-        pendingSwitchLayout = nil
-        pendingSwitchCount = 0
-        recordOutcome(.unknown)
-        state = .buffering
-        return nil
+        return checkLanguageModels(word: word, sourceLayout: sourceLayout, suppressedShort: suppressedShort)
     }
 
-    // MARK: - N-gram engine
+    // MARK: - Language-model decision
 
-    /// Automatic detection without dictionaries (plan/005 §4.3): converts only between
-    /// English and the native Cyrillic layout; short words go through
-    /// `ShortWordTable`, longer ones through the language-model margin.
-    private func checkBufferNgram(word: String, sourceLayout: Layout, suppressedShort: SuppressedShort?) -> DetectionResult? {
+    /// Automatic detection (plan/005 §4.3): converts only between English and the
+    /// native Cyrillic layout; short words go through `ShortWordTable`, longer ones
+    /// through the language-model margin.
+    private func checkLanguageModels(word: String, sourceLayout: Layout, suppressedShort: SuppressedShort?) -> DetectionResult? {
         let originalParts = splitTokenForValidation(word)
         let core = originalParts.core.isEmpty ? word : originalParts.core
 
@@ -340,11 +234,12 @@ public class LayoutDetector {
             markValidInCurrentLanguage()
             return nil
         }
+        let typedIsCamelCase = AutomaticCorrectionSkipRules.isCamelCase(core)
 
         let letterCount = core.filter(\.isLetter).count
         if letterCount <= ShortWordTable.maxLength,
            ShortWordTable.contains(core, language: sourceLayout.modelLanguage) {
-            SwitchFixLog.detector.debug("ngram: common short word '\(word)' in \(sourceLayout.rawValue) — no correction")
+            SwitchFixLog.detector.debug("model: common short word '\(word)' in \(sourceLayout.rawValue) — no correction")
             markValidInCurrentLanguage()
             return nil
         }
@@ -354,7 +249,7 @@ public class LayoutDetector {
         var highestMargin = -Double.infinity
         var firstConversion: (target: Layout, converted: String)?
 
-        for target in ngramTargets(for: sourceLayout) {
+        for target in automaticTargets(for: sourceLayout) {
             var conversions = [LayoutMapper.convert(
                 word,
                 from: sourceLayout,
@@ -386,6 +281,11 @@ public class LayoutDetector {
                 // ('бігу' → ',sue').
                 if parts.prefix.count > originalParts.prefix.count { continue }
                 let convertedCore = parts.core.isEmpty ? conversion : parts.core
+                if typedIsCamelCase && AutomaticCorrectionSkipRules.isCamelCase(convertedCore) {
+                    SwitchFixLog.detector.debug("camelCase identifier '\(word)' — skipping")
+                    markValidInCurrentLanguage()
+                    return nil
+                }
                 let recomposed = parts.prefix + convertedCore + parts.suffix
                 // Letters typed on punctuation keys ('ws'']' → 'цієї') only count as
                 // letters on the converted side.
@@ -393,7 +293,7 @@ public class LayoutDetector {
 
                 if letters <= ShortWordTable.maxLength,
                    ShortWordTable.contains(convertedCore, language: target.modelLanguage) {
-                    SwitchFixLog.detector.debug("ngram: '\(word)' → common short word '\(recomposed)' in \(target.rawValue)")
+                    SwitchFixLog.detector.debug("model: '\(word)' → common short word '\(recomposed)' in \(target.rawValue)")
                     return finishCorrection(
                         word: word,
                         recomposedWord: recomposed,
@@ -424,7 +324,7 @@ public class LayoutDetector {
 
         if let best {
             SwitchFixLog.detector.debug(
-                "ngram: '\(word)' → '\(best.recomposed)' margin=\(String(format: "%.1f", best.margin)) threshold=\(String(format: "%.1f", best.threshold)) letters=\(letterCount)"
+                "model: '\(word)' → '\(best.recomposed)' margin=\(String(format: "%.1f", best.margin)) threshold=\(String(format: "%.1f", best.threshold)) letters=\(letterCount)"
             )
             return finishCorrection(
                 word: word,
@@ -439,7 +339,7 @@ public class LayoutDetector {
            shouldAllowAcronymFallback(
             original: word,
             converted: firstConversion.converted,
-            currentLanguage: languageForLayout(sourceLayout)
+            currentLayout: sourceLayout
            ) {
             return finishAcronymFallback(
                 word: word,
@@ -463,7 +363,7 @@ public class LayoutDetector {
 
     /// Layouts a word typed on `source` may be converted to automatically: only
     /// English ↔ Cyrillic, never Russian ↔ Ukrainian (plan/005 «Целевой сценарий»).
-    private func ngramTargets(for source: Layout) -> [Layout] {
+    private func automaticTargets(for source: Layout) -> [Layout] {
         if source != .english {
             return allowedLayouts.contains(.english) ? [.english] : []
         }
@@ -485,7 +385,7 @@ public class LayoutDetector {
 
     /// Shared tail of a detected correction: case restoration, low-confidence
     /// confirmation and suppression, merging a deferred short word, and the
-    /// consecutive-word threshold. Used by both detection engines.
+    /// consecutive-word threshold.
     private func finishCorrection(
         word: String,
         recomposedWord: String,
@@ -739,11 +639,11 @@ public class LayoutDetector {
         return true
     }
 
-    private func shouldAllowAcronymFallback(original: String, converted: String, currentLanguage: Language) -> Bool {
+    private func shouldAllowAcronymFallback(original: String, converted: String, currentLayout: Layout) -> Bool {
         guard original.count >= 2 else { return false }
         guard original.count <= 3 else { return false }
         guard isAllUppercase(original) else { return false }
-        if containsVowel(original, language: currentLanguage) { return false }
+        if containsVowel(original, layout: currentLayout) { return false }
         if containsMixedScripts(converted) { return false }
         return true
     }
@@ -756,9 +656,9 @@ public class LayoutDetector {
         return isAllUppercase(word)
     }
 
-    private func containsVowel(_ text: String, language: Language) -> Bool {
+    private func containsVowel(_ text: String, layout: Layout) -> Bool {
         let vowels: CharacterSet
-        switch language {
+        switch layout {
         case .english: vowels = LayoutDetector.englishVowels
         case .ukrainian: vowels = LayoutDetector.ukrainianVowels
         case .russian: vowels = LayoutDetector.russianVowels
@@ -767,15 +667,6 @@ public class LayoutDetector {
             return true
         }
         return false
-    }
-
-    /// Map Layout to Language for dictionary lookup.
-    private func languageForLayout(_ layout: Layout) -> Language {
-        switch layout {
-        case .english: return .english
-        case .ukrainian: return .ukrainian
-        case .russian: return .russian
-        }
     }
 
     /// Check if a string contains both Latin and Cyrillic characters.

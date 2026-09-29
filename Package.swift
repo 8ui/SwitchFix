@@ -9,25 +9,13 @@ let package = Package(
     targets: [
         .executableTarget(
             name: "SwitchFixApp",
-            dependencies: ["Core", "Dictionary", "LanguageModel", "UI", "Utils"],
+            dependencies: ["Core", "LanguageModel", "UI", "Utils"],
             path: "Sources/SwitchFixApp"
         ),
         .target(
             name: "Core",
-            dependencies: ["Dictionary", "LanguageModel", "Utils"],
+            dependencies: ["LanguageModel", "Utils"],
             path: "Sources/Core"
-        ),
-        .target(
-            name: "Dictionary",
-            dependencies: ["Utils"],
-            path: "Sources/Dictionary",
-            exclude: ["Resources/uk_full.txt"],
-            resources: [
-                .copy("Resources/en_US.txt"),
-                .copy("Resources/ru_RU.txt"),
-                .copy("Resources/uk_UA.txt"),
-                .copy("Resources/overrides")
-            ]
         ),
         .target(
             name: "UI",
@@ -56,12 +44,12 @@ let package = Package(
         ),
         .executableTarget(
             name: "TestRunner",
-            dependencies: ["Core", "Dictionary", "LanguageModel", "Utils"],
+            dependencies: ["Core", "LanguageModel", "Utils"],
             path: "Sources/TestRunner"
         ),
         .executableTarget(
             name: "InputPipelineTestRunner",
-            dependencies: ["Core", "Utils"],
+            dependencies: ["Core", "LanguageModel", "Utils"],
             path: "Sources/InputPipelineTestRunner"
         ),
     ]

@@ -1,8 +1,5 @@
 import Foundation
 import Core
-import Dictionary
-
-DictionaryLoader.shared.enableTextFallbackForTesting()
 
 // Simple test runner — no XCTest dependency required
 var passed = 0
@@ -29,26 +26,6 @@ func assertEqual<T: Equatable>(_ a: T, _ b: T, _ message: String = "", file: Str
 func runSuite(_ name: String, _ block: () -> Void) {
     print("--- \(name) ---")
     block()
-}
-
-func dictionaryPath(for language: Language) -> String {
-    let root = FileManager.default.currentDirectoryPath
-    return "\(root)/Sources/Dictionary/Resources/\(language.rawValue).txt"
-}
-
-func forEachDictionaryWord(language: Language, _ block: (String) -> Void) {
-    let path = dictionaryPath(for: language)
-    guard let content = try? String(contentsOfFile: path, encoding: .utf8) else {
-        print("  WARN: could not read dictionary at \(path)")
-        return
-    }
-
-    for line in content.split(whereSeparator: \.isNewline) {
-        let word = line.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-        if !word.isEmpty {
-            block(word)
-        }
-    }
 }
 
 // `--layout-eval-only`: run just the real-text layout-detection eval (plan/005).
@@ -157,152 +134,6 @@ runSuite("LayoutMapper: Unmapped chars preserved") {
 }
 
 // =============================================================================
-// BloomFilter Tests
-// =============================================================================
-
-runSuite("BloomFilter: Basic insert and lookup") {
-    let bf = BloomFilter(expectedItems: 1000)
-    bf.insert("hello")
-    bf.insert("world")
-    bf.insert("test")
-    assert(bf.mightContain("hello"), "should contain 'hello'")
-    assert(bf.mightContain("world"), "should contain 'world'")
-    assert(bf.mightContain("test"), "should contain 'test'")
-}
-
-runSuite("BloomFilter: No false negatives") {
-    let bf = BloomFilter(expectedItems: 5000)
-    let words = ["apple", "banana", "cherry", "date", "elderberry",
-                 "fig", "grape", "honeydew", "kiwi", "lemon",
-                 "mango", "nectarine", "orange", "papaya", "quince"]
-    for w in words { bf.insert(w) }
-    var allFound = true
-    for w in words {
-        if !bf.mightContain(w) {
-            allFound = false
-            break
-        }
-    }
-    assert(allFound, "all inserted words must be found (no false negatives)")
-}
-
-runSuite("BloomFilter: False positive rate") {
-    let bf = BloomFilter(expectedItems: 1000, falsePositiveRate: 0.01)
-    // Insert 1000 words
-    for i in 0..<1000 {
-        bf.insert("word_\(i)")
-    }
-    // Test 10000 words that were NOT inserted
-    var falsePositives = 0
-    for i in 1000..<11000 {
-        if bf.mightContain("other_\(i)") {
-            falsePositives += 1
-        }
-    }
-    let fpRate = Double(falsePositives) / 10000.0
-    assert(fpRate < 0.02, "false positive rate should be < 2%, got \(fpRate * 100)%")
-    print("  (FP rate: \(String(format: "%.2f", fpRate * 100))%)")
-}
-
-runSuite("BloomFilter: Memory usage") {
-    let bf = BloomFilter(expectedItems: 50_000, falsePositiveRate: 0.01)
-    let memKB = bf.memoryUsage / 1024
-    assert(memKB < 700, "memory for 50K words should be < 700KB, got \(memKB)KB")
-    print("  (Memory: \(memKB)KB)")
-}
-
-// =============================================================================
-// WordValidator Tests
-// =============================================================================
-
-runSuite("WordValidator: Short words whitelist") {
-    let wv = WordValidator.shared
-    assert(!wv.isValidWord("ab", language: .english), "unknown 2-char words should be rejected")
-    assert(wv.isValidWord("я", language: .russian), "common 1-char words should be allowed")
-    assert(wv.isValidWord("як", language: .ukrainian), "common 2-char words should be allowed")
-}
-
-runSuite("WordValidator: URL patterns skipped") {
-    let wv = WordValidator.shared
-    assert(!wv.isValidWord("https://example.com", language: .english), "URLs should be skipped")
-    assert(!wv.isValidWord("www.test.com", language: .english), "URLs should be skipped")
-}
-
-runSuite("WordValidator: Email patterns skipped") {
-    let wv = WordValidator.shared
-    assert(!wv.isValidWord("user@example.com", language: .english), "emails should be skipped")
-}
-
-runSuite("WordValidator: Pure numbers skipped") {
-    let wv = WordValidator.shared
-    assert(!wv.isValidWord("12345", language: .english), "numbers should be skipped")
-}
-
-runSuite("WordValidator: camelCase skipped") {
-    let wv = WordValidator.shared
-    assert(!wv.isValidWord("camelCase", language: .english), "camelCase should be skipped")
-}
-
-runSuite("WordValidator: Valid English words") {
-    let wv = WordValidator.shared
-    assert(wv.isValidWord("hello", language: .english), "'hello' should be valid in English")
-    assert(wv.isValidWord("world", language: .english), "'world' should be valid in English")
-    assert(wv.isValidWord("the", language: .english), "'the' should be valid in English")
-    assert(wv.isValidWord("seems", language: .english), "'seems' should be valid in English")
-    assert(wv.isValidWord("after", language: .english), "'after' should be valid in English")
-    assert(wv.isValidWord("expected", language: .english), "'expected' should be valid in English")
-}
-
-runSuite("WordValidator: English contractions") {
-    let wv = WordValidator.shared
-    assert(wv.isValidWord("doesn't", language: .english), "'doesn't' should be valid in English")
-    assert(wv.isValidWord("we're", language: .english), "'we're' should be valid in English")
-}
-
-runSuite("WordValidator: Valid Russian words") {
-    let wv = WordValidator.shared
-    assert(wv.isValidWord("привет", language: .russian), "'привет' should be valid in Russian")
-    assert(wv.isValidWord("мир", language: .russian), "'мир' should be valid in Russian")
-}
-
-runSuite("WordValidator: Valid Ukrainian words") {
-    let wv = WordValidator.shared
-    assert(wv.isValidWord("привіт", language: .ukrainian), "'привіт' should be valid in Ukrainian")
-    assert(wv.isValidWord("світ", language: .ukrainian), "'світ' should be valid in Ukrainian")
-    assert(wv.isValidWord("подивимось", language: .ukrainian), "'подивимось' should be valid in Ukrainian")
-}
-
-runSuite("WordValidator: Ukrainian vs Russian names") {
-    let wv = WordValidator.shared
-    assert(wv.isValidWord("андрій", language: .ukrainian), "'андрій' should be valid in Ukrainian")
-    assert(!wv.isValidWord("андрей", language: .ukrainian), "'андрей' should NOT be valid in Ukrainian")
-}
-
-runSuite("WordValidator: Invalid cross-language") {
-    let wv = WordValidator.shared
-    assert(!wv.isValidWord("ghbdtn", language: .english), "'ghbdtn' should NOT be valid in English")
-    assert(!wv.isValidWord("руддщ", language: .russian), "'руддщ' should NOT be valid in Russian")
-}
-
-runSuite("WordValidator: Script mismatch rejected") {
-    let wv = WordValidator.shared
-    assert(!wv.isValidWord("феефсрштп", language: .english), "Cyrillic word should NOT be valid in English")
-    assert(!wv.isValidWord("hello", language: .ukrainian), "Latin word should NOT be valid in Ukrainian")
-}
-
-runSuite("WordValidator: Short false positives avoided") {
-    let wv = WordValidator.shared
-    assert(!wv.isValidWord("дуе", language: .ukrainian), "'дуе' should NOT be treated as valid Ukrainian word")
-    assert(!wv.isExactWord("фаеук", language: .ukrainian), "'фаеук' should NOT be an exact Ukrainian dictionary word")
-}
-
-runSuite("WordValidator: Short word suggestions") {
-    let wv = WordValidator.shared
-    let result = wv.validate("чі", language: .ukrainian, allowSuggestion: true)
-    assert(result.isValid && result.correctedWord == "чи", "should suggest 'чи' for 'чі'")
-}
-
-// =============================================================================
 // LayoutDetector Tests
 // =============================================================================
 
@@ -335,7 +166,7 @@ runSuite("LayoutDetector: Detect EN→RU wrong layout") {
     }
 }
 
-runSuite("LayoutDetector: Long-word typo suggestions are disabled") {
+runSuite("LayoutDetector: Unlikely word is not corrected") {
     let detector = LayoutDetector()
     let mockDelegate = MockDetectorDelegate()
     detector.delegate = mockDelegate
@@ -345,7 +176,7 @@ runSuite("LayoutDetector: Long-word typo suggestions are disabled") {
     }
     detector.flushBuffer(boundaryCharacter: " ")
 
-    assertEqual(mockDelegate.results.count, 0, "should not run typo-tolerant whole-dictionary lookup")
+    assertEqual(mockDelegate.results.count, 0, "an unlikely word must not be corrected")
 }
 
 runSuite("LayoutDetector: Avoid aggressive EN→UK typo suggestion") {
@@ -375,7 +206,7 @@ runSuite("LayoutDetector: Do not suggest for vowel-rich English words") {
     assertEqual(mockDelegate.results.count, 0, "should not auto-correct 'only' to Ukrainian suggestions")
 }
 
-runSuite("LayoutDetector: Reject EN→UK bloom false positives") {
+runSuite("LayoutDetector: English 'after' stays") {
     let detector = LayoutDetector()
     let mockDelegate = MockDetectorDelegate()
     detector.delegate = mockDelegate
@@ -386,7 +217,7 @@ runSuite("LayoutDetector: Reject EN→UK bloom false positives") {
     }
     detector.flushBuffer(boundaryCharacter: " ")
 
-    assertEqual(mockDelegate.results.count, 0, "should not convert 'after' to non-exact Ukrainian word")
+    assertEqual(mockDelegate.results.count, 0, "should not convert 'after' to Ukrainian")
 }
 
 runSuite("LayoutDetector: Convert English 'Ot' to Ukrainian 'Ще' short word") {
@@ -485,6 +316,8 @@ runSuite("LayoutDetector: Convert Ukrainian 'ершиЖ' to English 'this:'") {
     let mockDelegate = MockDetectorDelegate()
     detector.delegate = mockDelegate
     detector.currentLayout = .ukrainian
+    // Legacy Ukrainian: 'ерши' is 'this'; shifted 'Ж' is the colon key, not part of an identifier.
+    detector.ukrainianFromVariant = .legacy
 
     for char in "ершиЖ" {
         detector.addCharacter(String(char))
@@ -517,12 +350,14 @@ runSuite("LayoutDetector: Convert Ukrainian 'дуе' to English 'let'") {
     }
 }
 
-runSuite("LayoutDetector: Ukrainian variant fallback converts legacy word to English") {
+runSuite("LayoutDetector: Legacy Ukrainian variant converts to English") {
     let detector = LayoutDetector()
     let mockDelegate = MockDetectorDelegate()
     detector.delegate = mockDelegate
     detector.currentLayout = .ukrainian
-    detector.ukrainianFromVariant = .standard
+    // The user's own variant decides; the fallback variant must not beat the primary
+    // one on score alone ('Иууьи' on standard reads as 'Beemb', see commit 592ea8c).
+    detector.ukrainianFromVariant = .legacy
     detector.ukrainianToVariant = .standard
 
     for char in "Иууьи" {
@@ -530,7 +365,7 @@ runSuite("LayoutDetector: Ukrainian variant fallback converts legacy word to Eng
     }
     detector.flushBuffer(boundaryCharacter: " ")
 
-    assertEqual(mockDelegate.results.count, 1, "should recover from wrong Ukrainian variant assumption")
+    assertEqual(mockDelegate.results.count, 1, "legacy-variant word should convert")
     if let result = mockDelegate.results.first {
         assertEqual(result.targetLayout, .english, "target should be English")
         assertEqual(result.convertedWord, "Seems", "should convert to 'Seems'")
@@ -746,72 +581,6 @@ runSuite("LayoutDetector: Reset drops suppressed cross-context history") {
 }
 
 // =============================================================================
-// Synthetic Coverage Tests (EN ↔︎ UK)
-// =============================================================================
-
-runSuite("Synthetic: UK → EN coverage") {
-    let filterCurrent = DictionaryLoader.shared.bloomFilter(for: .english)
-    let filterTarget = DictionaryLoader.shared.bloomFilter(for: .ukrainian)
-    var total = 0
-    var convertible = 0
-    var ambiguous = 0
-    var invalidTarget = 0
-
-    forEachDictionaryWord(language: .ukrainian) { word in
-        total += 1
-        let gibberish = LayoutMapper.convert(word, from: .ukrainian, to: .english)
-        let currentValid = filterCurrent.mightContain(gibberish)
-        let targetValid = filterTarget.mightContain(word)
-        if !targetValid {
-            invalidTarget += 1
-            return
-        }
-        if currentValid {
-            ambiguous += 1
-        } else {
-            convertible += 1
-        }
-    }
-
-    let convertibleRate = total > 0 ? Double(convertible) / Double(total) : 0
-    let ambiguousRate = total > 0 ? Double(ambiguous) / Double(total) : 0
-    print("  total: \(total), convertible: \(convertible) (\(String(format: "%.2f", convertibleRate * 100))%)")
-    print("  ambiguous: \(ambiguous) (\(String(format: "%.2f", ambiguousRate * 100))%), invalid target: \(invalidTarget)")
-    assert(total > 0, "ukrainian dictionary should not be empty")
-}
-
-runSuite("Synthetic: EN → UK coverage") {
-    let filterCurrent = DictionaryLoader.shared.bloomFilter(for: .ukrainian)
-    let filterTarget = DictionaryLoader.shared.bloomFilter(for: .english)
-    var total = 0
-    var convertible = 0
-    var ambiguous = 0
-    var invalidTarget = 0
-
-    forEachDictionaryWord(language: .english) { word in
-        total += 1
-        let gibberish = LayoutMapper.convert(word, from: .english, to: .ukrainian)
-        let currentValid = filterCurrent.mightContain(gibberish)
-        let targetValid = filterTarget.mightContain(word)
-        if !targetValid {
-            invalidTarget += 1
-            return
-        }
-        if currentValid {
-            ambiguous += 1
-        } else {
-            convertible += 1
-        }
-    }
-
-    let convertibleRate = total > 0 ? Double(convertible) / Double(total) : 0
-    let ambiguousRate = total > 0 ? Double(ambiguous) / Double(total) : 0
-    print("  total: \(total), convertible: \(convertible) (\(String(format: "%.2f", convertibleRate * 100))%)")
-    print("  ambiguous: \(ambiguous) (\(String(format: "%.2f", ambiguousRate * 100))%), invalid target: \(invalidTarget)")
-    assert(total > 0, "english dictionary should not be empty")
-}
-
-// =============================================================================
 // Character n-gram language model (plan/005)
 // =============================================================================
 
@@ -823,12 +592,6 @@ runNgramDetectorSuites()
 // =============================================================================
 
 runLayoutEvalSuites()
-
-// =============================================================================
-// Performance
-// =============================================================================
-
-runDictionaryPerformanceSuites()
 
 // =============================================================================
 // Summary

@@ -17,10 +17,19 @@ A macOS menu bar utility that automatically corrects keyboard layout mistakes. T
 - **Выделение в Electron-приложениях** — перед чтением выделения включается `AXManualAccessibility`, без него Electron не отдаёт поле ввода через Accessibility.
 - **Telegram (Qt) выбрасывал вставляемый текст** — для таких приложений есть режим отправки через системный поток событий (вкладка **Приложения** в настройках, см. ниже).
 
+### Детекция без словарей
+
+- **Словари удалены.** Раскладку определяет символьная n-граммная модель каждого языка
+  (~450 КБ вместо ~70 МБ словарей): набранное сравнивается с тем, как те же клавиши читаются в
+  другой раскладке. Модель понимает словоформы (`hf,jnftn` → `работает`, `сфеы` → `cats`), сленг
+  и техтермины, которых в словарях не было. Основной сценарий — родной текст с английскими
+  вставками («создай новую worktree»); автоконвертации между русским и украинским нет. Подробности и
+  замеры — `plan/005_ngram_layout_detection.md`, `plan/benchmarks/detector_005_phase2.md`.
+
 ### Доработки ручной коррекции
 
 - **Хоткей на одиночное нажатие модификатора** — Option или Control: нажал и отпустил, без других клавиш. Сочетания `Option+…`/`Ctrl+…` работают как обычно. Ничего не печатает, в отличие от Option+Space, который вставляет неразрывный пробел. ([#16](https://github.com/rundax/SwitchFix/issues/16))
-- **Хоткей переводит слово всегда** — даже если его нет в словаре (опечатки, редкие слова): `ghbftn` → `приает`. Автоматический режим по-прежнему сверяется со словарём.
+- **Хоткей переводит слово всегда** — даже если модель не уверена (опечатки, редкие слова): `rehk` → `курл`.
 - **Исходная раскладка определяется по тексту**, а не по активной раскладке системы: `пше` → `git` работает, даже если система считает раскладку английской. Выделение можно конвертировать туда и обратно сколько угодно раз, фраза с запятой не ломается (`ghbdtn, vbh` ⇄ `привет, мир`).
 
 ### Установка и настройка форка
@@ -162,8 +171,8 @@ defaults write com.switchfix.app SwitchFix_postModeByApp -dict com.tdesktop.Tele
 
 1. **KeyboardMonitor** securely captures keystrokes without blocking them.
 2. Characters accumulate in a short-lived **LayoutDetector** word buffer.
-3. On a word boundary (space, enter, tab), the buffer is checked against alternative layout dictionaries (e.g. checking if an English typo forms a valid Ukrainian word).
-4. If a valid word is found in another layout, **TextCorrector** safely deletes the mistyped characters, switches your input layout, and retypes the correct word.
+3. On a word boundary (space, enter, tab), character n-gram language models score how plausible the keystrokes are as typed versus read on the other layout (English ↔ Ukrainian/Russian).
+4. If the other reading is clearly more plausible, **TextCorrector** safely deletes the mistyped characters, switches your input layout, and retypes the correct word.
 
 ## License
 

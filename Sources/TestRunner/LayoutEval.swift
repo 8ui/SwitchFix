@@ -3,8 +3,8 @@ import Core
 
 // Layout-detection eval on real text (plan/005, Phase 0).
 //
-// Report-only: prints recall / false-positive tables for the current detector so
-// that any replacement (the n-gram model) can be compared on the same data. Data
+// Report-only: prints recall / false-positive tables for the detector; the numbers of
+// the removed dictionary engine are frozen in plan/benchmarks/baseline_005.md. Data
 // lives in Tests/LayoutEval (see README.md there); run from the repo root.
 //
 //   swift run -c release TestRunner --layout-eval-only
@@ -124,12 +124,8 @@ private func loadSentences(_ language: Layout) -> [[String]] {
         .filter { !$0.isEmpty }
 }
 
-/// Engine under evaluation; every suite runs once per engine (plan/005 Phase 2).
-private var evalEngine: DetectionEngine = .dictionary
-
 private func makeDetector(current: Layout, allowed: Set<Layout>) -> LayoutDetector {
     let detector = LayoutDetector()
-    detector.engine = evalEngine
     detector.currentLayout = current
     detector.allowedLayouts = allowed
     return detector
@@ -557,12 +553,9 @@ func runLayoutEvalSuites() {
     for language in evalLanguages {
         sentences[language] = loadSentences(language)
     }
-    for engine in [DetectionEngine.dictionary, .ngram] {
-        evalEngine = engine
-        print("\n========== LayoutEval engine: \(engine.rawValue) ==========")
-        runMixedEval()
-        runIsolatedEval(sentences: sentences)
-        runSentenceEval(sentences: sentences)
-        runEdgeCaseEval()
-    }
+    // Dictionary-engine reference numbers are frozen in plan/benchmarks/baseline_005.md.
+    runMixedEval()
+    runIsolatedEval(sentences: sentences)
+    runSentenceEval(sentences: sentences)
+    runEdgeCaseEval()
 }

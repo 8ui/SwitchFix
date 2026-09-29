@@ -3,6 +3,7 @@ import Core
 import CoreGraphics
 import Darwin
 import Foundation
+import LanguageModel
 import Utils
 
 private var passed = 0
@@ -490,8 +491,11 @@ run("undo generation") {
     ), "undo must not target a different app or context epoch")
 }
 
-run("missing dictionary seam") {
-    check(!AutomaticDictionaryReadiness.prepare(.english), "missing binary dictionary must report unavailable without parsing text fallback")
+run("missing language model seam") {
+    let missing = LanguageModelStore(resourceLocator: { _ in nil })
+    check(!LanguageModelReadiness.prepare(.english, store: missing), "a missing model must report the layout unavailable")
+    check(!LanguageModelReadiness.prepare(.russian, store: missing), "every layout needs its model and the English one")
+    check(LanguageModelReadiness.prepare(.russian), "bundled models must load in the test runner")
     let current = context()
     let store = CaptureStateStore(context: current, hotkeys: HotkeyConfiguration(hotkeyModifiers: 0))
     let detectionCalled = DispatchSemaphore(value: 0)
@@ -528,7 +532,7 @@ run("missing dictionary seam") {
         sourceUserData: 0
     ))
     check(detectionCalled.wait(timeout: .now() + 1) == .success, "unavailable exact detector must complete")
-    check(correctionCalled.wait(timeout: .now() + 0.05) == .timedOut, "unavailable dictionary must produce no correction")
+    check(correctionCalled.wait(timeout: .now() + 0.05) == .timedOut, "a detector returning nothing must produce no correction")
 }
 
 run("disabling invalidates queued corrections") {
@@ -684,7 +688,7 @@ run("app post mode overrides") {
 }
 
 private enum BlockedCollaborator {
-    case dictionary
+    case detection
     case accessibility
     case correction
 }
@@ -697,7 +701,7 @@ private func assertRoutingContinues(while blocked: BlockedCollaborator) {
     let routed = DispatchSemaphore(value: 0)
 
     let detection: InputEngine.ExactDetection = { request in
-        if blocked == .dictionary {
+        if blocked == .detection {
             entered.signal()
             _ = release.wait(timeout: .now() + 5)
             return nil
@@ -746,7 +750,7 @@ private func assertRoutingContinues(while blocked: BlockedCollaborator) {
     }
 
     switch blocked {
-    case .dictionary, .correction:
+    case .detection, .correction:
         enqueue(.character("a"), timestamp: 1)
         enqueue(.boundary(" "), timestamp: 2)
     case .accessibility:
@@ -760,7 +764,7 @@ private func assertRoutingContinues(while blocked: BlockedCollaborator) {
 }
 
 run("blocked collaborators") {
-    assertRoutingContinues(while: .dictionary)
+    assertRoutingContinues(while: .detection)
     assertRoutingContinues(while: .accessibility)
     assertRoutingContinues(while: .correction)
 }

@@ -2,18 +2,23 @@ import Foundation
 
 /// Loads and caches the bundled `<code>.sfng` models.
 ///
-/// Resource lookup mirrors `DictionaryLoader.findDictionaryURL`: the SwiftPM resource
-/// bundle may sit next to the executable (`swift run`) or inside the app's
-/// `Contents/Resources`, and newer SwiftPM versions put files under the bundle's own
-/// `Contents/Resources` — keep this in sync with `scripts/build-app.sh`.
+/// The SwiftPM resource bundle may sit next to the executable (`swift run`) or inside
+/// the app's `Contents/Resources`, and newer SwiftPM versions put files under the
+/// bundle's own `Contents/Resources` — keep this in sync with `scripts/build-app.sh`,
+/// which refuses to build an app without the models.
 public final class LanguageModelStore: @unchecked Sendable {
     public static let shared = LanguageModelStore()
 
+    private let resourceLocator: (ModelLanguage) -> URL?
     private let lock = NSLock()
     private var models: [ModelLanguage: CharNgramModel] = [:]
     private var failed: Set<ModelLanguage> = []
 
-    public init() {}
+    /// - Parameter resourceLocator: where to find a language's `.sfng` file
+    ///   (injectable so tests can simulate a missing model).
+    public init(resourceLocator: @escaping (ModelLanguage) -> URL? = LanguageModelStore.resourceURL) {
+        self.resourceLocator = resourceLocator
+    }
 
     /// The bundled model for `language`, or nil when it is missing or invalid.
     public func model(for language: ModelLanguage) -> CharNgramModel? {
@@ -21,7 +26,7 @@ public final class LanguageModelStore: @unchecked Sendable {
         defer { lock.unlock() }
         if let model = models[language] { return model }
         if failed.contains(language) { return nil }
-        guard let url = Self.resourceURL(for: language),
+        guard let url = resourceLocator(language),
               let data = try? Data(contentsOf: url),
               let model = try? NgramBinaryFormat.decode(data),
               model.language == language else {
@@ -36,7 +41,7 @@ public final class LanguageModelStore: @unchecked Sendable {
         try NgramBinaryFormat.decode(Data(contentsOf: url))
     }
 
-    static func resourceURL(for language: ModelLanguage) -> URL? {
+    public static func resourceURL(for language: ModelLanguage) -> URL? {
         let bundleName = "SwitchFix_LanguageModel.bundle"
         let executableDirectory = Bundle.main.executableURL?.deletingLastPathComponent()
         let candidates = [

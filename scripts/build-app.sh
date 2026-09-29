@@ -8,29 +8,6 @@ BUILD_DIR="$PROJECT_DIR/.build"
 APP_NAME="SwitchFix"
 APP_BUNDLE="$PROJECT_DIR/dist/$APP_NAME.app"
 
-compile_bin_if_needed() {
-    local lang="$1"
-    local txt="$PROJECT_DIR/Sources/Dictionary/Resources/${lang}.txt"
-    local out_dir="$PROJECT_DIR/.build/dictionary-bin"
-    local bin="$out_dir/${lang}.bin"
-    local compiler="$SCRIPT_DIR/compile_dictionary.swift"
-
-    if [ ! -f "$txt" ]; then
-        return
-    fi
-
-    mkdir -p "$out_dir"
-
-    if [ ! -f "$bin" ] || [ "$txt" -nt "$bin" ] || [ "$compiler" -nt "$bin" ]; then
-        echo "Compiling dictionary binary for $lang..."
-        swift "$compiler" --input "$txt" --output "$bin"
-    fi
-}
-
-compile_bin_if_needed "en_US"
-compile_bin_if_needed "ru_RU"
-compile_bin_if_needed "uk_UA"
-
 echo "Building $APP_NAME in release mode..."
 cd "$PROJECT_DIR"
 swift build -c release
@@ -95,36 +72,27 @@ if [ -f "$ICON_SVG" ]; then
     fi
 fi
 
-# Copy the dictionary bundle to Contents/Resources (standard macOS location)
-if [ -d "$PRODUCTS_DIR/SwitchFix_Dictionary.bundle" ]; then
-    cp -R "$PRODUCTS_DIR/SwitchFix_Dictionary.bundle" "$APP_BUNDLE/Contents/Resources/"
-    echo "Copied dictionary bundle to Contents/Resources/."
-
-    DICT_BUNDLE="$APP_BUNDLE/Contents/Resources/SwitchFix_Dictionary.bundle"
-    # Newer Swift toolchains emit a macOS-style bundle (Contents/Resources);
-    # Bundle.url(forResource:) only looks there, not at the bundle root.
-    if [ -d "$DICT_BUNDLE/Contents/Resources" ]; then
-        DICT_BUNDLE="$DICT_BUNDLE/Contents/Resources"
+# Copy the language model bundle — the detector's only data. Without it automatic
+# correction silently stops working, so a missing bundle or model fails the build.
+# Newer SwiftPM emits a macOS-style bundle (Contents/Resources);
+# LanguageModelStore.resourceURL handles both layouts.
+MODEL_BUNDLE_SRC="$PRODUCTS_DIR/SwitchFix_LanguageModel.bundle"
+if [ ! -d "$MODEL_BUNDLE_SRC" ]; then
+    echo "ERROR: SwitchFix_LanguageModel.bundle not found in $PRODUCTS_DIR." >&2
+    exit 1
+fi
+cp -R "$MODEL_BUNDLE_SRC" "$APP_BUNDLE/Contents/Resources/"
+MODEL_DIR="$APP_BUNDLE/Contents/Resources/SwitchFix_LanguageModel.bundle"
+if [ -d "$MODEL_DIR/Contents/Resources" ]; then
+    MODEL_DIR="$MODEL_DIR/Contents/Resources"
+fi
+for lang in en ru uk; do
+    if [ ! -f "$MODEL_DIR/$lang.sfng" ]; then
+        echo "ERROR: $lang.sfng missing from the language model bundle." >&2
+        exit 1
     fi
-    for lang in en_US ru_RU uk_UA; do
-        BIN_PATH="$PROJECT_DIR/.build/dictionary-bin/${lang}.bin"
-        if [ -f "$BIN_PATH" ]; then
-            cp "$BIN_PATH" "$DICT_BUNDLE/"
-        fi
-        # Production uses mmap binaries only; text resources are test-tool fallback inputs.
-        rm -f "$DICT_BUNDLE/${lang}.txt"
-    done
-    echo "Copied compiled dictionary binaries and removed text fallbacks."
-fi
-
-# Copy the language model bundle (plan/005 n-gram engine). Same bundle layout
-# rules as the dictionary bundle; LanguageModelStore.resourceURL handles both.
-if [ -d "$PRODUCTS_DIR/SwitchFix_LanguageModel.bundle" ]; then
-    cp -R "$PRODUCTS_DIR/SwitchFix_LanguageModel.bundle" "$APP_BUNDLE/Contents/Resources/"
-    echo "Copied language model bundle to Contents/Resources/."
-else
-    echo "WARNING: SwitchFix_LanguageModel.bundle not found; the n-gram engine will be unavailable."
-fi
+done
+echo "Copied language model bundle (en, ru, uk) to Contents/Resources/."
 
 # Code sign
 # Prefer a stable signing identity so macOS TCC permissions (Accessibility,

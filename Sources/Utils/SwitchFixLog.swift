@@ -12,7 +12,6 @@ public enum SwitchFixLog {
     public static let corrector = SwitchFixLogger(category: "corrector")
     public static let source = SwitchFixLogger(category: "source")
     public static let permissions = SwitchFixLogger(category: "permissions")
-    public static let dictionary = SwitchFixLogger(category: "dictionary")
     public static let preferences = SwitchFixLogger(category: "preferences")
 }
 

@@ -1,11 +1,10 @@
 import Foundation
 import Core
 
-// LayoutDetector with the n-gram engine (plan/005, Phase 2).
+// LayoutDetector on the n-gram language models (plan/005).
 
 private func ngramDetector(current: Layout, allowed: Set<Layout>) -> LayoutDetector {
     let detector = LayoutDetector()
-    detector.engine = .ngram
     detector.allowedLayouts = allowed
     detector.currentLayout = current
     return detector
@@ -69,7 +68,7 @@ func runNgramDetectorSuites() {
     }
 
     runSuite("NgramDetector: skipped tokens") {
-        for word in ["https://example.com", "user@mail.com", "camelCase", "12345", "API", "CI"] {
+        for word in ["https://example.com", "user@mail.com", "camelCase", "getValue", "12345", "API", "CI"] {
             assert(detectNgram(word, current: .english, allowed: [.english, .russian]) == nil, "\(word) is skipped")
         }
     }

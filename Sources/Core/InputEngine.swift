@@ -38,7 +38,6 @@ public final class InputEngine {
         var allowedLayouts = Set(Layout.allCases)
         var ukrainianFromVariant: UkrainianKeyboardVariant = .standard
         var ukrainianToVariant: UkrainianKeyboardVariant = .standard
-        var engine: DetectionEngine = .dictionary
         var thresholds: DetectionThresholds = .default
     }
 
@@ -231,14 +230,12 @@ public final class InputEngine {
         allowedLayouts: Set<Layout>,
         ukrainianFromVariant: UkrainianKeyboardVariant,
         ukrainianToVariant: UkrainianKeyboardVariant,
-        engine: DetectionEngine = .dictionary,
         thresholds: DetectionThresholds = .default
     ) {
         detectionConfiguration.withLock { value in
             value.allowedLayouts = allowedLayouts
             value.ukrainianFromVariant = ukrainianFromVariant
             value.ukrainianToVariant = ukrainianToVariant
-            value.engine = engine
             value.thresholds = thresholds
         }
     }
@@ -349,7 +346,6 @@ public final class InputEngine {
                 self.detector.allowedLayouts = configuration.allowedLayouts
                 self.detector.ukrainianFromVariant = configuration.ukrainianFromVariant
                 self.detector.ukrainianToVariant = configuration.ukrainianToVariant
-                self.detector.engine = configuration.engine
                 self.detector.thresholds = configuration.thresholds
                 self.detector.discardBuffer()
                 self.detector.addCharacter(request.word)
@@ -357,7 +353,7 @@ public final class InputEngine {
                     boundaryCharacter: request.boundary.isEmpty ? nil : request.boundary
                 )
                 // Manual hotkey = explicit user intent: convert even when the
-                // dictionary does not recognize the word (typos, rare words).
+                // model does not recognize the word (typos, rare words).
                 // The source layout comes from the word's script, not the current input
                 // source: the two can differ (e.g. Cyrillic word, English layout active).
                 let sourceLayout = ScriptAnalyzer.resolvedSourceLayout(

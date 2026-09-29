@@ -1,15 +1,7 @@
 import Foundation
 import LanguageModel
 
-/// Which word classifier `LayoutDetector` uses for automatic correction (plan/005).
-public enum DetectionEngine: String, Sendable {
-    /// Exact dictionary membership (`WordValidator`).
-    case dictionary
-    /// Character n-gram language models (`LanguageModel`), no dictionaries.
-    case ngram
-}
-
-/// Margin thresholds of the n-gram engine, by word length in letters (plan/005 §4.6).
+/// Margin thresholds of the detector, by word length in letters (plan/005 §4.6).
 ///
 /// A word typed on layout S is converted to layout T when
 /// `log P_T(converted) − log P_S(typed) > threshold(length) + sensitivityOffset`.
@@ -53,30 +45,28 @@ extension Layout {
     }
 }
 
-/// Words the automatic n-gram path never touches: numbers, URLs, e-mail addresses and
-/// camelCase identifiers. Same rules as `WordValidator.shouldSkip`, which the
-/// dictionary engine applies inside validation.
+/// Words the automatic path never touches: numbers, URLs and e-mail addresses.
 enum AutomaticCorrectionSkipRules {
     static func shouldSkip(_ word: String) -> Bool {
         if word.allSatisfy({ $0.isNumber }) { return true }
-
         let lower = word.lowercased()
         if lower.hasPrefix("http") || lower.hasPrefix("www.") || lower.hasPrefix("ftp") {
             return true
         }
-        if word.contains("@") && word.contains(".") {
-            return true
-        }
+        return word.contains("@") && word.contains(".")
+    }
 
+    /// A lowercase letter followed by an uppercase one ("camelCase"). The detector
+    /// skips a token only when both the typed and the converted core look like this:
+    /// a shifted punctuation key ('ершиЖ' → 'this:') is not an identifier.
+    static func isCamelCase(_ word: String) -> Bool {
         var previousIsLower = false
         for character in word {
             if character.isUppercase {
                 if previousIsLower { return true }
                 previousIsLower = false
-            } else if character.isLowercase {
-                previousIsLower = true
             } else {
-                previousIsLower = false
+                previousIsLower = character.isLowercase
             }
         }
         return false
@@ -99,12 +89,11 @@ struct NgramMarginScorer {
     }
 }
 
-/// Automatic correction readiness for the n-gram engine: the layout's model and the
-/// English model (the other side of every automatic conversion) must load.
+/// Automatic correction readiness: the layout's model and the English model (the
+/// other side of every automatic conversion) must load.
 public enum LanguageModelReadiness {
     @discardableResult
-    public static func prepare(_ layout: Layout) -> Bool {
-        LanguageModelStore.shared.model(for: layout.modelLanguage) != nil
-            && LanguageModelStore.shared.model(for: .english) != nil
+    public static func prepare(_ layout: Layout, store: LanguageModelStore = .shared) -> Bool {
+        store.model(for: layout.modelLanguage) != nil && store.model(for: .english) != nil
     }
 }

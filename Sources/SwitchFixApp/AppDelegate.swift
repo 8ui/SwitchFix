@@ -81,7 +81,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         registerConfigurationObservers()
         registerMonitoringObservers()
-        prepareDictionaries { [weak self] allowedLayouts in
+        prepareLanguageModels { [weak self] allowedLayouts in
             guard let self else { return }
             self.readyLayouts = allowedLayouts
             self.updateDetectionConfiguration(allowedLayouts: allowedLayouts)
@@ -96,22 +96,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         keyboardMonitor?.stop()
     }
 
-    /// Detection engine chosen at launch (hidden preference, plan/005).
-    private lazy var detectionEngine: DetectionEngine =
-        DetectionEngine(rawValue: PreferencesManager.shared.detectionEngine) ?? .dictionary
-
-    private func prepareDictionaries(completion: @escaping (Set<Layout>) -> Void) {
+    /// Loads the language models of the installed layouts off the main thread; automatic
+    /// correction is enabled only for layouts whose model (and the English one) loaded.
+    private func prepareLanguageModels(completion: @escaping (Set<Layout>) -> Void) {
         let installedLayouts = inputSourceManager.availableLayouts()
-        let engine = detectionEngine
-        SwitchFixLog.app.notice("detection engine: \(engine.rawValue)")
         DispatchQueue.global(qos: .utility).async {
             var readyLayouts: Set<Layout> = []
             var unavailable: [String] = []
             for layout in installedLayouts {
-                let ready = engine == .ngram
-                    ? LanguageModelReadiness.prepare(layout)
-                    : AutomaticDictionaryReadiness.prepare(layout)
-                if ready {
+                if LanguageModelReadiness.prepare(layout) {
                     readyLayouts.insert(layout)
                 } else {
                     unavailable.append(layout.rawValue)
@@ -375,8 +368,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         inputEngine?.updateDetectionConfiguration(
             allowedLayouts: allowedLayouts,
             ukrainianFromVariant: currentVariant,
-            ukrainianToVariant: preferredVariant,
-            engine: detectionEngine
+            ukrainianToVariant: preferredVariant
         )
     }
 
