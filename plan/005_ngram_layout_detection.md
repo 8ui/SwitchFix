@@ -1,6 +1,6 @@
 # Детекция раскладки без словарей: символьные n-граммы + обучение на отменах
 
-> **Статус**: 🚧 В работе — Фазы 0–2 выполнены; остаток (удаление словарей → `PersonalLexicon` → вкладка «Слова» → ползунок) уточнён по итогам spec-review в §12
+> **Статус**: ✅ Реализовано 2026-09-29 (Фазы 0–4; остаток по §12 — задача `docs/tasks/2026-09-29-ngram-only-learning-ui.md`, план `docs/plans/ngram-only-learning-ui-plan.md`). Живая проверка UI на macOS — в долге задачи
 > **Приоритет**: Высокий
 > **Дата создания**: 2026-09-29
 > **Модули**: `Dictionary` (удаляется) → `LanguageModel` (новый), `Core`, `UI`, `SwitchFixApp`, `TestRunner`, `scripts/`
@@ -505,18 +505,19 @@ func score(word: String, source: Layout, alternatives: [(Layout, String)]) -> La
 
 ## 11. Definition of Done
 
-- [ ] В репозитории и в `.app` нет словарей; модуль `Dictionary` удалён.
-- [ ] Модели `.sfng` ≤ 1 МБ, `ModelTrainer` + `fetch-corpora.sh` воспроизводимо собирают их.
-- [ ] Метрики §8 выполнены на eval-наборе (с допусками §10.6); перебор порогов в `plan/benchmarks/thresholds_005.md`.
-- [ ] `PersonalLexicon` работает: revert запоминается, ручная конвертация запоминается,
-      вкладка «Слова» поддерживает создание/просмотр/редактирование/удаление, строки
-      локализованы.
-- [ ] Ползунок «Чувствительность» работает, его положения откалиброваны по перебору.
-- [ ] `swift build -c release`, `TestRunner`, `InputPipelineTestRunner` и
+- [x] В репозитории и в `.app` нет словарей; модуль `Dictionary` удалён (`.app` 3.3 МБ).
+- [x] Модели `.sfng` ≤ 1 МБ, `ModelTrainer` + `fetch-corpora.sh` воспроизводимо собирают их.
+- [x] Метрики §8 выполнены на eval-наборе (с допусками §10.6); перебор порогов в `plan/benchmarks/thresholds_005.md`.
+- [x] `PersonalLexicon` работает: revert запоминается, ручная конвертация запоминается
+      (тесты `InputPipelineTestRunner` «learning: …»), вкладка «Слова» поддерживает
+      создание/просмотр/редактирование/удаление, строки локализованы. Живая проверка UI на
+      macOS — в долге задачи.
+- [x] Ползунок «Чувствительность» работает, его положения откалиброваны по перебору.
+- [x] `swift build -c release`, `TestRunner`, `InputPipelineTestRunner` и
       `build-app.sh` зелёные в CI.
-- [ ] Инварианты `plan/003` не нарушены: staleness-guards в `prepareCorrection` и
-      `CorrectionPlan.isEligible` не изменены.
-- [ ] `CLAUDE.md` и `README.md` описывают новую детекцию.
+- [x] Инварианты `plan/003` не нарушены: staleness-guards в `prepareCorrection` и
+      `CorrectionPlan.isEligible` не изменены (`provenance` ими не читается).
+- [x] `CLAUDE.md` и `README.md` описывают новую детекцию.
 
 ---
 
