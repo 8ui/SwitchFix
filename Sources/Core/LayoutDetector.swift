@@ -106,9 +106,14 @@ public class LayoutDetector {
     public var thresholds: DetectionThresholds = .default
     /// Source of the n-gram models (injectable for tests).
     public var languageModels: LanguageModelStore = .shared
+    /// The user's word rules, checked before the model (nil: none).
+    public var lexicon: PersonalLexicon?
     /// The Cyrillic layout the user typed on most recently: the target for Latin words
     /// when both Russian and Ukrainian are installed. Survives `reset()`.
     private var lastCyrillicLayout: Layout?
+
+    /// The Cyrillic layout typed on most recently, if any.
+    public var preferredCyrillicLayout: Layout? { lastCyrillicLayout }
 
     public init() {}
 
@@ -229,8 +234,28 @@ public class LayoutDetector {
         let originalParts = splitTokenForValidation(word)
         let core = originalParts.core.isEmpty ? word : originalParts.core
 
-        if AutomaticCorrectionSkipRules.shouldSkip(core)
-            || shouldSkipAutomaticEnglishAcronymCorrection(word: word, sourceLayout: sourceLayout) {
+        if AutomaticCorrectionSkipRules.shouldSkip(core) {
+            markValidInCurrentLanguage()
+            return nil
+        }
+
+        // The user's own rules beat every heuristic below.
+        if let rule = lexicon?.rule(for: word, sourceLayout: sourceLayout) {
+            switch rule {
+            case .neverCorrect:
+                SwitchFixLog.detector.debug("lexicon: keep '\(word)'")
+                lexicon?.noteMatch(word: word, sourceLayout: sourceLayout)
+                markValidInCurrentLanguage()
+                return nil
+            case .alwaysCorrect(let target):
+                if let result = finishLexiconCorrection(word: word, sourceLayout: sourceLayout, target: target) {
+                    SwitchFixLog.detector.debug("lexicon: '\(word)' → '\(result.convertedWord)'")
+                    return result
+                }
+            }
+        }
+
+        if shouldSkipAutomaticEnglishAcronymCorrection(word: word, sourceLayout: sourceLayout) {
             markValidInCurrentLanguage()
             return nil
         }
@@ -454,6 +479,36 @@ public class LayoutDetector {
         recordOutcome(.corrected)
         state = .buffering
         return nil
+    }
+
+    /// A user rule is an explicit decision: no low-confidence confirmation, no short-word
+    /// suppression or merging; the layout switches at once. English ↔ Cyrillic only.
+    private func finishLexiconCorrection(word: String, sourceLayout: Layout, target: Layout) -> DetectionResult? {
+        guard (sourceLayout == .english) != (target == .english), allowedLayouts.contains(target) else {
+            return nil
+        }
+        let converted = LayoutMapper.convert(
+            word,
+            from: sourceLayout,
+            to: target,
+            ukrainianFromVariant: ukrainianFromVariant,
+            ukrainianToVariant: ukrainianToVariant
+        )
+        guard converted != word else { return nil }
+        let result = DetectionResult(
+            sourceLayout: sourceLayout,
+            targetLayout: target,
+            convertedWord: applyCase(from: word, to: converted),
+            originalWord: word,
+            shouldSwitchLayout: true
+        )
+        consecutiveWrongCount = 0
+        lastDetectionResult = result
+        pendingSwitchLayout = nil
+        pendingSwitchCount = 0
+        recordOutcome(.corrected)
+        state = .buffering
+        return result
     }
 
     /// Shared tail of the uppercase-acronym fallback ("СШ" → "CI").

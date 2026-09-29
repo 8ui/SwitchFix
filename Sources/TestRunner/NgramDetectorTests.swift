@@ -84,4 +84,36 @@ func runNgramDetectorSuites() {
         russian.addCharacter("ghbdtn")
         assertEqual(russian.flushBuffer(boundaryCharacter: " ")?.convertedWord, "привет", "Russian was used last")
     }
+
+    runSuite("NgramDetector: personal lexicon rules") {
+        let lexicon = PersonalLexicon(storage: InMemoryLexiconStorage(), saveDelay: 0)
+        func detect(_ word: String, current: Layout, allowed: Set<Layout> = [.english, .russian]) -> DetectionResult? {
+            let detector = ngramDetector(current: current, allowed: allowed)
+            detector.lexicon = lexicon
+            detector.addCharacter(word)
+            return detector.flushBuffer(boundaryCharacter: " ")
+        }
+
+        assertEqual(detect("ghbdtn", current: .english)?.convertedWord, "привет", "baseline: corrected")
+        lexicon.recordRejected(word: "ghbdtn", sourceLayout: .english)
+        assert(detect("Ghbdtn", current: .english) == nil, "neverCorrect wins, case-insensitive")
+
+        assert(detect("rehk", current: .english) == nil, "baseline: the typo is not recognized")
+        lexicon.recordAccepted(word: "rehk", sourceLayout: .english, target: .russian)
+        let learned = detect("Rehk", current: .english)
+        assertEqual(learned?.convertedWord, "Курл", "alwaysCorrect converts with case")
+        assertEqual(learned?.shouldSwitchLayout, true, "user rule is confident: switch layout")
+
+        _ = lexicon.add(word: "jr", sourceLayout: .english, rule: .alwaysCorrect(to: .russian))
+        let short = detect("jr", current: .english)
+        assertEqual(short?.convertedWord, "ок", "short words bypass the low-confidence path")
+        assertEqual(short?.shouldSwitchLayout, true, "and switch immediately")
+
+        _ = lexicon.add(word: "qwzx", sourceLayout: .english, rule: .alwaysCorrect(to: .ukrainian))
+        assert(detect("qwzx", current: .english, allowed: [.english, .russian]) == nil, "target layout not installed → rule ignored")
+
+        _ = lexicon.add(word: "API", sourceLayout: .english, rule: .alwaysCorrect(to: .russian))
+        assertEqual(detect("API", current: .english)?.convertedWord, "ФЗШ", "user rule beats the ALLCAPS heuristic")
+        assertEqual(lexicon.entries.first { $0.word == "ghbdtn" }?.matchCount, 1, "neverCorrect hits are counted")
+    }
 }

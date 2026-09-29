@@ -7,9 +7,9 @@ phase: impl
 created: 2026-09-29
 updated: 2026-09-29
 blocked_by: null
-steps_done: 1
+steps_done: 2
 steps_total: 8
-step_current: 2
+step_current: 3
 artifacts:
   spec: plan/005_ngram_layout_detection.md
   plan: docs/plans/ngram-only-learning-ui-plan.md
@@ -24,8 +24,8 @@ artifacts:
 ## Progress
 
 1. ✅ удалить модуль `Dictionary` и словарный путь; n-gram — единственный детектор
-2. ▶ `PersonalLexicon` — модель, хранение, CRUD, обучение (Core)
-3. ⬜ лексикон в детекторе
+2. ✅ `PersonalLexicon` — модель, хранение, CRUD, обучение (Core)
+3. ▶ лексикон в детекторе
 4. ⬜ происхождение коррекции, обучение в `InputEngine`
 5. ⬜ вкладка «Слова» с полным CRUD
 6. ⬜ позиции чувствительности в `DetectionThresholds` и ползунок
@@ -46,6 +46,8 @@ artifacts:
 - 2026-09-29: verify: `CI зелёный (шаг 1, fa10cdf): https://github.com/8ui/SwitchFix/actions/runs/36558306033` → exit 0 ✅
 - 2026-09-29: шаг 1 ✅ удалить модуль `Dictionary` и словарный путь; n-gram — единственный детектор — CI зелёный, run 36558306033
 - 2026-09-29: шаг 2 ▶ `PersonalLexicon` — модель, хранение, CRUD, обучение (Core)
+- 2026-09-29: шаг 2 ✅ `PersonalLexicon` — модель, хранение, CRUD, обучение (Core) — Linux-харнесс: 151/0; CI — вместе с шагом 4
+- 2026-09-29: шаг 3 ▶ лексикон в детекторе
 
 ## Decisions
 
