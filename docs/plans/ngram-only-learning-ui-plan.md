@@ -243,7 +243,8 @@ if typedIsCamelCase && AutomaticCorrectionSkipRules.isCamelCase(convertedCore) {
     `LanguageModelReadiness.prepare(layout)`; лог `"automatic correction unavailable for layouts: …"` оставить;
     `updateDetectionConfiguration` без `engine:`.
   - `PreferencesManager`: удалить `Keys.detectionEngine` и `detectionEngine`.
-  - `SwitchFixLog`: удалить `dictionary`.
+  - `SwitchFixLog`: удалить `dictionary` (spec §12.11 предлагал переименовать в `.model` — не нужно:
+    категория не используется; `lexicon` добавляется в шаге 2).
 
 - [ ] **1.8 InputPipelineTestRunner.** Сьют `missing dictionary seam` → `missing language model seam`:
 
@@ -355,7 +356,7 @@ public struct LexiconKey: Hashable, Sendable {
     public init(word: String, sourceLayout: Layout)   // normalizes
     public static func normalize(_ token: String) -> String
 }
-public enum LexiconValidationError: Error, Equatable { case empty, tooLong, notTypable, sameLayoutTarget }
+public enum LexiconValidationError: Error, Equatable { case empty, tooLong, notTypable, sameLayoutTarget, unsupportedPair }
 public enum LexiconAddResult: Equatable { case added(LexiconEntry), duplicate(LexiconEntry), invalid(LexiconValidationError) }
 public protocol PersonalLexiconStorage: AnyObject { func load() -> Data?; func save(_ data: Data) }
 public final class UserDefaultsLexiconStorage: PersonalLexiconStorage { public init(defaults: UserDefaults = .standard) }
@@ -409,6 +410,7 @@ func runPersonalLexiconSuites() {
         assertEqual(PersonalLexicon.validate(word: String(repeating: "a", count: 65), sourceLayout: .english, rule: .neverCorrect), .tooLong)
         assertEqual(PersonalLexicon.validate(word: "привет", sourceLayout: .english, rule: .neverCorrect), .notTypable)
         assertEqual(PersonalLexicon.validate(word: "ghbdtn", sourceLayout: .english, rule: .alwaysCorrect(to: .english)), .sameLayoutTarget)
+        assertEqual(PersonalLexicon.validate(word: "было", sourceLayout: .russian, rule: .alwaysCorrect(to: .ukrainian)), .unsupportedPair, "no ru ↔ uk rules")
         assert(PersonalLexicon.validate(word: ",erdf", sourceLayout: .english, rule: .alwaysCorrect(to: .russian)) == nil, "punctuation keys are letters on the other layout")
         assert(PersonalLexicon.validate(word: "п'ятниця", sourceLayout: .ukrainian, rule: .neverCorrect) == nil, "apostrophe is allowed")
     }
@@ -460,13 +462,20 @@ func runPersonalLexiconSuites() {
         // Deferred save: 5000 synchronous JSON writes would dominate the run.
         let lexicon = makeLexicon(saveDelay: 3600, clock: { tick += 1; return Date(timeIntervalSince1970: tick) })
         _ = lexicon.add(word: "manual", sourceLayout: .english, rule: .neverCorrect)
+        // Letters only: digits are not keys of the layout tables and would fail validation.
+        func word(_ index: Int) -> String {
+            let letters = Array("abcdefghijklmnopqrstuvwxyz")
+            var value = index, result = "w"
+            repeat { result.append(letters[value % 26]); value /= 26 } while value > 0
+            return result
+        }
         for index in 0..<(PersonalLexicon.maxLearnedEntries + 10) {
-            lexicon.recordRejected(word: "w\(index)", sourceLayout: .english)
+            lexicon.recordRejected(word: word(index), sourceLayout: .english)
         }
         assertEqual(lexicon.entries.filter { $0.origin != .manual }.count, PersonalLexicon.maxLearnedEntries)
         assert(lexicon.rule(for: "manual", sourceLayout: .english) != nil, "manual entry survives")
-        assert(lexicon.rule(for: "w0", sourceLayout: .english) == nil, "oldest learned entry is evicted")
-        assert(lexicon.rule(for: "w\(PersonalLexicon.maxLearnedEntries + 9)", sourceLayout: .english) != nil, "newest stays")
+        assert(lexicon.rule(for: word(0), sourceLayout: .english) == nil, "oldest learned entry is evicted")
+        assert(lexicon.rule(for: word(PersonalLexicon.maxLearnedEntries + 9), sourceLayout: .english) != nil, "newest stays")
     }
 
     runSuite("PersonalLexicon: persistence round-trip") {
@@ -508,17 +517,23 @@ public static func canBeTyped(_ text: String, on layout: Layout) -> Bool {
     case .ukrainian: keys = Set(ukStandardToEn.keys).union(ukLegacyToEn.keys)
     }
     return !text.isEmpty && text.contains(where: \.isLetter)
-        && text.allSatisfy { keys.contains($0) || keys.contains(Character($0.uppercased())) || $0 == "'" || $0 == "’" }
+        && text.allSatisfy { keys.contains($0) || $0 == "'" || $0 == "’" }   // tables already hold shifted keys
 }
 ```
 
-- [ ] **2.3 `PersonalLexicon.swift`** (только `Foundation`, без `os`, чтобы собирался в Linux-харнессе).
+- [ ] **2.3 `PersonalLexicon.swift`** (`Foundation` + `Utils` ради `SwitchFixLog`; без `os`/AppKit, чтобы
+  собирался в Linux-харнессе с заглушкой `Utils`).
   Ключевые решения реализации:
-  - состояние под `NSLock`: `entries: [LexiconEntry]` (порядок вставки) и `rules: [LexiconKey: LexiconRule]`,
-    пересобираемый в `commit()` после каждой мутации; `rule(for:)` — только чтение словаря под локом;
+  - состояние под `NSLock`: `entries: [LexiconEntry]` (порядок вставки), индекс `[LexiconKey: Int]` и
+    `rules: [LexiconKey: LexiconRule]` — **обновляются по одной записи**, без пересборки на каждую мутацию
+    (удаление — swap-remove с правкой индекса одной перемещённой записи); `LexiconKey` имеет internal
+    `init(normalized:sourceLayout:)` без повторной нормализации для уже нормализованных `entry.word`;
+    `rule(for:)` нормализует один раз и читает словарь под локом; вытеснение — один проход, отбирающий
+    лишние записи (сортировка кандидатов по `lastMatchedAt ?? createdAt`), затем пересборка индекса один раз;
   - `LexiconKey.normalize`: `token.lowercased().replacingOccurrences(of: "’", with: "'")`;
   - `validate`: пусто → `.empty`; `count > maxWordLength` → `.tooLong`; `!LayoutMapper.canBeTyped` →
-    `.notTypable`; `.alwaysCorrect(to: sourceLayout)` → `.sameLayoutTarget`;
+    `.notTypable`; `.alwaysCorrect(to: sourceLayout)` → `.sameLayoutTarget`; `.alwaysCorrect` между двумя
+    кириллическими раскладками → `.unsupportedPair` (глобальное правило «никаких ru ↔ uk»);
   - `add` → `.duplicate(existing)` при совпадении ключа, иначе запись `.manual`;
   - `update` валидирует и ставит `origin = .manual` (правка пользователем = ручное решение); если после
     правки ключ совпал с другой записью, та удаляется (дубликатов не бывает);
@@ -533,7 +548,8 @@ public static func canBeTyped(_ text: String, on layout: Layout) -> Bool {
     с задержкой `saveDelay` (предыдущий отменяется); тело кодирует `entries` `JSONEncoder` (даты
     `.iso8601`), `storage.save`, потом `DispatchQueue.main.async { NotificationCenter.default.post(name: .personalLexiconDidChange, object: self) }`
     и `SwitchFixLog.lexicon.notice("saved entries=\(n)")` — **без слов**; при `saveDelay == 0` сохраняет
-    синхронно; `flush()` выполняет ожидающее сохранение синхронно;
+    синхронно; `flush()` — `saveQueue.sync { pending?.cancel(); если было ожидающее — сохранить }`, чтобы не
+    писать дважды параллельно с уже стартовавшим work item;
   - `load` в `init`: `JSONDecoder` (`.iso8601`), ошибка → пустой лексикон + `SwitchFixLog.lexicon.error("lexicon decode failed")`;
   - `UserDefaultsLexiconStorage`: ключ `"SwitchFix_personalLexicon"`, `defaults.data(forKey:)` / `set(_:forKey:)`;
   - `public static let shared = PersonalLexicon(storage: UserDefaultsLexiconStorage())`.
@@ -613,7 +629,8 @@ if let rule = lexicon?.rule(for: word, sourceLayout: sourceLayout) {
 /// A user rule is an explicit decision: no low-confidence confirmation, no short-word
 /// suppression or merging; the layout switches at once.
 private func finishLexiconCorrection(word: String, sourceLayout: Layout, target: Layout) -> DetectionResult? {
-    guard target != sourceLayout, allowedLayouts.contains(target) else { return nil }
+    // Same guard as validation: English ↔ Cyrillic only, never Russian ↔ Ukrainian.
+    guard (sourceLayout == .english) != (target == .english), allowedLayouts.contains(target) else { return nil }
     let converted = LayoutMapper.convert(
         word,
         from: sourceLayout,
@@ -697,7 +714,7 @@ private struct LearningHarness {
     let emitted: EmissionLog
     var timestamp: UInt64 = 0
 
-    init(mode: InputCorrectionMode = .automatic) {
+    init(mode: InputCorrectionMode = .automatic, revertReturnsNothing: Bool = false) {
         let current = context()
         store = CaptureStateStore(context: current, hotkeys: HotkeyConfiguration(hotkeyModifiers: 0))
         lexicon = PersonalLexicon(storage: InMemoryLexiconStorage(), saveDelay: 0)
@@ -709,7 +726,7 @@ private struct LearningHarness {
             preferences: InputPreferencesSnapshot(isEnabled: true, correctionMode: mode),
             correctionEmission: { plan in emitted.append(plan); return true },
             lexicon: lexicon,
-            revertEmission: { _, _ in emitted.last }
+            revertEmission: { _, _ in revertReturnsNothing ? nil : emitted.last }
         )
         engine.updateDetectionConfiguration(
             allowedLayouts: [.english, .russian],
@@ -775,6 +792,41 @@ run("learning: manual entries are not overwritten by reverts") {
     check(!waitUntil(0.3) { harness.lexicon.rule(for: "ghbdtn", sourceLayout: .english) != .alwaysCorrect(to: .russian) }, "manual rule stays")
 }
 
+run("learning: forced hotkey target follows the last Cyrillic layout") {
+    var harness = LearningHarness()
+    harness.engine.updateDetectionConfiguration(
+        allowedLayouts: Set(Layout.allCases), ukrainianFromVariant: .standard, ukrainianToVariant: .standard
+    )
+    func switchLayout(to layout: Layout) {
+        let next = harness.store.replaceContext(
+            frontmostPID: 100, appAllowed: true, layout: layout,
+            inputSourceID: "com.test.\(layout.rawValue)", secureFocus: .notSecure
+        )
+        harness.engine.updateContext(next)
+    }
+    // Typing on Russian makes it the detector's last Cyrillic layout (survives reset()).
+    switchLayout(to: .russian)
+    harness.type("привет")
+    switchLayout(to: .english)
+    harness.type("rehk", boundary: nil)
+    harness.send(.hotkey)
+    check(waitUntil { harness.emitted.last?.targetLayout == .russian }, "forced Latin conversion prefers Russian, not the first installed (Ukrainian)")
+}
+
+run("learning: revert without undo state falls back to a forced hotkey conversion that teaches") {
+    var harness = LearningHarness(revertReturnsNothing: true)
+    harness.type("rehk", boundary: nil)
+    harness.send(.revertHotkey)
+    check(waitUntil { harness.lexicon.rule(for: "rehk", sourceLayout: .english) == .alwaysCorrect(to: .russian) }, "fallback conversion is a lesson too")
+}
+
+run("learning: trailing punctuation is not part of the learned word") {
+    var harness = LearningHarness()
+    harness.type("rehk!", boundary: nil)
+    harness.send(.hotkey)
+    check(waitUntil { harness.lexicon.rule(for: "rehk", sourceLayout: .english) != nil }, "learned without '!'")
+}
+
 run("learning: merged multi-word corrections are not learned") {
     let plan = CorrectionPlan(
         boundarySequence: 1, contextEpoch: 1, targetPID: 100, editGeneration: 1, correctionEpoch: 1,
@@ -799,7 +851,8 @@ run("learning: merged multi-word corrections are not learned") {
 - [ ] **4.3 InputEngine.**
   - `init(..., selectedTextRequest:, lexicon: PersonalLexicon? = nil, revertEmission: RevertEmission? = nil)`;
     в `init` — `detector.lexicon = lexicon`.
-  - `runDetection(_ request:, forceConversion:)` вычисляет происхождение:
+  - `runDetection(_ request:, forceConversion:)`: сохранить `let detectorResult = result` сразу после
+    `flushBuffer` (до ветки принудительной конвертации, которая перезаписывает `result`), затем:
     `let provenance: CorrectionProvenance = !forceConversion ? .automatic : (detectorResult != nil ? .hotkey : .hotkeyForced)`
     (с `customDetection` — `.automatic`/`.hotkey`). Передаёт в `prepareCorrection(result:request:provenance:)`.
     Путь layout-switch (`applyBufferedCorrection`) — `.layoutSwitch`.
@@ -807,13 +860,14 @@ run("learning: merged multi-word corrections are not learned") {
 
 ```swift
 let preferred = self.detector.preferredCyrillicLayout
-let ordered = alternatives.sorted { lhs, rhs in
-    (lhs.0 == preferred ? 0 : 1) < (rhs.0 == preferred ? 0 : 1)
-}
-if let (target, converted) = ordered.first(where: { configuration.allowedLayouts.contains($0.0) }) ?? ordered.first {
+let allowed = configuration.allowedLayouts
+if let (target, converted) = alternatives.first(where: { $0.0 == preferred && allowed.contains($0.0) })
+    ?? alternatives.first(where: { allowed.contains($0.0) })
+    ?? alternatives.first {
 ```
 
-  - `prepareCorrection` кладёт `provenance` в план; в `correctionQueue` после эмиссии:
+  - `prepareCorrection` кладёт `provenance` в план; в `correctionQueue` существующий guard
+    `plan.isEligible(using:)` **остаётся первым**, после него эмиссия:
 
 ```swift
 let applied = self.customEmission.map { $0(plan) }
@@ -879,6 +933,14 @@ private func learnFromReverted(_ plan: CorrectionPlan) {
 ```
 
   `noteMatch` меняет счётчик, только если запись для ключа существует (иначе — no-op).
+  **Ключ обучения = ключ поиска детектора.** `plan.originalText` у ручной коррекции — весь буфер, включая
+  завершающую пунктуацию (`ghbdtn!`), а детектор ищет слово после `splitTrailingBoundary`. Вынести
+  `splitTrailingBoundary` в `public static func LayoutDetector.lexiconWord(from token: String) -> String`
+  (возвращает ядро без завершающих граничных символов; экземплярный метод вызывает его) и передавать в
+  `recordRejected/recordAccepted/forgetAccepted/noteMatch` именно `LayoutDetector.lexiconWord(from: plan.originalText)`;
+  пустой результат → не учить. Тест в 4.1: хоткей на `rehk!` учит `rehk`, затем `rehk ` исправляется автоматически.
+  Ограничение (документировать в CLAUDE.md): отмена `.hotkey`-коррекции, результат которой дал выученный
+  `alwaysCorrect`, правило не забывает — это делается во вкладке «Слова».
 
 - [ ] **4.4 AppDelegate.** `InputEngine(..., lexicon: PersonalLexicon.shared)`; в
   `applicationWillTerminate` — `PersonalLexicon.shared.flush()`.
@@ -956,7 +1018,8 @@ final class LearnedWordsViewModel: ObservableObject {
   существующая → `lexicon.update`. Ошибки валидации → строки:
   `.empty` «Enter a word.», `.tooLong` «The word is too long (64 characters at most).»,
   `.notTypable` «These characters can't be typed on the selected layout.»,
-  `.sameLayoutTarget` «Choose a different target layout.».
+  `.sameLayoutTarget` «Choose a different target layout.», `.unsupportedPair` «SwitchFix converts only
+  between English and Russian or Ukrainian.».
   Изменения, пришедшие из детектора (счётчики), обновляют таблицу через уведомление.
 
 - [ ] **5.3 View.** По образцу `AppsSettingsView` (`SettingsTabContainer`, заголовок, рамка с таблицей и
@@ -966,19 +1029,25 @@ final class LearnedWordsViewModel: ObservableObject {
   - `Table(model.rows, selection: $model.selection, sortOrder: $model.sortOrder)`, колонки
     (ширина окна 520 pt): `Word` (`value: \.word`), `Layout` (`\.layoutName`, 70),
     `Rule` (`\.ruleName`, 130: «Don't correct» / «Correct → EN/UK/RU»), `Source` (`\.originName`, 70:
-    «Revert» / «Hotkey» / «Manual»), `Uses` (`\.matchCount`, 45); строка `.help(...)` —
-    «Last used: <дата>» (`L10n.tr("Last used: %@")`, `DateFormatter` `.short`/`.short`) или «Never used»;
+    «Revert» / «Hotkey» / «Manual»), `Uses` (`TableColumn(…, value: \.matchCount) { Text("\($0.matchCount)") }`
+    — у не-`String` колонки нужен content-closure, 45); колонки строятся content-closure'ами, и на
+    содержимое **каждой ячейки** вешается `.help(row.lastUsedText)` — «Last used: <дата>»
+    (`L10n.tr("Last used: %@")`, `DateFormatter` `.short`/`.short`) или «Never used» (на строку `Table`
+    `.help` не повесить);
     `.frame(height: 260)`; `.contextMenu(forSelectionType: UUID.self, menu: …, primaryAction: { ids in edit(ids.first) })`
     — двойной клик открывает редактирование;
   - `.onDeleteCommand { model.removeSelected() }` — клавиша Delete;
   - панель: `+` (открывает форму с пустым черновиком), `−` (`disabled(model.selection.isEmpty)`),
     `Edit…` (`disabled(model.selection.count != 1)`), справа `Menu` «…» с «Reset Learned Words…» и
-    «Delete All Words…» — каждое через `.confirmationDialog` («Reset learned words? Words you added
+    «Delete All Words…» — пункты меню только выставляют `@State pendingConfirmation`, а `.confirmationDialog`
+    висит на корневом view вкладки («Reset learned words? Words you added
     yourself stay.», «Delete all words? This can't be undone.», кнопки `Reset` / `Delete All`
     `role: .destructive`, `Cancel`);
-  - форма — `.sheet(item:)` с `LexiconDraft`: `TextField("Word")`, `Picker("Typed on:")` (установленные
+  - форма — `.sheet(item:)` с `LexiconDraft` (идентичность — отдельный неопциональный `draftID = UUID()`,
+    `entryID: UUID?` — редактируемая запись; для существующей записи форма показывает «Last used» и
+    «Uses» только для чтения): `TextField("Word")`, `Picker("Typed on:")` (установленные
     раскладки = `Layout.allCases`), `Picker("Rule:")` (`Don't correct` / `Correct to`), при «Correct to» —
-    `Picker("Target layout:")` без раскладки набора; строка ошибки красным `SettingsNote`; кнопки `Cancel`
+    `Picker("Target layout:")` — для кириллицы только English, для English — Russian/Ukrainian; строка ошибки красным `SettingsNote`; кнопки `Cancel`
     (`.cancelAction`) и `Save` (`.defaultAction`), закрытие только если `save` вернул `nil`;
   - `SettingsNote(text: L10n.tr("SwitchFix learns from your actions: undoing an automatic correction adds “Don't correct”, converting a word with the hotkey adds “Correct”. Your own entries are never changed automatically."))`.
 
@@ -986,14 +1055,24 @@ final class LearnedWordsViewModel: ObservableObject {
   «Learned Words» → «Выученные слова», «Search» → «Поиск», «All» → «Все», «Don't correct» → «Не
   исправлять», «Correct» → «Исправлять», «Correct → %@» → «Исправлять → %@», «Correct to» →
   «Исправлять в», «Word» → «Слово», «Layout» → «Раскладка», «Rule» → «Правило», «Source» → «Источник»,
-  «Uses» → «Срабатываний», «Revert» → «Отмена», «Hotkey» → «Хоткей», «Manual» → «Вручную»,
+  «Uses» → «Срабатываний», «Revert» → «Откат», «Hotkey» → «Хоткей», «Manual» → «Вручную»,
   «Last used: %@» → «Последнее срабатывание: %@», «Never used» → «Ещё не срабатывало», «Edit…» →
   «Изменить…», «Typed on:» → «Набрано в раскладке:», «Rule:» → «Правило:», «Target layout:» →
-  «Целевая раскладка:», «Save» → «Сохранить», «Cancel» → «Отмена», «Reset Learned Words…» →
+  «Целевая раскладка:», «Save» → «Сохранить» (`"Cancel"` и `"Correct"` **уже есть** — переиспользовать), «Reset Learned Words…» →
   «Сбросить выученные…», «Delete All Words…» → «Удалить все слова…», «Reset» → «Сбросить», «Delete All»
   → «Удалить все», диалоги и ошибки из 5.2/5.3. Ключ «Revert» не должен конфликтовать с существующими
   («Revert Last:» — другой ключ); проверить `grep -n '"Cancel"\|"Save"\|"Search"\|"All"' Sources/UI/L10n.swift`
-  на дубликаты — словарь с повторным ключом падает в рантайме.
+  на дубликаты — словарь с повторным ключом падает в рантайме при первом русском lookup, а CI его не
+  трогает. Поэтому добавить в `ci.yml` шаг перед сборкой:
+
+```yaml
+      - name: L10n has no duplicate keys
+        run: |
+          dups=$(grep -oE '^ *"([^"\\]|\\.)*": ' Sources/UI/L10n.swift | sed 's/^ *//' | sort | uniq -d)
+          if [ -n "$dups" ]; then echo "Duplicate L10n keys:"; echo "$dups"; exit 1; fi
+```
+
+  (проверить локально на Linux: на текущем файле шаг проходит, с искусственным дублем — падает).
 
 - [ ] **5.5 Проверка + commit + CI.** CI (сборка UI — единственная автоматическая проверка SwiftUI).
   Commit `feat(ui): Words settings tab for the personal lexicon`. Визуальную проверку на macOS записать в
@@ -1026,7 +1105,7 @@ public struct DetectionThresholds {
 public struct NgramMarginScorer { public init(store: LanguageModelStore); public func margin(...) -> Double? }
 ```
 
-- [ ] **6.1 Тесты сначала:**
+- [ ] **6.1 Тесты сначала** (`NgramDetectorTests.swift`: добавить `import LanguageModel`):
 
 ```swift
 runSuite("NgramDetector: sensitivity") {
@@ -1068,6 +1147,9 @@ runSuite("NgramDetector: sensitivity") {
   `ShortWordTable.contains(convertedCore, …)` выполняется только при `thresholds.convertsShortWords`
   (сохранение **исходного** короткого слова — «common short word … no correction» — остаётся всегда).
   Обновить doc-комментарий `DetectionThresholds` (позиции, пол, ссылку на `thresholds_005.md`).
+  §4.6.4: решение детектора логировать на уровне `info` **без слова** —
+  `SwitchFixLog.detector.info("ngram decision margin=… threshold=… letters=… corrected=…")` рядом с
+  существующим `debug` (со словом).
 
 - [ ] **6.3 Настройка.** `PreferencesManager`:
 
@@ -1089,8 +1171,8 @@ public var detectionSensitivity: Int {
 }
 ```
 
-  (`Keys.detectionSensitivity = "SwitchFix_detectionSensitivity"`; `import Core` в UI уже есть через
-  зависимость — проверить, иначе добавить.) `SettingsViewModel`: `@Published var detectionSensitivity: Double`
+  (`Keys.detectionSensitivity = "SwitchFix_detectionSensitivity"`; в `PreferencesManager.swift` добавить
+  `import Core` — сейчас его нет.) `SettingsViewModel`: `@Published var detectionSensitivity: Double`
   (Slider работает с `Double`) + `didSet` пишет `Int(detectionSensitivity.rounded())`, синхронизация в
   `syncFromPreferences`.
 
@@ -1117,7 +1199,9 @@ SettingsSection(title: L10n.tr("Sensitivity")) {
 
 - [ ] **6.5 AppDelegate.** `updateDetectionConfiguration(allowedLayouts:)` передаёт
   `thresholds: .forSensitivity(PreferencesManager.shared.detectionSensitivity)`; в `preferencesDidUpdate`
-  добавить `updateDetectionConfiguration(allowedLayouts: readyLayouts)`.
+  добавить `updateDetectionConfiguration(allowedLayouts: readyLayouts)` под guard `modelsPrepared`
+  (новый флаг, `true` в completion `prepareLanguageModels`) — иначе до подготовки моделей уйдёт пустой
+  набор раскладок.
 
 - [ ] **6.6 Проверка + commit.** Linux-харнесс для 6.1 (детекторная часть). Commit
   `feat(ui): detection sensitivity slider`. CI — вместе с шагом 7.
@@ -1127,7 +1211,6 @@ SettingsSection(title: L10n.tr("Sensitivity")) {
 **Files:**
 - Create: `Sources/TestRunner/ThresholdSweep.swift`; Modify: `Sources/TestRunner/LayoutEval.swift` (хелперы
   `private` → внутренние), `Sources/TestRunner/main.swift`
-- Modify: `Sources/LanguageModel/NgramBinaryFormat.swift` (`public static func checksum(of: Data) -> UInt64`)
 - Modify: `Sources/Core/NgramScoring.swift` (`calibratedModelChecksums`, итоговые `sensitivityOffsets`)
 - Modify: `.github/workflows/ci.yml`
 - Create: `plan/benchmarks/thresholds_005.md`
@@ -1147,34 +1230,33 @@ runSuite("DetectionThresholds: calibrated for the bundled models") {
 }
 ```
 
-  `checksum(of:)` = `fnv1a(data)` по всему файлу. Значения для `calibratedModelChecksums` посчитать на
-  Linux:
+  Проще, чем новый API: каждый `.sfng` уже заканчивается FNV-1a суммой предыдущих байт — тест читает
+  последние 8 байт little-endian (`data.suffix(8).enumerated().reduce(0) { $0 | UInt64($1.element) << (8 * $1.offset) }`);
+  `NgramBinaryFormat.checksum(of:)` **не добавлять**, в тесте заменить на это выражение. Значения для
+  `calibratedModelChecksums`:
 
 ```bash
-python3 - <<'EOF'
-for lang in ("en", "ru", "uk"):
-    h = 0xcbf29ce484222325
-    for b in open(f"Sources/LanguageModel/Resources/{lang}.sfng", "rb").read():
-        h = ((h ^ b) * 0x100000001b3) & 0xFFFFFFFFFFFFFFFF
-    print(lang, hex(h))
-EOF
+python3 -c 'import struct; [print(l, hex(struct.unpack("<Q", open(f"Sources/LanguageModel/Resources/{l}.sfng","rb").read()[-8:])[0])) for l in ("en","ru","uk")]' 
 ```
 
-  (сверить формулу с `NgramBinaryFormat.fnv1a` перед использованием).
+  (сверить с порядком байт записи в `NgramBinaryFormat.append`).
 
 - [ ] **7.2 `--threshold-sweep`.** `ThresholdSweep.swift`, `runThresholdSweep()`; в `main.swift` рядом с
   `--layout-eval-only`: `if CommandLine.arguments.contains("--threshold-sweep") { runThresholdSweep(); exit(0) }`.
   Метрики на данных LayoutEval, конфигурация «en + native» (основная):
-  - **по корзинам** (3, 4, 5, 6, 7+ букв) для базового порога `T` ∈ 0…14 шаг 1 (все корзины сразу —
+  - **по корзинам** (3, 4, 5, 6, 7+ букв) для базового порога `T` ∈ 0…14 шаг 0.5 (§4.6.1) (все корзины сразу —
     слова разной длины независимы): FP% по правильно набранным словам всех трёх языков и recall% по
     набранным в чужой раскладке → строки TSV `bucket\tT\tfp\trecall`;
-  - **по сдвигам** `offset` ∈ −6…+6 шаг 1 и `convertsShortWords` (true; и false для самой строгой): FP% ≥ 4
+  - **по сдвигам** `offset` ∈ −6…+6 шаг 0.5 и `convertsShortWords` (true; и false для самой строгой): FP% ≥ 4
     букв, FP% ≤ 3, recall 4–5, recall 6+, ложные в смешанных сообщениях, «полностью правильные»
     (relies on app / switches late) → TSV `offset\t…`;
   - печатать с префиксом `SWEEP\t` для `grep` в логе CI; вывести рекомендацию по правилу §4.6.2 + §12.10:
     минимальный `T` на корзину с FP ≤ 0.1% (≥ 4 букв) / ≤ 0.5% (3 буквы).
   Реализация переиспользует `tokenize`, `loadSentences`, `loadMixed`, `typedForm`, `isReachable`,
-  `restores`, `detect`, `wrongLayouts`, `EvalConfig` из `LayoutEval.swift` (снять `private`); цикл
+  `restores`, `detect`, `wrongLayouts`, `EvalConfig` из `LayoutEval.swift` — перенести их в
+  `enum EvalSupport` (internal static), чтобы не конфликтовать с `detect`/`makeDetector` в других файлах;
+  прогон ≈ 29 + 25 полных проходов eval — следить за временем шага в CI (цель < 2 мин; если больше —
+  считать отступ каждого слова один раз через `NgramMarginScorer` и применять пороги к готовым числам); цикл
   смешанных сообщений вынести из `runMixedEval` в функцию `mixedMetrics(thresholds:) -> (fully: Double, fp: Int, …)`,
   которую зовут и отчёт, и перебор; `makeDetector(current:allowed:thresholds: = .default)`.
 
@@ -1182,7 +1264,10 @@ EOF
 
 ```yaml
       - name: Threshold sweep (report-only)
-        run: swift run -c release TestRunner --threshold-sweep | tee threshold-sweep.txt
+        shell: bash
+        run: |
+          set -o pipefail
+          swift run -c release TestRunner --threshold-sweep | tee threshold-sweep.txt
 ```
 
 - [ ] **7.4 Калибровка.** Push, дождаться CI, взять строки `SWEEP` из лога (`get_job_logs`). Выбрать

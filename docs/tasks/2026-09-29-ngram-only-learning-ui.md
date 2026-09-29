@@ -3,13 +3,13 @@ id: 2026-09-29-ngram-only-learning-ui
 title: "Удалить словари: n-gram единственный детектор, обучение на отменах, вкладка Слова, ползунок"
 type: feature
 pipeline: full
-phase: plan-review
+phase: impl
 created: 2026-09-29
 updated: 2026-09-29
 blocked_by: null
 steps_done: 0
-steps_total: 0
-step_current: null
+steps_total: 8
+step_current: 1
 artifacts:
   spec: plan/005_ngram_layout_detection.md
   plan: docs/plans/ngram-only-learning-ui-plan.md
@@ -23,7 +23,14 @@ artifacts:
 
 ## Progress
 
-_Шаги не заданы. `rtp steps <id> --set "…"` или `--from-plan <файл>`._
+1. ▶ удалить модуль `Dictionary` и словарный путь; n-gram — единственный детектор
+2. ⬜ `PersonalLexicon` — модель, хранение, CRUD, обучение (Core)
+3. ⬜ лексикон в детекторе
+4. ⬜ происхождение коррекции, обучение в `InputEngine`
+5. ⬜ вкладка «Слова» с полным CRUD
+6. ⬜ позиции чувствительности в `DetectionThresholds` и ползунок
+7. ⬜ перебор порогов, калибровка ползунка, защита от устаревших порогов
+8. ⬜ документация и Definition of Done
 
 ## Log
 
@@ -35,6 +42,7 @@ _Шаги не заданы. `rtp steps <id> --set "…"` или `--from-plan <�
 - 2026-09-29: spec-review (субагент general-purpose, свежий взгляд): 3 blocker + 10 major + 2 minor; все учтены в plan/005 §12 и §10.6, устаревший текст про флаг/переходный период исправлен
 - 2026-09-29: artifacts.plan = docs/plans/ngram-only-learning-ui-plan.md
 - 2026-09-29: план: docs/plans/ngram-only-learning-ui-plan.md, 8 шагов в 4 частях; факты сверены scratch-харнессом на Linux (2 из 51 старых проверок детектора падают на n-gram — вариант укр. раскладки и camelCase-фильтр на 'ершиЖ'; 'ghbftn' модель уже исправляет → фикстура 'rehk')
+- 2026-09-29: plan-review (субагент Plan, свежий взгляд): 1 blocker (цифры в словах eviction-теста) + 5 major (ß в canBeTyped, дубли ключей L10n → CI-шаг, ru↔uk правила, O(n) пересборка индекса, ключ с завершающей пунктуацией) + minor — всё внесено в план
 
 ## Decisions
 
