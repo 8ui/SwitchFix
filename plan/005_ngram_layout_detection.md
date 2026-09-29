@@ -401,12 +401,13 @@ func score(word: String, source: Layout, alternatives: [(Layout, String)]) -> La
   round-trip тренер → рантайм.
 - **Критерий выхода**: размер ≤ 1 МБ суммарно; на eval-наборе recall/FP не хуже прототипа.
 
-### Фаза 2: Скорер, детектор за флагом, подбор порогов ⏱ ~4 ч
+### Фаза 2: Скорер, детектор за флагом, подбор порогов ⏱ ~4 ч — ✅ выполнено (`plan/benchmarks/detector_005_phase2.md`)
 - `LayoutScorer`, `ShortWordTable`, `DetectionThresholds`, новое правило в `LayoutDetector`.
 - Скрытый флаг `SwitchFix_detectionEngine = dictionary | ngram` (по умолчанию
   `dictionary`), чтобы сравнивать в реальной работе.
-- `TestRunner --threshold-sweep` → `plan/benchmarks/thresholds_005.md`; пороги по
-  умолчанию и шаги ползунка выбираются по правилу §4.6.
+- Пороги выбраны по сетке `ModelTrainer eval` (длины 1…7+, T 0…14) и проверены на
+  детекторе: T3=12, T4=T5=T6=8, T7+=5. Отдельный `--threshold-sweep` в `TestRunner`
+  отложен до Фазы 3 (калибровка ползунка).
 - Логирование `margin`/порога для калибровки на реальном использовании.
 - **Критерий выхода**: eval-suite зелёный по целям §8; все существующие тесты
   `TestRunner`/`InputPipelineTestRunner` проходят в режиме `ngram` (тесты, завязанные на
