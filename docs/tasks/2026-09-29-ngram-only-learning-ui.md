@@ -7,9 +7,9 @@ phase: impl
 created: 2026-09-29
 updated: 2026-09-29
 blocked_by: null
-steps_done: 0
+steps_done: 1
 steps_total: 8
-step_current: 1
+step_current: 2
 artifacts:
   spec: plan/005_ngram_layout_detection.md
   plan: docs/plans/ngram-only-learning-ui-plan.md
@@ -23,8 +23,8 @@ artifacts:
 
 ## Progress
 
-1. ▶ удалить модуль `Dictionary` и словарный путь; n-gram — единственный детектор
-2. ⬜ `PersonalLexicon` — модель, хранение, CRUD, обучение (Core)
+1. ✅ удалить модуль `Dictionary` и словарный путь; n-gram — единственный детектор
+2. ▶ `PersonalLexicon` — модель, хранение, CRUD, обучение (Core)
 3. ⬜ лексикон в детекторе
 4. ⬜ происхождение коррекции, обучение в `InputEngine`
 5. ⬜ вкладка «Слова» с полным CRUD
@@ -43,6 +43,9 @@ artifacts:
 - 2026-09-29: artifacts.plan = docs/plans/ngram-only-learning-ui-plan.md
 - 2026-09-29: план: docs/plans/ngram-only-learning-ui-plan.md, 8 шагов в 4 частях; факты сверены scratch-харнессом на Linux (2 из 51 старых проверок детектора падают на n-gram — вариант укр. раскладки и camelCase-фильтр на 'ершиЖ'; 'ghbftn' модель уже исправляет → фикстура 'rehk')
 - 2026-09-29: plan-review (субагент Plan, свежий взгляд): 1 blocker (цифры в словах eviction-теста) + 5 major (ß в canBeTyped, дубли ключей L10n → CI-шаг, ru↔uk правила, O(n) пересборка индекса, ключ с завершающей пунктуацией) + minor — всё внесено в план
+- 2026-09-29: verify: `CI зелёный (шаг 1, fa10cdf): https://github.com/8ui/SwitchFix/actions/runs/36558306033` → exit 0 ✅
+- 2026-09-29: шаг 1 ✅ удалить модуль `Dictionary` и словарный путь; n-gram — единственный детектор — CI зелёный, run 36558306033
+- 2026-09-29: шаг 2 ▶ `PersonalLexicon` — модель, хранение, CRUD, обучение (Core)
 
 ## Decisions
 
@@ -60,7 +63,11 @@ artifacts:
 
 ## Verification
 
-_Доказательства, а не утверждения. Заполняется `rtp verify <id> --run "<команда>"`: команда, exit code, хвост вывода._
+- 2026-09-29 · `CI зелёный (шаг 1, fa10cdf): https://github.com/8ui/SwitchFix/actions/runs/36558306033` · exit 0 ✅
+
+  ```
+  TestRunner 168 passed 0 failed; InputPipeline 858 passed 0 failed; build-app: Copied language model bundle (en, ru, uk); .app 3.3M
+  ```
 
 ## Handoff
 

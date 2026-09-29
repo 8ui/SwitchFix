@@ -584,6 +584,7 @@ runSuite("LayoutDetector: Reset drops suppressed cross-context history") {
 // Character n-gram language model (plan/005)
 // =============================================================================
 
+runPersonalLexiconSuites()
 runLanguageModelSuites()
 runNgramDetectorSuites()
 

@@ -5,7 +5,7 @@ public enum UkrainianKeyboardVariant: String {
     case legacy
 }
 
-public enum Layout: String, CaseIterable, Equatable {
+public enum Layout: String, CaseIterable, Equatable, Codable, Sendable {
     case english
     case ukrainian
     case russian
@@ -141,6 +141,20 @@ public class LayoutMapper {
             return ukrainianFromVariant == .legacy ? ukLegacyToRu : ukStandardToRu
         default: return nil
         }
+    }
+
+    /// Whether every character of `text` is a key of `layout`: letters of its script,
+    /// punctuation keys that are letters on another layout (',' → 'б'), or apostrophes.
+    /// The tables already hold the shifted keys, so no case folding is needed.
+    public static func canBeTyped(_ text: String, on layout: Layout) -> Bool {
+        let keys: [Character: Character]
+        switch layout {
+        case .english: keys = enToRu
+        case .russian: keys = ruToEn
+        case .ukrainian: keys = ukStandardToEn.merging(ukLegacyToEn) { current, _ in current }
+        }
+        return text.contains(where: \.isLetter)
+            && text.allSatisfy { keys[$0] != nil || $0 == "'" || $0 == "’" }
     }
 
     /// Convert text from one layout to another.

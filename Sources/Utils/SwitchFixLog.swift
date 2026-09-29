@@ -13,6 +13,7 @@ public enum SwitchFixLog {
     public static let source = SwitchFixLogger(category: "source")
     public static let permissions = SwitchFixLogger(category: "permissions")
     public static let preferences = SwitchFixLogger(category: "preferences")
+    public static let lexicon = SwitchFixLogger(category: "lexicon")
 }
 
 /// Every message is prefixed "[SwitchFix]" so it survives filtering with
