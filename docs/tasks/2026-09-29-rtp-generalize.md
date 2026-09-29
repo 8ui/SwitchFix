@@ -3,13 +3,13 @@ id: 2026-09-29-rtp-generalize
 title: Обобщить rtp и перенести в SwitchFix
 type: refactor
 pipeline: full
-phase: impl
+phase: review
 created: 2026-09-29
 updated: 2026-09-29
 blocked_by: null
-steps_done: 4
+steps_done: 6
 steps_total: 8
-step_current: 5
+step_current: 7
 artifacts:
   spec: docs/features/rtp-cloud-switchfix-spec.md
   plan: docs/plans/rtp-cloud-switchfix-plan.md
@@ -19,7 +19,11 @@ artifacts:
 
 ## Context
 
-_2-5 строк: что делаем и зачем. Задача этой секции — чтобы через N дней можно было восстановить контекст без чтения spec/plan._
+Скилл `run-task-pipeline` (CLI `rtp`) был написан под restoplace. Подзадача 1: проектная
+специфика вынесена в `docs/tasks/.rtp.json` + CLAUDE.md проекта (глобальный скилл в `~/.claude`,
+restoplace `ae27627e9`). Подзадача 2: облачные сессии SwitchFix получают только репо, поэтому
+копии скилла, 10 скиллов superpowers, хуки с гвардом и шим `rtp` положены в `.claude/` репо
+(ветка `claude/rtp-cloud-pipeline`, PR в `8ui/SwitchFix`).
 
 ## Progress
 
@@ -27,9 +31,9 @@ _2-5 строк: что делаем и зачем. Задача этой сек
 2. ✅ фиксы копии rtp — путь с пробелом/кириллицей и кавычечная форма
 3. ✅ SKILL.md копии rtp
 4. ✅ хуки и шим
-5. ▶ `.rtp.json` и CLAUDE.md
-6. ⬜ проверка дублей скиллов вживую
-7. ⬜ PR, CI, доказательства
+5. ✅ `.rtp.json` и CLAUDE.md
+6. ✅ проверка дублей скиллов вживую
+7. ▶ PR, CI, доказательства
 8. ⬜ облачная проверка (пользователь) и закрытие
 
 ## Log
@@ -70,6 +74,16 @@ _2-5 строк: что делаем и зачем. Задача этой сек
 - 2026-09-29: шаг 2 ✅ фиксы копии rtp — путь с пробелом/кириллицей и кавычечная форма — P1/P2 зелёные, регресс копии 156/0
 - 2026-09-29: шаг 3 ✅ SKILL.md копии rtp — критерий 3 exit 0; 13 ссылок с пометкой «без плагина», code-reviewer оставлен
 - 2026-09-29: шаг 4 ✅ хуки и шим — критерии 4,5,6 зелёные; 100755 у шима и rtp-hook.sh
+- 2026-09-29: шаг 5 ✅ `.rtp.json` и CLAUDE.md — rtp next печатает 3 --run и 1 --record
+- 2026-09-29: шаг 6 ✅ проверка дублей скиллов вживую — предварительно: копии скрыты; какой run-task-pipeline виден — подтвердить /skills в новой сессии
+- 2026-09-29: impl подзадачи 2 завершён (шаги 1-6)
+- 2026-09-29: verify: `sh .claude/skills/run-task-pipeline/scripts/regress.sh` → exit 0 ✅
+- 2026-09-29: verify: `! grep -rn 'superpowers:' .claude/skills --include='*.md' | grep -v '^.claude/skills/run-task-pipeline/'` → exit 0 ✅
+- 2026-09-29: verify: `! grep -nE '~/\.claude/(skills|bin)|\$HOME/\.claude' .claude/skills/run-task-pipeline/SKILL.md` → exit 0 ✅
+- 2026-09-29: verify: `jq -e '(.hooks|keys)==["PostToolUse","PreCompact","SessionStart","Stop"] and .hooks.PostToolUse[0].matcher=="Edit|Write|MultiEdit" and ([.hooks|to_entries|sort_by(.key)[]|.value[0].hooks[0].command|capture("hook-(?<s>[a-z]+)$").s]==["postedit","precompact","sessionstart","stop"])' .claude/settings.json` → exit 0 ✅
+- 2026-09-29: verify: `git ls-files -s .claude | awk '$1=="100755"{print $4}'` → exit 0 ✅
+- 2026-09-29: verify: `критерий 4: гвард локально — PATH=/usr/bin:/bin sh .claude/rtp-hook.sh hook-stop` → exit 0 ✅
+- 2026-09-29: verify: `критерий 5: без глобальных хуков (CLAUDE_CONFIG_DIR пуст)` → exit 0 ✅
 
 ## Decisions
 
@@ -79,11 +93,15 @@ _Нетривиальные решения по ходу задачи. Одна 
 - Подзадача 2: копии скиллов в SwitchFix разовые, без sync; 10 скиллов superpowers (замыкание ссылок); локально копии скрыты через `skillOverrides` в settings.local.json.
 - Подзадача 2: гвард хуков копии — «глобальные хуки rtp подключены в settings.json пользователя», а не наличие папки скилла и не `CLAUDE_CODE_REMOTE`.
 - Подзадача 2: регэкспы Stop-хука копии принимают кавычку после `rtp.mjs`; побочный эффект — `grep "rtp" …` с кавычкой теперь тоже считается мутирующим вызовом, как и раньше без кавычки. Принято.
+- Подзадача 2, дубли локально (предварительно, в сессии, где копии появились на лету): обновлённый список скиллов показал один `run-task-pipeline` и ни одной копии superpowers без префикса — `skillOverrides: off` скрывает копии. Какой из двух `run-task-pipeline` виден, из сессии не различить (описания одинаковые) — подтвердить `/skills` в новой локальной сессии.
 
 ## Debt
 
 - [ ] verify-элемент с timeout неверного типа отбрасывается целиком вместе с командой — мягче было бы сохранить run и предупредить только про timeout (ревью кода, п.5)
 - [ ] команда verify, начинающаяся с '--', ломает подсказку: parseArgs примет значение --run за флаг; печатать --run=<quoted> (ревью кода, п.7, маловероятно)
+- [ ] перенести в глобальный скилл фиксы копии: SKILL_DIR через fileURLToPath и кавычечную форму rtp.mjs в регэкспах Stop-хука (подзадача 2)
+- [ ] гвард rtp-hook.sh ищет глобальные хуки только в settings.json — хуки из settings.local.json/managed settings не видит, копия сработает вдвое; и риск версий: подключённые глобальные хуки гоняют свой rtp против репо
+- [ ] облачная проверка до мержа (пользователь): rtp на PATH, задача заводится, Stop возвращает ход — критерий 9 спеки подзадачи 2
 
 ## Verification
 
@@ -139,6 +157,68 @@ _Нетривиальные решения по ходу задачи. Одна 
     ok   — многострочные run/record отброшены
   
   итог (все секции): PASS=154 FAIL=0
+  ```
+
+- 2026-09-29 · `sh .claude/skills/run-task-pipeline/scripts/regress.sh` · exit 0 ✅
+
+  ```
+    ok   — find игнорирует .rtp.json
+  C4: Stop — правка docs/tasks/.rtp.json не требует обновления задачи
+    ok   — ход с правкой .rtp.json не блокируется
+    ok   — контроль: правка кода рядом блокируется
+    ok   — код в папке с именем docs/tasks — всё ещё код
+  C5: .rtp.json — BOM и переводы строк
+    ok   — BOM не ломает JSON
+    ok   — многострочные run/record отброшены
+  P1: скилл в пути с пробелом и кириллицей — rtp new находит шаблон
+    ok   — rtp new из пути с пробелом/кириллицей
+  P2: Stop засчитывает вызов rtp.mjs с путём в кавычках
+    ok   — кавычечная форма засчитана
+  
+  итог (все секции): PASS=156 FAIL=0
+  ```
+
+- 2026-09-29 · `! grep -rn 'superpowers:' .claude/skills --include='*.md' | grep -v '^.claude/skills/run-task-pipeline/'` · exit 0 ✅
+
+  ```
+  (пустой вывод)
+  ```
+
+- 2026-09-29 · `! grep -nE '~/\.claude/(skills|bin)|\$HOME/\.claude' .claude/skills/run-task-pipeline/SKILL.md` · exit 0 ✅
+
+  ```
+  (пустой вывод)
+  ```
+
+- 2026-09-29 · `jq -e '(.hooks|keys)==["PostToolUse","PreCompact","SessionStart","Stop"] and .hooks.PostToolUse[0].matcher=="Edit|Write|MultiEdit" and ([.hooks|to_entries|sort_by(.key)[]|.value[0].hooks[0].command|capture("hook-(?<s>[a-z]+)$").s]==["postedit","precompact","sessionstart","stop"])' .claude/settings.json` · exit 0 ✅
+
+  ```
+  true
+  ```
+
+- 2026-09-29 · `git ls-files -s .claude | awk '$1=="100755"{print $4}'` · exit 0 ✅
+
+  ```
+  .claude/bin/rtp
+  .claude/rtp-hook.sh
+  .claude/skills/brainstorming/scripts/start-server.sh
+  .claude/skills/brainstorming/scripts/stop-server.sh
+  .claude/skills/subagent-driven-development/scripts/review-package
+  .claude/skills/subagent-driven-development/scripts/sdd-workspace
+  .claude/skills/subagent-driven-development/scripts/task-brief
+  .claude/skills/systematic-debugging/find-polluter.sh
+  ```
+
+- 2026-09-29 · `критерий 4: гвард локально — PATH=/usr/bin:/bin sh .claude/rtp-hook.sh hook-stop` · exit 0 ✅
+
+  ```
+  exit 0, пустой вывод; node вне /usr/bin:/bin (command -v пусто)
+  ```
+
+- 2026-09-29 · `критерий 5: без глобальных хуков (CLAUDE_CONFIG_DIR пуст)` · exit 0 ✅
+
+  ```
+  SessionStart дописал export PATH=<repo>/.claude/bin; Stop t1 (правка Sources без rtp) exit 2 + «задачи в этой сессии нет»; t2 (+ node "…/rtp.mjs" phase) exit 0; .claude/bin/rtp list печатает задачи
   ```
 
 ## Handoff
