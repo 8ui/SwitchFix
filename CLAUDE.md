@@ -17,6 +17,10 @@ swift run -c release InputPipelineTestRunner --integration-smoke   # also posts 
 ./scripts/create-dmg.sh                        # → dist/SwitchFix.dmg
 ./install.sh                                   # build + install to /Applications + login item + permissions
 ./scripts/setup-codesign.sh                    # one-time: stable self-signed identity in .codesign-identity
+scripts/fetch-corpora.sh                       # download pinned training corpora → .build/corpora (checks scripts/corpora.sha256)
+swift run -c release ModelTrainer train        # retrain Sources/LanguageModel/Resources/{en,ru,uk}.sfng (deterministic)
+swift run -c release ModelTrainer eval         # model-level margin sweep on Tests/LayoutEval (runs on Linux too)
+swift run -c release TestRunner --layout-eval-only   # real-text eval of the current detector (report-only)
 ```
 
 CI (`.github/workflows/ci.yml`) runs exactly: release build, both test runners, then `build-app.sh` ad-hoc signed. Releases are built on `v*` tags; the version lives in `Resources/Info.plist` (`CFBundleShortVersionString` / `CFBundleVersion`).
@@ -29,7 +33,7 @@ There is no XCTest/swift-testing target (it needs a full Xcode install); `Tests/
 
 ## Architecture
 
-Module graph (Package.swift): `Utils` ← `Dictionary` ← `Core` ← `UI` ← `SwitchFixApp`. `TestRunner` and `InputPipelineTestRunner` are extra executable targets.
+Module graph (Package.swift): `Utils` ← `Dictionary` ← `Core` ← `UI` ← `SwitchFixApp`. `TestRunner` and `InputPipelineTestRunner` are extra executable targets. `LanguageModel` (character n-gram models, plan 005) has no dependencies and is so far used only by `TestRunner` and the `ModelTrainer` executable — both build on Linux (`swift build --product ModelTrainer`), unlike the AppKit/Carbon targets.
 
 **Input pipeline** (design rationale in `plan/003_zero_lag_input_pipeline.md` — governing rule: physical input is never delayed; observation may be skipped and corrections cancelled, but text is never mutated when context is stale):
 
@@ -43,6 +47,8 @@ Module graph (Package.swift): `Utils` ← `Dictionary` ← `Core` ← `UI` ← `
 `AppDelegate` is the glue: it observes frontmost-app and input-source changes (`kTISNotifySelectedKeyboardInputSourceChanged`) and publishes new contexts via `CaptureStateStore.replaceContext`, distinguishing layout switches SwitchFix itself initiated (`InputSourceManager.consumeExpectedSelection`). `AccessibilityFocusCoordinator` (in `Utils/Permissions.swift`) resolves secure-field focus asynchronously per epoch and reads selected text via AX (setting `AXManualAccessibility` for Electron). A new epoch orphans pending focus queries — after a context change, call `focusMayChange` or keystrokes are dropped until focus resolves.
 
 **Dictionaries**: source word lists are `Sources/Dictionary/Resources/{en_US,ru_RU,uk_UA}.txt` plus `overrides/*_allow.txt` / `*_deny.txt`. `build-app.sh` compiles them with `scripts/compile_dictionary.swift` into `.build/dictionary-bin/*.bin` (format `SFDICT2`, see `DictionaryBinaryFormat.swift`, with bloom filter), copies them into `SwitchFix_Dictionary.bundle` and deletes the `.txt` files. Newer SwiftPM emits the bundle with `Contents/Resources`; `build-app.sh` and `DictionaryLoader.findDictionaryURL` both handle either layout — keep them in sync, otherwise correction silently stops working. Automatic correction is only enabled for layouts whose dictionary prepared successfully (`AutomaticDictionaryReadiness`).
+
+**Language models** (plan 005, replacing dictionaries): `Sources/LanguageModel/Resources/*.sfng` are committed build inputs produced by `ModelTrainer` from `scripts/fetch-corpora.sh` corpora. The alphabet in `ModelLanguage` and the normalization in `TextNormalization` are part of the model contract — changing either requires retraining. `Tests/LayoutEval` (UD treebanks + hand-written mixed messages) is the held-out eval set; never train on it.
 
 **UI / preferences**: `PreferencesManager` wraps `UserDefaults` (domain `com.switchfix.app`, keys prefixed `SwitchFix_`) and posts `.preferencesDidChange`; `AppFilter` owns the per-app allow/deny list (`.appFilterDidChange`). The Settings window is an AppKit `NSTabViewController` with toolbar-style tabs (General / Correction / Apps / About), each tab a SwiftUI view in an `NSHostingController` (`SettingsWindowController.swift`). Hotkey `keyCode` 58/59 with modifiers 0 means a lone Option/Control tap (`TapModifierHotkey`).
 

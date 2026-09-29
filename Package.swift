@@ -39,9 +39,24 @@ let package = Package(
             dependencies: [],
             path: "Sources/Utils"
         ),
+        .target(
+            name: "LanguageModel",
+            dependencies: [],
+            path: "Sources/LanguageModel",
+            resources: [
+                .copy("Resources/en.sfng"),
+                .copy("Resources/ru.sfng"),
+                .copy("Resources/uk.sfng")
+            ]
+        ),
+        .executableTarget(
+            name: "ModelTrainer",
+            dependencies: ["LanguageModel"],
+            path: "Sources/ModelTrainer"
+        ),
         .executableTarget(
             name: "TestRunner",
-            dependencies: ["Core", "Dictionary", "Utils"],
+            dependencies: ["Core", "Dictionary", "LanguageModel", "Utils"],
             path: "Sources/TestRunner"
         ),
         .executableTarget(

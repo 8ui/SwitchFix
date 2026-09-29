@@ -172,12 +172,14 @@ SwitchFix — в первую очередь для тех, у кого англ
   `n` в заголовке, чтобы переход не требовал нового формата.
 - Алфавит модели: буквы своего скрипта + апостроф (`'`, `’` нормализуется) + маркеры
   `^`/`$`. Регистр приводится к нижнему.
-- Хранение: открытая хеш-таблица `hash(n-грамма) → log-prob`, квантованный в `Int8`
-  (шаг ~0.1 nat) или `Float16`; fallback-значение для отсутствующих n-грамм — из
-  сглаживания, хранится в заголовке.
-- Формат файла `SFNGRAM1`: заголовок (magic, версия, язык, n, размер таблицы,
-  seed хеша, unseen-logprob, контрольная сумма) + таблица. Загрузка через mmap, как у
-  текущих `.bin`.
+- Хранение (реализовано в Фазе 1): **плотная таблица** `Float32` размером
+  `(|алфавит|+1)^n` со сглаженными log-вероятностями для всех контекстов — без хеширования
+  и коллизий; символ 0 — граница слова. Сглаживание — интерполированный Witten–Bell.
+  Символы вне алфавита получают фиксированный штраф (−12) и сбрасывают контекст.
+- Формат файла `SFNGRAM1` (`NgramBinaryFormat.swift`): magic, версия, n, код языка,
+  алфавит (сверяется с `ModelLanguage.alphabet` при загрузке), штраф за неизвестный
+  символ, таблица, FNV-1a контрольная сумма. Файлы по 100–190 КБ читаются целиком —
+  mmap не нужен.
 - Файлы моделей **коммитятся** в репозиторий (маленькие), чтобы сборка и CI не зависели от
   сети и корпусов. Пересборка — вручную скриптом.
 - Упаковка: SwiftPM-ресурс модуля `LanguageModel`. Логику поиска бандла
@@ -329,9 +331,13 @@ func score(word: String, source: Layout, alternatives: [(Layout, String)]) -> La
   рантайм-загрузчиком → совпадение log-prob). Скорость тоже в пользу Swift: release-сборка
   проходит сотни МБ текста за минуты. Python-прототип остаётся только как исторический
   референс в `plan/benchmarks/`.
-- **Загрузка корпусов**: `scripts/fetch-corpora.sh` — `curl` фиксированных версий с
-  проверкой `sha256`, распаковка в `.build/corpora/` (в `.gitignore`). Сами корпуса в
+- **Загрузка корпусов**: `scripts/fetch-corpora.sh` — фиксированные версии, сверка с
+  `scripts/corpora.sha256`, результат в `.build/corpora/` (в `.gitignore`). Сами корпуса в
   репозиторий **не** коммитятся.
+- **Фильтр языка по строкам** (Фаза 1): украинские субтитры OPUS примерно на 40% русские,
+  поэтому для uk берутся строки с `і/ї/є/ґ` и без `ы/э/ъ/ё`, для ru — без `і/ї/є/ґ`.
+- **Взвешивание** — по частоте вхождений (`token`): лучше остальных вариантов на коротких
+  словах (сравнение в `plan/benchmarks/model_005_phase1.md`).
 - **Выход тренера**: `{en,ru,uk}.sfng` + сгенерированный `ShortWordTable+Generated.swift`
   + отчёт (объём корпуса, число n-грамм, размер файла) для истории в `plan/benchmarks/`.
 
@@ -342,11 +348,13 @@ func score(word: String, source: Layout, alternatives: [(Layout, String)]) -> La
 | Файл | Изменение |
 |---|---|
 | `Package.swift` | модуль `Dictionary` → `LanguageModel`; граф: `Utils` ← `LanguageModel` ← `Core`; новый executable-таргет `ModelTrainer` → `LanguageModel` |
-| `Sources/ModelTrainer/main.swift` | новый: чтение корпусов, подсчёт, запись `.sfng` и `ShortWordTable+Generated.swift` |
-| `Sources/LanguageModel/TextNormalization.swift` | новый: общая для тренера и рантайма нормализация и разбиение на n-граммы |
-| `Sources/LanguageModel/CharNgramModel.swift` | новый: mmap-загрузка `SFNGRAM1`, `logProb(_:)` |
-| `Sources/LanguageModel/NgramBinaryFormat.swift` | новый: заголовок, валидация, хеш |
-| `Sources/LanguageModel/ModelLoader.swift` | новый: поиск ресурсов (перенос `findDictionaryURL`), prewarm |
+| `Sources/ModelTrainer/main.swift` | ✅ `train` / `eval` / `score`; `ShortWordTable+Generated.swift` — в Фазе 2 |
+| `Sources/LanguageModel/TextNormalization.swift` | ✅ общая для тренера и рантайма нормализация, разбиение на слова, фильтр языка строки |
+| `Sources/LanguageModel/ModelLanguage.swift` | ✅ языки и их алфавиты (контракт модели) |
+| `Sources/LanguageModel/CharNgramModel.swift` | ✅ плотная таблица, `logProbability(of:)` |
+| `Sources/LanguageModel/NgramCounter.swift` | ✅ подсчёт n-грамм и сглаживание Witten–Bell (общий для тренера и тестов) |
+| `Sources/LanguageModel/NgramBinaryFormat.swift` | ✅ `SFNGRAM1`: запись/чтение, проверка алфавита и контрольной суммы |
+| `Sources/LanguageModel/LanguageModelStore.swift` | ✅ поиск ресурсов (как `findDictionaryURL`), кеш моделей |
 | `Sources/LanguageModel/ShortWordTable.swift` | новый (замена `SuggestionEngine.shortWords`) |
 | `Sources/LanguageModel/Resources/*.sfng` | новые артефакты модели |
 | `Sources/Core/LayoutScorer.swift` | новый |
@@ -385,9 +393,10 @@ func score(word: String, source: Layout, alternatives: [(Layout, String)]) -> La
 - Добавить в `TestRunner` eval-suite, прогоняемый против **текущего** словарного
   детектора → baseline recall/FP по длинам в `plan/benchmarks/baseline_005.md`.
 
-### Фаза 1: Триграммная модель и тренер ⏱ ~4 ч
+### Фаза 1: Триграммная модель и тренер ⏱ ~4 ч — ✅ выполнено (`plan/benchmarks/model_005_phase1.md`)
 - `TextNormalization`, `SFNGRAM1`, `CharNgramModel`, `ModelLoader` в `LanguageModel`.
 - Таргет `ModelTrainer`, `scripts/fetch-corpora.sh`, обучение n = 3 на корпусах.
+  (`ShortWordTable` перенесена в Фазу 2 — она нужна только детектору.)
 - Тесты: битый заголовок / несовпадение версии / отсутствующий файл → язык недоступен;
   round-trip тренер → рантайм.
 - **Критерий выхода**: размер ≤ 1 МБ суммарно; на eval-наборе recall/FP не хуже прототипа.
