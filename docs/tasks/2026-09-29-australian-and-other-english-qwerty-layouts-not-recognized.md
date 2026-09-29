@@ -3,7 +3,7 @@ id: 2026-09-29-australian-and-other-english-qwerty-layouts-not-recognized
 title: Australian and other English QWERTY layouts not recognized as English
 type: bug
 pipeline: minimal
-phase: review
+phase: done
 created: 2026-09-29
 updated: 2026-09-29
 blocked_by: null
@@ -39,6 +39,7 @@ _2-5 строк: что делаем и зачем. Задача этой сек
 - 2026-09-29: impl complete, verified in app
 - 2026-09-29: verify: `swift run -c release TestRunner` → exit 0 ✅
 - 2026-09-29: шаг 3 ✅ Ревью
+- 2026-09-29: commit 126f5f3, verified in app, review addressed
 
 ## Decisions
 
