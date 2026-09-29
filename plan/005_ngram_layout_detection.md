@@ -344,7 +344,7 @@ func score(word: String, source: Layout, alternatives: [(Layout, String)]) -> La
 
 ## 7. Этапы реализации
 
-### Фаза 0: Eval-набор и baseline ⏱ ~1 ч
+### Фаза 0: Eval-набор и baseline ⏱ ~1 ч — ✅ выполнено (`plan/benchmarks/baseline_005.md`)
 - Собрать `Tests/LayoutEval/{en,ru,uk}.txt` из реальных фраз (не из словарей):
   ~5000 слов на язык с частотным распределением живого текста — предложения из тестовых
   частей UD-трибанков (CC BY-SA 4.0, см. `Tests/LayoutEval/README.md`); плюс
