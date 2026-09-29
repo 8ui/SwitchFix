@@ -47,6 +47,7 @@ import {
   run,
   gitContext,
   loadProjectConfig,
+  verifyForEnv,
   shQuote,
   EMPTY_CONFIG,
   projectRootOf,
@@ -1148,13 +1149,14 @@ const NEUTRAL_VERIFY = '<команды проверки из CLAUDE.md прое
 // Review-phase hint. Commands and reviewers come from the task's project
 // config (.rtp.json); rtp only prints them — running is the agent's job.
 function reviewAction(id, cfg, verbose) {
+  const verify = verifyForEnv(cfg);
   if (!verbose) {
-    return cfg.verify.length
+    return verify.length
       ? `rtp verify по командам проекта (rtp next ${id}), затем ревью субагентом → rtp phase ${id} --to done`
       : `rtp verify ${id} --run "${NEUTRAL_VERIFY}", затем ревью субагентом → rtp phase ${id} --to done`;
   }
-  const lines = cfg.verify.length
-    ? cfg.verify.map((v) =>
+  const lines = verify.length
+    ? verify.map((v) =>
         v.record !== undefined
           ? `rtp verify ${id} --record ${shQuote(v.record)}`
           : `rtp verify ${id} --run ${shQuote(v.run)}${v.timeout ? ` --timeout ${v.timeout}` : ''}`,

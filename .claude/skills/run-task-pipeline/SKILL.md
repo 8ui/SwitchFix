@@ -116,11 +116,14 @@ registry package (`rtp@0.1.0`, no `bin` field) and dies with
 `npm error could not determine executable to run`. The error reads like
 "binary missing", but npx actually downloaded someone else's library.
 The shim exists precisely so the bare `rtp` never falls through to npx —
-if `.claude/bin/rtp` is missing, recreate it:
+if `.claude/bin/rtp` is missing or broken, restore it from git (it is tracked):
 
 ```bash
-printf '#!/bin/sh\nexec node "$(cd "$(dirname "$0")/.." && pwd)/skills/run-task-pipeline/scripts/rtp.mjs" "$@"\n' > .claude/bin/rtp && chmod +x .claude/bin/rtp
+git checkout -- .claude/bin/rtp
 ```
+
+(Рецепт намеренно без позиционных `$`-переменных: при загрузке скилла харнесс подставляет
+вместо них аргументы вызова, и команда из текста скилла ломается.)
 
 Run `rtp <subcommand> --help` for option lists — там есть и то, что ниже по тексту не
 разобрано: `rtp steps --add`, `rtp step --start/--todo`, `rtp list --search/--json`,
@@ -149,7 +152,9 @@ Run `rtp <subcommand> --help` for option lists — там есть и то, чт
 }
 ```
 
-- Все поля необязательны. `verify`: строка (= `--run`), `{run, timeout}` или `{record}`.
+- Все поля необязательны. `verify`: строка (= `--run`), `{run, timeout}` или `{record}`;
+  элементу можно добавить `"only": "local"` или `"cloud"` — в облачной сессии
+  (`CLAUDE_CODE_REMOTE=true`) `rtp next` скрывает `local`, локально — `cloud`.
 - Читается из папки **файла задачи**, не из cwd. Битый файл → предупреждение в stderr и
   умолчания; `rtp` из-за конфига не падает.
 - `rtp` ничего не запускает сам: `rtp next <id>` в фазе review печатает готовые

@@ -3,7 +3,7 @@ id: 2026-09-29-rtp-generalize
 title: Обобщить rtp и перенести в SwitchFix
 type: refactor
 pipeline: full
-phase: review
+phase: impl
 created: 2026-09-29
 updated: 2026-09-29
 blocked_by: null
@@ -90,6 +90,10 @@ restoplace `ae27627e9`). Подзадача 2: облачные сессии Swi
 - 2026-09-29: verify: `CI зелёный: https://github.com/8ui/SwitchFix/actions/runs/36546484268 (pull_request, b8e8154) и /runs/36546460611 (push)` → exit 0 ✅
 - 2026-09-29: verify: `CI зелёный: https://github.com/8ui/SwitchFix/actions/runs/36547719023 (pull_request, c022bce)` → exit 0 ✅
 - 2026-09-29: шаг 7 ✅ PR, CI, доказательства — PR #4, CI зелёный на c022bce, код-ревью учтено
+- 2026-09-29: verify: `облако: пайплайн rtp пройден целиком на задаче 2026-09-29-ru-en-special-chars-test` → exit 0 ✅
+- 2026-09-29: по отчёту облака: фиксы 1-3 ($0 в рецепте шима, verify.only local/cloud, paths-ignore docs/tasks в CI); тест облака остаётся в PR
+- 2026-09-29: verify: `sh .claude/skills/run-task-pipeline/scripts/regress.sh` → exit 0 ✅
+- 2026-09-29: verify: `! grep -nE '\$[0-9@#*]|\$ARGUMENTS' .claude/skills/run-task-pipeline/SKILL.md` → exit 0 ✅
 
 ## Decisions
 
@@ -108,6 +112,7 @@ _Нетривиальные решения по ходу задачи. Одна 
 - [ ] перенести в глобальный скилл фиксы копии: SKILL_DIR через fileURLToPath и кавычечную форму rtp.mjs в регэкспах Stop-хука (подзадача 2)
 - [ ] гвард rtp-hook.sh ищет глобальные хуки только в settings.json — хуки из settings.local.json/managed settings не видит, копия сработает вдвое; и риск версий: подключённые глобальные хуки гоняют свой rtp против репо
 - [ ] облачная проверка до мержа (пользователь): rtp на PATH, задача заводится, Stop возвращает ход — критерий 9 спеки подзадачи 2
+- [ ] перенести в глобальный скилл поле verify.only (local/cloud) из копии SwitchFix — глобальный rtp его игнорирует и показывает все проверки
 
 ## Verification
 
@@ -243,6 +248,37 @@ _Нетривиальные решения по ходу задачи. Одна 
 
   ```
   Build and test (macos-15) — success
+  ```
+
+- 2026-09-29 · `облако: пайплайн rtp пройден целиком на задаче 2026-09-29-ru-en-special-chars-test` · exit 0 ✅
+
+  ```
+  rtp на PATH (/home/user/SwitchFix/.claude/bin/rtp), хуки сработали (индекс обновлялся), new/steps/step/phase/validate/status/verify --record работают, CI run 36548587047 зелёный; замечания: $0 в SKILL.md, swift в rtp next в облаке, коммит трекера отменяет CI
+  ```
+
+- 2026-09-29 · `sh .claude/skills/run-task-pipeline/scripts/regress.sh` · exit 0 ✅
+
+  ```
+    ok   — BOM не ломает JSON
+    ok   — многострочные run/record отброшены
+  C6: verify.only — local/cloud по CLAUDE_CODE_REMOTE
+    ok   — only нормализован, неизвестное значение отброшено
+    ok   — предупреждение про only: mars
+    ok   — локально: local-элемент и общий показаны
+    ok   — в облаке: local-элемент скрыт
+    ok   — в облаке без подходящих элементов — нейтральная подсказка
+  P1: скилл в пути с пробелом и кириллицей — rtp new находит шаблон
+    ok   — rtp new из пути с пробелом/кириллицей
+  P2: Stop засчитывает вызов rtp.mjs с путём в кавычках
+    ok   — кавычечная форма засчитана
+  
+  итог (все секции): PASS=161 FAIL=0
+  ```
+
+- 2026-09-29 · `! grep -nE '\$[0-9@#*]|\$ARGUMENTS' .claude/skills/run-task-pipeline/SKILL.md` · exit 0 ✅
+
+  ```
+  (пустой вывод)
   ```
 
 ## Handoff

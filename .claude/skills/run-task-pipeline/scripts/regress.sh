@@ -758,6 +758,22 @@ printf '%s' '{"verify":["a\nb",{"record":"x\ny"},"ok"]}' > "$CFGD/.rtp.json"
 [ "$(lc 2>/dev/null)" = '{"verify":[{"run":"ok"}],"reviewers":[]}' ] && ok "многострочные run/record отброшены" || bad "многострочные: $(lc 2>/dev/null)"
 rm -f "$CFGD/.rtp.json"
 
+echo "C6: verify.only — local/cloud по CLAUDE_CODE_REMOTE"
+printf '%s' '{"verify":[{"run":"make a","only":"local"},{"record":"CI: x","only":"cloud"},{"run":"make c","only":"mars"},"make d"]}' > "$CFGD/.rtp.json"
+[ "$(lc 2>/dev/null)" = '{"verify":[{"run":"make a","only":"local"},{"record":"CI: x","only":"cloud"},{"run":"make d"}],"reviewers":[]}' ] \
+  && ok "only нормализован, неизвестное значение отброшено" || bad "only: $(lc 2>/dev/null)"
+lc 2>&1 >/dev/null | grep -q 'verify\[2\]' && ok "предупреждение про only: mars" || bad "нет предупреждения про only: mars"
+rm -f "$CFGD/.rtp.json"
+printf '%s' '{"verify":[{"run":"swift build","only":"local"},{"record":"CI зелёный: <url>"}]}' > "$CT/.rtp.json"
+OUT=$(env -u CLAUDE_CODE_REMOTE node "$RTP" next "$CID" --tasks-dir "$CT" 2>&1)
+echo "$OUT" | grep -qF "swift build" && echo "$OUT" | grep -qF "CI зелёный" && ok "локально: local-элемент и общий показаны" || bad "локально: $OUT"
+OUT=$(CLAUDE_CODE_REMOTE=true node "$RTP" next "$CID" --tasks-dir "$CT" 2>&1)
+! echo "$OUT" | grep -qF "swift build" && echo "$OUT" | grep -qF "CI зелёный" && ok "в облаке: local-элемент скрыт" || bad "в облаке: $OUT"
+printf '%s' '{"verify":[{"run":"swift build","only":"local"}]}' > "$CT/.rtp.json"
+OUT=$(CLAUDE_CODE_REMOTE=true node "$RTP" next "$CID" --tasks-dir "$CT" 2>&1)
+echo "$OUT" | grep -qF "CLAUDE.md проекта" && ok "в облаке без подходящих элементов — нейтральная подсказка" || bad "облако, пусто: $OUT"
+rm -f "$CT/.rtp.json"
+
 echo "P1: скилл в пути с пробелом и кириллицей — rtp new находит шаблон"
 SPD="$ROOT/my dir/проект/skill"; mkdir -p "$SPD"
 cp -R "$(dirname "$RTP")" "$SPD/scripts"; cp -R "$(dirname "$RTP")/../templates" "$SPD/templates"

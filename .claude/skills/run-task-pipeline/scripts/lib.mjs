@@ -719,12 +719,22 @@ function normalizeVerifyEntry(v) {
   if (typeof v === 'string') return oneLine(v) ? { run: v.trim() } : null;
   if (!v || typeof v !== 'object' || Array.isArray(v)) return null;
   if ((v.run !== undefined && !oneLine(v.run)) || (v.record !== undefined && !oneLine(v.record))) return null;
+  // `only` scopes an entry to local or cloud (CLAUDE_CODE_REMOTE=true) sessions.
+  if (v.only !== undefined && v.only !== 'local' && v.only !== 'cloud') return null;
+  const scope = v.only ? { only: v.only } : {};
   if (typeof v.run === 'string' && v.run.trim() && v.record === undefined) {
-    if (v.timeout === undefined) return { run: v.run.trim() };
-    return Number.isInteger(v.timeout) && v.timeout > 0 ? { run: v.run.trim(), timeout: v.timeout } : null;
+    if (v.timeout === undefined) return { run: v.run.trim(), ...scope };
+    return Number.isInteger(v.timeout) && v.timeout > 0 ? { run: v.run.trim(), timeout: v.timeout, ...scope } : null;
   }
-  if (typeof v.record === 'string' && v.record.trim() && v.run === undefined) return { record: v.record.trim() };
+  if (typeof v.record === 'string' && v.record.trim() && v.run === undefined) return { record: v.record.trim(), ...scope };
   return null;
+}
+
+// Verify entries that apply to this session: `only: local` is hidden in cloud
+// sessions (no toolchain there), `only: cloud` — locally.
+export function verifyForEnv(cfg, env = process.env) {
+  const here = env.CLAUDE_CODE_REMOTE === 'true' ? 'cloud' : 'local';
+  return cfg.verify.filter((v) => !v.only || v.only === here);
 }
 
 export async function loadProjectConfig(tasksDir, warn = defaultWarn) {
