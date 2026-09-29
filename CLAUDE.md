@@ -61,4 +61,4 @@ Rebuilding with ad-hoc signing invalidates Accessibility/Input Monitoring grants
 ## Conventions
 
 - Commit messages use conventional prefixes with a scope (`feat(ui):`, `fix(focus):`, `ci:`, `docs(readme):`); fork docs/README text is in Russian, code and comments in English.
-- `plan/` holds design documents; `004_per_app_default_language.md` is a plan that is not yet implemented.
+- `plan/` holds design documents; `004_per_app_default_language.md` and `005_ngram_layout_detection.md` (replace dictionaries with a character n-gram model + learning from reverts) are plans that are not yet implemented.
