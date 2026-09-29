@@ -51,7 +51,57 @@ _Доказательства, а не утверждения. Заполняе�
 
 ## Handoff
 
-_Передача контекста следующему агенту. Перезаписывается целиком через `rtp handoff <id>`._
+**Сгенерировано:** 2026-09-29 · `rtp handoff`
+
+- **Задача:** `2026-09-29-ngram-only-learning-ui` — Удалить словари: n-gram единственный детектор, обучение на отменах, вкладка Слова, ползунок
+- **Фаза:** spec-review (pipeline `full`, type `feature`)
+- **Worktree:** `/home/user/SwitchFix`
+- **Ветка:** `claude/epic-galileo-zq47ec` — своих коммитов 12, отставание от origin/master 0
+- **Незакоммиченного:** 2 файл(ов)
+
+**Файлы в работе**
+
+- `ocs/tasks/2026-09-29-ngram-only-learning-ui.md`
+- `docs/tasks/index.md`
+
+**git diff HEAD --stat**
+
+```
+docs/tasks/2026-09-29-ngram-only-learning-ui.md | 51 ++++++++++++++++++++++++-
+ docs/tasks/index.md                             |  2 +-
+ 2 files changed, 51 insertions(+), 2 deletions(-)
+```
+
+**Последние коммиты**
+
+- `b5c3393 docs(plan): drop the dictionary engine entirely; track next phase in rtp`
+- `b5410ae Merge remote-tracking branch 'origin/master' into claude/epic-galileo-zq47ec`
+- `9ab1ff6 docs(plan): record n-gram vs dictionary detector results (plan 005 phase 2)`
+
+**Последние записи лога**
+
+- 2026-09-29: triage — pipeline `full`, reason: Новая фича + удаление модуля Dictionary, >5 файлов (Core, UI, Package.swift, build-app.sh, тесты, L10n) → full. Спецификация — plan/005 (§4.5, §4.6, §10.5).
+- 2026-09-29: artifacts.spec = plan/005_ngram_layout_detection.md; artifacts.branch = claude/epic-galileo-zq47ec
+- 2026-09-29: brainstorm: что/зачем/критерии из plan/005 и ответов пользователя; решение удалить словари полностью — plan/005 §10.5
+- 2026-09-29: spec = plan/005 (обновлён: §10.5, порядок фаз в §7); ждёт независимого ревью субагентом
+
+**Открытые долги (3)**
+
+- LayoutMapper не знает клавишу украинского апострофа на macOS — слова с ' / ї / є частично недостижимы (п'ятницю, цієї); см. plan/benchmarks/detector_005_phase2.md
+- Короткие русские аббревиатуры (СМС, РФ, шт) дают 0.93% ложных при цели ≤0.5% — кандидаты для фильтра/PersonalLexicon
+- Все три раскладки без истории переключений: украинский уходит в русский (uk→en 73.65%) — нужна эвристика выбора кириллицы без истории
+
+**Следующее действие**
+
+- дать spec независимому субагенту-ревьюеру, потом rtp phase 2026-09-29-ngram-only-learning-ui --to plan
+
+**Заметки агента** (не выводятся из кода — грабли, тупики, договорённости)
+
+<!-- handoff-notes -->
+- 2026-09-29: Swift в облаке ставится вручную: curl download.swift.org swift-6.1.2 ubuntu24.04 → /opt/swift, PATH=/opt/swift/usr/bin. На Linux собираются только LanguageModel и ModelTrainer (Core/UI/App — AppKit/Carbon); Core и тесты проверяет только CI macOS (push в claude/** запускает CI, ~4 мин; логи — GitHub MCP get_job_logs, таблицы LayoutEval в хвосте лога TestRunner).
+- 2026-09-29: Корпуса: scripts/fetch-corpora.sh (Leipzig/OPUS/github-docs, сверка scripts/corpora.sha256); обучение детерминировано, ModelTrainer train перегенерирует и ShortWordTable+Generated.swift. Быстрая оценка без macOS: .build/release/ModelTrainer eval / score.
+- 2026-09-29: Удаление словарей затрагивает: Package.swift (Dictionary target), Core/LayoutDetector (словарный путь, WordValidator, import Dictionary), Core/DictionaryReadiness, AppDelegate.prepareDictionaries, build-app.sh (compile_dictionary, SFDICT2), scripts/compile_dictionary.swift, TestRunner (WordValidator/Bloom/Dictionary perf suites, enableTextFallbackForTesting), InputPipelineTestRunner ('missing dictionary seam' — AutomaticDictionaryReadiness), CLAUDE.md/README. Инварианты plan/003 (staleness guards в prepareCorrection/CorrectionPlan.isEligible) не трогать.
+<!-- /handoff-notes -->
 
 ## Blockers
 
