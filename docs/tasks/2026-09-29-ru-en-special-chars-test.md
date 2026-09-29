@@ -3,13 +3,13 @@ id: 2026-09-29-ru-en-special-chars-test
 title: Тест обратного маппинга спецсимволов RU→EN
 type: chore
 pipeline: minimal
-phase: review
+phase: done
 created: 2026-09-29
 updated: 2026-09-29
 blocked_by: null
-steps_done: 1
+steps_done: 3
 steps_total: 3
-step_current: 2
+step_current: null
 artifacts:
   spec: null
   plan: null
@@ -24,8 +24,8 @@ _2-5 строк: что делаем и зачем. Задача этой сек
 ## Progress
 
 1. ✅ Добавить runSuite RU→EN спецсимволы
-2. ▶ CI зелёный
-3. ⬜ Ревью
+2. ✅ CI зелёный
+3. ✅ Ревью
 
 ## Log
 
@@ -35,6 +35,10 @@ _2-5 строк: что делаем и зачем. Задача этой сек
 - 2026-09-29: шаг 1 ✅ Добавить runSuite RU→EN спецсимволы — 4 ассерта, включая заглавные
 - 2026-09-29: impl complete: runSuite 'LayoutMapper: Special chars RU→EN'
 - 2026-09-29: code-review: субагент general-purpose (fresh-eyes) — замечаний нет; nit про 3-символьный ассерт оставлен как есть
+- 2026-09-29: verify: `CI зелёный: https://github.com/8ui/SwitchFix/actions/runs/36548587047` → exit 0 ✅
+- 2026-09-29: шаг 2 ✅ CI зелёный
+- 2026-09-29: шаг 3 ✅ Ревью — general-purpose субагент: замечаний нет
+- 2026-09-29: CI зелёный, ревью пройдено
 
 ## Decisions
 
@@ -49,7 +53,11 @@ _Без `[ ]`/`[x]` пункт невидим для агрегатора и т�
 
 ## Verification
 
-_Доказательства, а не утверждения. Заполняется `rtp verify <id> --run "<команда>"`: команда, exit code, хвост вывода._
+- 2026-09-29 · `CI зелёный: https://github.com/8ui/SwitchFix/actions/runs/36548587047` · exit 0 ✅
+
+  ```
+  head 4b68e2e (включает 5a49dfd с тестом): build + TestRunner + InputPipelineTestRunner + build-app — success
+  ```
 
 ## Handoff
 
