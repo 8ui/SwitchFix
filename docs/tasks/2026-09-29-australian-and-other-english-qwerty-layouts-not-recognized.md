@@ -47,8 +47,8 @@ _Нетривиальные решения по ходу задачи. Одна 
 
 ## Debt
 
-- [ ] Colemak/Dvorak в списке English, хотя LayoutMapper считает позиции QWERTY — конверсия на них неверна (было до фикса, ревью)
-- [ ] British-PC/ISO British/Irish: Shift-символы (@ на Shift+', ~ на клавише #) расходятся с таблицами LayoutMapper — затрагивает Э/Є/Ё/Ґ; учесть в задаче про Shift+цифры
+- [x] Colemak/Dvorak в списке English, хотя LayoutMapper считает позиции QWERTY — конверсия на них неверна (было до фикса, ревью) — закрыто 2026-09-29: 2026-09-29-key-tables-from-installed-keyboard-layouts
+- [x] British-PC/ISO British/Irish: Shift-символы (@ на Shift+', ~ на клавише #) расходятся с таблицами LayoutMapper — затрагивает Э/Є/Ё/Ґ; учесть в задаче про Shift+цифры — закрыто 2026-09-29: 2026-09-29-key-tables-from-installed-keyboard-layouts
 
 ## Verification
 
