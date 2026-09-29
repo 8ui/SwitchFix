@@ -350,8 +350,7 @@ public class LayoutDetector {
         }
 
         let scorer = NgramMarginScorer(store: languageModels)
-        let threshold = thresholds.threshold(forLetterCount: letterCount)
-        var best: (target: Layout, recomposed: String, margin: Double)?
+        var best: (target: Layout, recomposed: String, margin: Double, threshold: Double)?
         var highestMargin = -Double.infinity
         var firstConversion: (target: Layout, converted: String)?
 
@@ -378,15 +377,21 @@ public class LayoutDetector {
                 firstConversion = (target, first)
             }
 
-            for conversion in conversions {
+            // Conversions are tried in order (the user's Ukrainian variant first) and
+            // the first one that clears its threshold wins: the fallback variant must
+            // not beat the primary one on score alone ('іукмшсу' → 'bervice').
+            conversionLoop: for conversion in conversions {
                 let parts = splitTokenForValidation(conversion)
                 // A letter key that maps to punctuation at the start is a fake switch
                 // ('бігу' → ',sue').
                 if parts.prefix.count > originalParts.prefix.count { continue }
                 let convertedCore = parts.core.isEmpty ? conversion : parts.core
                 let recomposed = parts.prefix + convertedCore + parts.suffix
+                // Letters typed on punctuation keys ('ws'']' → 'цієї') only count as
+                // letters on the converted side.
+                let letters = max(letterCount, convertedCore.filter(\.isLetter).count)
 
-                if letterCount <= ShortWordTable.maxLength,
+                if letters <= ShortWordTable.maxLength,
                    ShortWordTable.contains(convertedCore, language: target.modelLanguage) {
                     SwitchFixLog.detector.debug("ngram: '\(word)' → common short word '\(recomposed)' in \(target.rawValue)")
                     return finishCorrection(
@@ -398,7 +403,7 @@ public class LayoutDetector {
                     )
                 }
 
-                guard let threshold,
+                guard let threshold = thresholds.threshold(forLetterCount: letters),
                       let margin = scorer.margin(
                         typedCore: core,
                         source: sourceLayout,
@@ -406,15 +411,20 @@ public class LayoutDetector {
                         target: target
                       ) else { continue }
                 highestMargin = max(highestMargin, margin)
-                if margin > threshold, margin > (best?.margin ?? -.infinity) {
-                    best = (target, recomposed, margin)
+                if margin > threshold {
+                    // Between targets (Russian vs Ukrainian without history) the
+                    // larger margin wins.
+                    if margin > (best?.margin ?? -.infinity) {
+                        best = (target, recomposed, margin, threshold)
+                    }
+                    break conversionLoop
                 }
             }
         }
 
         if let best {
             SwitchFixLog.detector.debug(
-                "ngram: '\(word)' → '\(best.recomposed)' margin=\(String(format: "%.1f", best.margin)) threshold=\(String(format: "%.1f", threshold ?? 0)) letters=\(letterCount)"
+                "ngram: '\(word)' → '\(best.recomposed)' margin=\(String(format: "%.1f", best.margin)) threshold=\(String(format: "%.1f", best.threshold)) letters=\(letterCount)"
             )
             return finishCorrection(
                 word: word,
