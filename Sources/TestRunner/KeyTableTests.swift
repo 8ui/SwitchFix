@@ -2,23 +2,42 @@ import Core
 
 func runKeyTableTests() {
     runSuite("KeyTables: .pc reproduces the static tables") {
-        // Every character the old tables know, both directions, all layout pairs.
+        // Expected strings were produced by the pre-key-table LayoutMapper (static
+        // character maps, commit 126f5f3) — the frozen contract of `.pc`.
         let samples = [
             "qwertyuiop[]asdfghjkl;'zxcvbnm,./`QWERTYUIOP{}ASDFGHJKL:\"ZXCVBNM<>?~",
             "йцукенгшщзхъфывапролджэячсмитьбю.ёЙЦУКЕНГШЩЗХЪФЫВАПРОЛДЖЭЯЧСМИТЬБЮ,Ё",
             "йцукенгшщзхїфівапролджєячсмитьбю.ґЙЦУКЕНГШЩЗХЇФІВАПРОЛДЖЄЯЧСМИТЬБЮ,Ґ",
             "hello, мир! 123 @#$ user@mail.com ghbdtn иууьи",
         ]
-        for text in samples {
-            for from in Layout.allCases {
-                for to in Layout.allCases {
-                    assertEqual(
-                        LayoutMapper.convert(text, from: from, to: to, tables: .pc),
-                        LayoutMapper.convert(text, from: from, to: to),
-                        "\(from)→\(to) '\(text)'"
-                    )
-                }
-            }
+        let expected: [(Int, Layout, Layout, String)] = [
+        (0, .english, .ukrainian, "йцукенгшщзхїфівапролджєячсмитьбю.ґЙЦУКЕНГШЩЗХЇФІВАПРОЛДЖЄЯЧСМИТЬБЮ,Ґ"),
+        (0, .english, .russian, "йцукенгшщзхъфывапролджэячсмитьбю.ёЙЦУКЕНГШЩЗХЪФЫВАПРОЛДЖЭЯЧСМИТЬБЮ,Ё"),
+        (0, .ukrainian, .english, "qwertyuiop[]asdfghjkl;'zxcvbnm?//`QWERTYUIOP{}ASDFGHJKL:\"ZXCVBNM<>?~"),
+        (0, .ukrainian, .russian, "qwertyuiop[]asdfghjkl;'zxcvbnm,./`QWERTYUIOP{}ASDFGHJKL:\"ZXCVBNM<>?~"),
+        (0, .russian, .english, "qwertyuiop[]asdfghjkl;'zxcvbnm?//`QWERTYUIOP{}ASDFGHJKL:\"ZXCVBNM<>?~"),
+        (0, .russian, .ukrainian, "qwertyuiop[]asdfghjkl;'zxcvbnm,./`QWERTYUIOP{}ASDFGHJKL:\"ZXCVBNM<>?~"),
+        (1, .english, .ukrainian, "йцукенгшщзхъфывапролджэячсмитьбююёЙЦУКЕНГШЩЗХЪФЫВАПРОЛДЖЭЯЧСМИТЬБЮбЁ"),
+        (1, .english, .russian, "йцукенгшщзхъфывапролджэячсмитьбююёЙЦУКЕНГШЩЗХЪФЫВАПРОЛДЖЭЯЧСМИТЬБЮбЁ"),
+        (1, .ukrainian, .english, "qwertyuiop[ъaыdfghjkl;эzxcvbnm,./ёQWERTYUIOP{ЪAЫDFGHJKL:ЭZXCVBNM<>?Ё"),
+        (1, .ukrainian, .russian, "йцукенгшщзхъфывапролджэячсмитьбю.ёЙЦУКЕНГШЩЗХЪФЫВАПРОЛДЖЭЯЧСМИТЬБЮ,Ё"),
+        (1, .russian, .english, "qwertyuiop[]asdfghjkl;'zxcvbnm,./`QWERTYUIOP{}ASDFGHJKL:\"ZXCVBNM<>?~"),
+        (1, .russian, .ukrainian, "йцукенгшщзхїфівапролджєячсмитьбю.ґЙЦУКЕНГШЩЗХЇФІВАПРОЛДЖЄЯЧСМИТЬБЮ,Ґ"),
+        (2, .english, .ukrainian, "йцукенгшщзхїфівапролджєячсмитьбююґЙЦУКЕНГШЩЗХЇФІВАПРОЛДЖЄЯЧСМИТЬБЮбҐ"),
+        (2, .english, .russian, "йцукенгшщзхїфівапролджєячсмитьбююґЙЦУКЕНГШЩЗХЇФІВАПРОЛДЖЄЯЧСМИТЬБЮбҐ"),
+        (2, .ukrainian, .english, "qwertyuiop[]asdfghjkl;'zxcvbnm,./`QWERTYUIOP{}ASDFGHJKL:\"ZXCVBNM<>?~"),
+        (2, .ukrainian, .russian, "йцукенгшщзхъфывапролджэячсмитьбю.ёЙЦУКЕНГШЩЗХЪФЫВАПРОЛДЖЭЯЧСМИТЬБЮ,Ё"),
+        (2, .russian, .english, "qwertyuiop[їaіdfghjkl;єzxcvbnm,./ґQWERTYUIOP{ЇAІDFGHJKL:ЄZXCVBNM<>?Ґ"),
+        (2, .russian, .ukrainian, "йцукенгшщзхїфівапролджєячсмитьбю.ґЙЦУКЕНГШЩЗХЇФІВАПРОЛДЖЄЯЧСМИТЬБЮ,Ґ"),
+        (3, .english, .ukrainian, "руддщб мир! 123 @#$ гіук@ьфшдюсщь привет иууьи"),
+        (3, .english, .russian, "руддщб мир! 123 @#$ гыук@ьфшдюсщь привет иууьи"),
+        (3, .ukrainian, .english, "hello? vbh! 123 @#$ user@mail/com ghbdtn beemb"),
+        (3, .ukrainian, .russian, "hello, мир! 123 @#$ user@mail.com ghbdtn иууьи"),
+        (3, .russian, .english, "hello? vbh! 123 @#$ user@mail/com ghbdtn beemb"),
+        (3, .russian, .ukrainian, "hello, мир! 123 @#$ user@mail.com ghbdtn иууьи"),
+        ]
+        for (index, from, to, result) in expected {
+            assertEqual(LayoutMapper.convert(samples[index], from: from, to: to, tables: .pc), result, "\(from)→\(to) #\(index)")
         }
     }
 
@@ -47,6 +66,14 @@ func runKeyTableTests() {
             firstChoice: [.ukrainian: "uk.legacy"]
         )
         assertEqual(resolved.candidates(for: .ukrainian), [legacy, .pcUkrainian])
+        // Only a standard Ukrainian source enabled: the legacy (и/і swapped) variant stays a
+        // trailing candidate, as the detector always tried it before key tables.
+        let standardOnly = KeyboardTables.resolve(
+            layoutSources: [.ukrainian: ["uk.std"]],
+            tablesBySource: ["uk.std": KeyTable.pcUkrainian.replacing(KeyStroke(18, shift: true), with: "!")],
+            firstChoice: [:]
+        )
+        assertEqual(standardOnly.candidates(for: .ukrainian).last, legacy, "legacy fallback kept")
         assertEqual(resolved.candidates(for: .russian), [.pcRussian], "missing layout → .pc")
         let dup = KeyboardTables.resolve(
             layoutSources: [.english: ["us", "au"]],

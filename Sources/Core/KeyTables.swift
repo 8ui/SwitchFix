@@ -180,6 +180,13 @@ extension KeyboardTables {
             for id in ordered {
                 if let table = tablesBySource[id], !tables.contains(table) { tables.append(table) }
             }
+            // The detector always tried both Ukrainian variants (и/і swapped): keep the
+            // built-in ones as trailing candidates so a lone enabled source loses nothing.
+            if layout == .ukrainian, !tables.isEmpty {
+                for fallback in pc.candidates(for: .ukrainian) where !tables.contains(fallback) {
+                    tables.append(fallback)
+                }
+            }
             if !tables.isEmpty { result[layout] = tables }
         }
         return KeyboardTables(result)

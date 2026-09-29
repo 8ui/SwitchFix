@@ -95,9 +95,10 @@ public final class InputSourceManager {
             value.tablesBySource = discoveredTables
             value.descriptors = discoveredDescriptors
             value.lastUsedSourceID = value.lastUsedSourceID.filter { discoveredSources[$0.value] != nil }
-            if discoveredSources[currentSourceID] != nil {
-                let layout = Self.layout(for: currentSourceID)
-                if value.lastUsedSourceID[layout] == nil { value.lastUsedSourceID[layout] = currentSourceID }
+            // Same layout the discovery loop assigned, not the fallback of `layout(for:)`.
+            if let layout = discoveredLayoutSources.first(where: { $0.value.contains(currentSourceID) })?.key,
+               value.lastUsedSourceID[layout] == nil {
+                value.lastUsedSourceID[layout] = currentSourceID
             }
             let fresh = fallbackIDs.filter { !value.loggedTableFallbacks.contains($0) }
             value.loggedTableFallbacks.formUnion(fresh)
