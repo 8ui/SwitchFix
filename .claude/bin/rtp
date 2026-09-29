@@ -1,0 +1,3 @@
+#!/bin/sh
+# rtp is NOT an npm package: `npx rtp` fetches an unrelated registry package.
+exec node "$(cd "$(dirname "$0")/.." && pwd)/skills/run-task-pipeline/scripts/rtp.mjs" "$@"
