@@ -100,28 +100,26 @@ rtp show       # Print frontmatter + last 5 Log entries
 rtp index      # Force-regenerate docs/tasks/index.md
 ```
 
-Invocation forms (pick one — all three work):
+Invocation forms (из корня репо):
 
 ```bash
-# Bare command — shim at ~/.claude/bin/rtp (that dir is on PATH via ~/.zshrc)
+# Шим проекта — .claude/bin/rtp. В облаке SessionStart-хук кладёт .claude/bin на PATH;
+# локально rtp обычно уже есть в PATH (глобальный шим).
 rtp <subcommand> [args]
 
-# Direct
-node ~/.claude/skills/run-task-pipeline/scripts/rtp.mjs <subcommand> [args]
-
-# Slash command
-/rtp <subcommand> [args]
+# Прямой вызов — путь БЕЗ кавычек, иначе Stop-хук старых версий не узнает вызов
+node .claude/skills/run-task-pipeline/scripts/rtp.mjs <subcommand> [args]
 ```
 
 **Never `npx rtp`.** `rtp` is not an npm package: npx resolves an unrelated
 registry package (`rtp@0.1.0`, no `bin` field) and dies with
 `npm error could not determine executable to run`. The error reads like
 "binary missing", but npx actually downloaded someone else's library.
-The shim above exists precisely so the bare `rtp` never falls through to npx —
-if it is missing, recreate it:
+The shim exists precisely so the bare `rtp` never falls through to npx —
+if `.claude/bin/rtp` is missing, recreate it:
 
 ```bash
-printf '#!/bin/sh\nexec node "$HOME/.claude/skills/run-task-pipeline/scripts/rtp.mjs" "$@"\n' > ~/.claude/bin/rtp && chmod +x ~/.claude/bin/rtp
+printf '#!/bin/sh\nexec node "$(cd "$(dirname "$0")/.." && pwd)/skills/run-task-pipeline/scripts/rtp.mjs" "$@"\n' > .claude/bin/rtp && chmod +x .claude/bin/rtp
 ```
 
 Run `rtp <subcommand> --help` for option lists — там есть и то, что ниже по тексту не
@@ -129,7 +127,7 @@ Run `rtp <subcommand> --help` for option lists — там есть и то, чт
 `rtp sweep --days/--phase`, `rtp verify --list`, `rtp handoff --print-only`,
 `rtp debt <id> --list`, `rtp validate` без id (последняя активная) и `rtp validate --all`.
 
-**Правишь сам `rtp` — прогони регресс:** `sh ~/.claude/skills/run-task-pipeline/scripts/regress.sh`
+**Правишь сам `rtp` — прогони регресс:** `sh .claude/skills/run-task-pipeline/scripts/regress.sh`
 (работает во временной директории, реальный `docs/tasks` не трогает; итог — последняя
 строка `итог (все секции)`, промежуточные «итог …» — только счётчики). Новый фикс без
 своего кейса там — не фикс.
@@ -229,7 +227,7 @@ Inside `impl`: after EACH plan step `rtp step <id> --done <n>`.
 2. **Brainstorming** with minimum 3 questions (what / why / done-criteria)
 3. **If spec exists → spec-review** (no exceptions)
 4. **If plan exists → plan-review** (no exceptions)
-5. **Code-review** — always (`superpowers:verification-before-completion` + независимый ревьюер-субагент через `Agent`, dispatched under the standing authorization above; `/code-review` — отдельный скилл, не `subagent_type`)
+5. **Code-review** — always (`superpowers:verification-before-completion` (без плагина — `verification-before-completion`) + независимый ревьюер-субагент через `Agent`, dispatched under the standing authorization above; `/code-review` — отдельный скилл, не `subagent_type`)
 6. **Security-review** if diff touches auth/RBAC/payment/user-input/XSS-vectors
 7. **Index regenerated** after every task-file write (automatic via hook; manual fallback: `rtp index`)
 8. **Status Block в конце каждого ответа**, в котором были правки кода (формат ниже)
@@ -268,7 +266,7 @@ rtp show <id>          # frontmatter + последние логи
 
 Announce the result. Jump to the recorded `phase`.
 
-**1. Brainstorm.** Invoke `superpowers:brainstorming`. Minimum 3 questions:
+**1. Brainstorm.** Invoke `superpowers:brainstorming` (без плагина — `brainstorming`). Minimum 3 questions:
 - What exactly is the output? (component / API call / data model change)
 - Why now? (blocker / tech debt / new requirement)
 - Done criteria? (what proves it works)
@@ -318,7 +316,7 @@ Fresh-eyes contract: свои доводы в промпт не кладёшь. 
 rtp phase <id> --to plan --log "spec-review passed"
 ```
 
-**4a. Plan** (full, no-spec). Invoke `superpowers:writing-plans` → `docs/plans/<slug>-plan.md`, then:
+**4a. Plan** (full, no-spec). Invoke `superpowers:writing-plans` (без плагина — `writing-plans`) → `docs/plans/<slug>-plan.md`, then:
 ```bash
 rtp artifact <id> --plan docs/plans/<slug>-plan.md
 rtp phase <id> --to plan-review --log "plan drafted"
@@ -335,7 +333,7 @@ rtp phase <id> --to impl --log "plan-review passed"
 rtp steps <id> --set "Починить парсер|Тест на регрессию|Ревью"
 ```
 
-**5. Implementation.** If plan exists: `superpowers:executing-plans`. For bugs (`type: bug`): invoke `superpowers:systematic-debugging` BEFORE writing any fix — root cause first, never symptom patching. For independent subtasks: `superpowers:subagent-driven-development` with Sonnet subagents (standing authorization покрывает и это).
+**5. Implementation.** If plan exists: `superpowers:executing-plans` (без плагина — `executing-plans`). For bugs (`type: bug`): invoke `superpowers:systematic-debugging` (без плагина — `systematic-debugging`) BEFORE writing any fix — root cause first, never symptom patching. For independent subtasks: `superpowers:subagent-driven-development` (без плагина — `subagent-driven-development`) with Sonnet subagents (standing authorization покрывает и это).
 
 **Каждый закрытый шаг плана фиксируется сразу**, а не пачкой в конце:
 ```bash
@@ -354,7 +352,7 @@ rtp phase <id> --to review --log "impl complete"
 ```
 
 **6. Review.** Mandatory sequence:
-1. `superpowers:verification-before-completion` — build, lint, tests
+1. `superpowers:verification-before-completion` (без плагина — `verification-before-completion`) — build, lint, tests
 2. **Записать доказательства** — не «я проверил», а:
    ```bash
    rtp next <id>     # в фазе review печатает готовые rtp verify из docs/tasks/.rtp.json
@@ -458,12 +456,12 @@ If you find yourself thinking "это особый случай", "пользо�
 
 Invoke by name via `Skill` tool — do NOT inline their logic:
 
-- `superpowers:brainstorming` — Step 1
-- `superpowers:writing-plans` — Step 4a
-- `superpowers:executing-plans` — Step 5
-- `superpowers:subagent-driven-development` — Step 5 (optional, for parallel subtasks)
-- `superpowers:systematic-debugging` — Step 5 (when `type: bug`)
-- `superpowers:verification-before-completion` — Step 6
+- `superpowers:brainstorming` (без плагина — `brainstorming`) — Step 1
+- `superpowers:writing-plans` (без плагина — `writing-plans`) — Step 4a
+- `superpowers:executing-plans` (без плагина — `executing-plans`) — Step 5
+- `superpowers:subagent-driven-development` (без плагина — `subagent-driven-development`) — Step 5 (optional, for parallel subtasks)
+- `superpowers:systematic-debugging` (без плагина — `systematic-debugging`) — Step 5 (when `type: bug`)
+- `superpowers:verification-before-completion` (без плагина — `verification-before-completion`) — Step 6
 - `code-review:code-review` — Step 6, только когда diff оформлен как PR (иначе — ревьюер-субагент, см. ниже)
 - `/security-review` slash command — Step 6 (conditional)
 
