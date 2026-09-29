@@ -17,7 +17,13 @@ public final class InputSourceManager {
     }
 
     private struct State {
-        var preferredSources: [Layout: TISInputSource] = [:]
+        var sources: [String: TISInputSource] = [:]
+        /// Enabled keyboard sources per layout, in discovery order.
+        var layoutSources: [Layout: [String]] = [:]
+        var tablesBySource: [String: KeyTable] = [:]
+        /// The source each layout was last typed on; `switchTo` and the key tables follow it.
+        var lastUsedSourceID: [Layout: String] = [:]
+        var loggedTableFallbacks: Set<String> = []
         var sourceIDs: [Layout: String] = [:]
         var descriptors: [Layout: [InputSourceDescriptor]] = [:]
         var ukrainianVariants: [String: UkrainianKeyboardVariant] = [:]
@@ -46,10 +52,14 @@ public final class InputSourceManager {
             return
         }
 
-        var preferred: [Layout: TISInputSource] = [:]
+        var discovered: [String: TISInputSource] = [:]
+        var layoutSources: [Layout: [String]] = [:]
+        var tables: [String: KeyTable] = [:]
+        var fallbacks: [String] = []
         var ids: [Layout: String] = [:]
         var descriptors: [Layout: [InputSourceDescriptor]] = [:]
         var variants: [String: UkrainianKeyboardVariant] = [:]
+        let keyboardType = UInt32(LMGetKbdType())
 
         for source in sources {
             guard let sourceID = Self.stringProperty(source, kTISPropertyInputSourceID),
@@ -62,10 +72,17 @@ public final class InputSourceManager {
                 continue
             }
 
-            if preferred[layout] == nil {
-                preferred[layout] = source
+            if ids[layout] == nil {
                 ids[layout] = sourceID
             }
+            discovered[sourceID] = source
+            layoutSources[layout, default: []].append(sourceID)
+            // Phonetic layouts are not ЙЦУКЕН-shaped; thresholds were never calibrated on them.
+            let systemTable = sourceID.hasSuffix("Russian-Phonetic")
+                ? nil
+                : KeyTableBuilder.table(for: source, layout: layout, keyboardType: keyboardType)
+            if systemTable == nil { fallbacks.append(sourceID) }
+            tables[sourceID] = systemTable ?? KeyboardTables.pc.primary(for: layout)
             descriptors[layout, default: []].append(InputSourceDescriptor(id: sourceID, name: sourceName))
             if layout == .ukrainian {
                 variants[sourceID] = Self.detectUkrainianVariant(for: source, sourceName: sourceName)
@@ -78,15 +95,37 @@ public final class InputSourceManager {
             }
         }
 
-        let discoveredPreferred = preferred
-        let discoveredIDs = ids
-        let discoveredDescriptors = descriptors
-        let discoveredVariants = variants
+        let currentSourceID = Self.fetchCurrentInputSourceID()
+        let newFallbacks = state.withLock { value -> [String] in
+            value.sources = discovered
+            value.layoutSources = layoutSources
+            value.tablesBySource = tables
+            value.sourceIDs = ids
+            value.descriptors = descriptors
+            value.ukrainianVariants = variants
+            value.lastUsedSourceID = value.lastUsedSourceID.filter { discovered[$0.value] != nil }
+            if discovered[currentSourceID] != nil {
+                let layout = Self.layout(for: currentSourceID)
+                if value.lastUsedSourceID[layout] == nil { value.lastUsedSourceID[layout] = currentSourceID }
+            }
+            let fresh = fallbacks.filter { !value.loggedTableFallbacks.contains($0) }
+            value.loggedTableFallbacks.formUnion(fresh)
+            return fresh
+        }
+        for sourceID in newFallbacks {
+            SwitchFixLog.source.info("key table unavailable for \(sourceID), using built-in")
+        }
+    }
+
+    /// Key tables per layout: the override or last-used source first, then the other
+    /// enabled sources of that layout; `.pc` for layouts without sources.
+    public func keyboardTables(overrides: [Layout: String] = [:]) -> KeyboardTables {
         state.withLock { value in
-            value.preferredSources = discoveredPreferred
-            value.sourceIDs = discoveredIDs
-            value.descriptors = discoveredDescriptors
-            value.ukrainianVariants = discoveredVariants
+            KeyboardTables.resolve(
+                layoutSources: value.layoutSources,
+                tablesBySource: value.tablesBySource,
+                firstChoice: value.lastUsedSourceID.merging(overrides) { $1 }
+            )
         }
     }
 
@@ -96,6 +135,9 @@ public final class InputSourceManager {
         state.withLock { value in
             value.currentInputSourceID = sourceID
             value.currentLayout = layout
+            if value.sources[sourceID] != nil {
+                value.lastUsedSourceID[layout] = sourceID
+            }
         }
     }
 
@@ -137,8 +179,10 @@ public final class InputSourceManager {
     @discardableResult
     public func switchTo(_ layout: Layout) -> Bool {
         guard let target = state.withLock({ value -> (TISInputSource, String)? in
-            guard let source = value.preferredSources[layout],
-                  let sourceID = value.sourceIDs[layout] else {
+            let candidates = value.layoutSources[layout] ?? []
+            let lastUsed = value.lastUsedSourceID[layout].flatMap { candidates.contains($0) ? $0 : nil }
+            guard let sourceID = lastUsed ?? candidates.first,
+                  let source = value.sources[sourceID] else {
                 return nil
             }
             if value.currentInputSourceID == sourceID {

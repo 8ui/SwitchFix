@@ -39,6 +39,22 @@ func runKeyTableTests() {
         assertEqual(table.charToKey["."], KeyStroke(44))
     }
 
+    runSuite("KeyTables: resolve orders candidates by first choice") {
+        let legacy = KeyTable.pcUkrainianLegacy
+        let resolved = KeyboardTables.resolve(
+            layoutSources: [.ukrainian: ["uk.std", "uk.legacy"], .english: ["us"]],
+            tablesBySource: ["uk.std": .pcUkrainian, "uk.legacy": legacy, "us": .pcEnglish],
+            firstChoice: [.ukrainian: "uk.legacy"]
+        )
+        assertEqual(resolved.candidates(for: .ukrainian), [legacy, .pcUkrainian])
+        assertEqual(resolved.candidates(for: .russian), [.pcRussian], "missing layout → .pc")
+        let dup = KeyboardTables.resolve(
+            layoutSources: [.english: ["us", "au"]],
+            tablesBySource: ["us": .pcEnglish, "au": .pcEnglish], firstChoice: [:]
+        )
+        assertEqual(dup.candidates(for: .english).count, 1, "equal tables are deduplicated")
+    }
+
     runSystemKeyTableTests()
 
     runSuite("KeyTables: ModelTrainer mirror matches .pc letters") {

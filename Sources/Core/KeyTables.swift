@@ -159,3 +159,29 @@ enum PCLayoutData {
         return map
     }
 }
+
+extension KeyboardTables {
+    /// Candidates per layout: `firstChoice` source first, then the other sources in
+    /// discovery order; sources without a table are skipped, equal tables deduplicated;
+    /// a layout with nothing left falls back to `.pc`.
+    public static func resolve(
+        layoutSources: [Layout: [String]],
+        tablesBySource: [String: KeyTable],
+        firstChoice: [Layout: String]
+    ) -> KeyboardTables {
+        var result: [Layout: [KeyTable]] = [:]
+        for (layout, ids) in layoutSources {
+            var ordered = ids
+            if let first = firstChoice[layout], let index = ordered.firstIndex(of: first) {
+                ordered.remove(at: index)
+                ordered.insert(first, at: 0)
+            }
+            var tables: [KeyTable] = []
+            for id in ordered {
+                if let table = tablesBySource[id], !tables.contains(table) { tables.append(table) }
+            }
+            if !tables.isEmpty { result[layout] = tables }
+        }
+        return KeyboardTables(result)
+    }
+}
