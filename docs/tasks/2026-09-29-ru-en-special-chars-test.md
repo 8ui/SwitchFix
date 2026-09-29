@@ -34,6 +34,7 @@ _2-5 строк: что делаем и зачем. Задача этой сек
 - 2026-09-29: шаг 1 ▶ Добавить runSuite RU→EN спецсимволы
 - 2026-09-29: шаг 1 ✅ Добавить runSuite RU→EN спецсимволы — 4 ассерта, включая заглавные
 - 2026-09-29: impl complete: runSuite 'LayoutMapper: Special chars RU→EN'
+- 2026-09-29: code-review: субагент general-purpose (fresh-eyes) — замечаний нет; nit про 3-символьный ассерт оставлен как есть
 
 ## Decisions
 
