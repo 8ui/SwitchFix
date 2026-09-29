@@ -3,13 +3,13 @@ id: 2026-09-29-rtp-generalize
 title: Обобщить rtp и перенести в SwitchFix
 type: refactor
 pipeline: full
-phase: review
+phase: done
 created: 2026-09-29
 updated: 2026-09-29
 blocked_by: null
-steps_done: 7
+steps_done: 8
 steps_total: 8
-step_current: 8
+step_current: null
 artifacts:
   spec: docs/features/rtp-cloud-switchfix-spec.md
   plan: docs/plans/rtp-cloud-switchfix-plan.md
@@ -34,7 +34,7 @@ restoplace `ae27627e9`). Подзадача 2: облачные сессии Swi
 5. ✅ `.rtp.json` и CLAUDE.md
 6. ✅ проверка дублей скиллов вживую
 7. ✅ PR, CI, доказательства
-8. ▶ облачная проверка (пользователь) и закрытие
+8. ✅ облачная проверка (пользователь) и закрытие
 
 ## Log
 
@@ -96,6 +96,9 @@ restoplace `ae27627e9`). Подзадача 2: облачные сессии Swi
 - 2026-09-29: verify: `! grep -nE '\$[0-9@#*]|\$ARGUMENTS' .claude/skills/run-task-pipeline/SKILL.md` → exit 0 ✅
 - 2026-09-29: фиксы по отчёту облака: рецепт шима без $0, verify.only local/cloud (C6), paths-ignore docs/tasks для push в CI; b75a889
 - 2026-09-29: verify: `CI зелёный: https://github.com/8ui/SwitchFix/actions/runs/36549828578 (push, b75a889)` → exit 0 ✅
+- 2026-09-29: verify: `paths-ignore работает: коммит только docs/tasks (4cce489) не запустил push-ран, только pull_request` → exit 0 ✅
+- 2026-09-29: шаг 8 ✅ облачная проверка (пользователь) и закрытие — облако проверено, PR #4 смёржен (b3487f6)
+- 2026-09-29: PR #4 смёржен (b3487f6); облако проверено; открытые долги — перенос фиксов копии в глобальный скилл, гвард, /skills локально
 
 ## Decisions
 
@@ -113,8 +116,9 @@ _Нетривиальные решения по ходу задачи. Одна 
 - [ ] команда verify, начинающаяся с '--', ломает подсказку: parseArgs примет значение --run за флаг; печатать --run=<quoted> (ревью кода, п.7, маловероятно)
 - [ ] перенести в глобальный скилл фиксы копии: SKILL_DIR через fileURLToPath и кавычечную форму rtp.mjs в регэкспах Stop-хука (подзадача 2)
 - [ ] гвард rtp-hook.sh ищет глобальные хуки только в settings.json — хуки из settings.local.json/managed settings не видит, копия сработает вдвое; и риск версий: подключённые глобальные хуки гоняют свой rtp против репо
-- [ ] облачная проверка до мержа (пользователь): rtp на PATH, задача заводится, Stop возвращает ход — критерий 9 спеки подзадачи 2
+- [x] облачная проверка до мержа (пользователь): rtp на PATH, задача заводится, Stop возвращает ход — критерий 9 спеки подзадачи 2 — закрыто 2026-09-29: облачная сессия, задача 2026-09-29-ru-en-special-chars-test, CI run 36548587047
 - [ ] перенести в глобальный скилл поле verify.only (local/cloud) из копии SwitchFix — глобальный rtp его игнорирует и показывает все проверки
+- [ ] локально не подтверждено /skills, какой run-task-pipeline активен в SwitchFix (глобальный или копия) и что копии superpowers скрыты — в сессии видно только косвенно (один run-task-pipeline, копий без префикса нет)
 
 ## Verification
 
@@ -287,6 +291,12 @@ _Нетривиальные решения по ходу задачи. Одна 
 
   ```
   Build and test (macos-15) — success
+  ```
+
+- 2026-09-29 · `paths-ignore работает: коммит только docs/tasks (4cce489) не запустил push-ран, только pull_request` · exit 0 ✅
+
+  ```
+  gh run list: pull_request 4cce489 in_progress; push-рана на 4cce489 нет; push b75a889 completed success
   ```
 
 ## Handoff
