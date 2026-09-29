@@ -1,6 +1,9 @@
 import SwiftUI
 import Core
 
+/// `Layout` alone is ambiguous next to SwiftUI's `Layout` protocol.
+typealias KeyboardLayout = Core.Layout
+
 // MARK: - Model
 
 /// A lexicon entry with the sortable, localized values the table shows.
@@ -17,7 +20,7 @@ struct LexiconRow: Identifiable {
 }
 
 enum LexiconText {
-    static func code(_ layout: Layout) -> String {
+    static func code(_ layout: KeyboardLayout) -> String {
         switch layout {
         case .english: return "EN"
         case .ukrainian: return "UK"
@@ -66,9 +69,9 @@ struct LexiconDraft: Identifiable {
     /// The entry being edited, nil for a new one.
     var entryID: UUID?
     var word = ""
-    var sourceLayout: Layout = .english
+    var sourceLayout: KeyboardLayout = .english
     var neverCorrect = true
-    var target: Layout = .russian
+    var target: KeyboardLayout = .russian
     var matchCount = 0
     var lastMatchedAt: Date?
 
@@ -93,7 +96,7 @@ struct LexiconDraft: Identifiable {
     var rule: LexiconRule { neverCorrect ? .neverCorrect : .alwaysCorrect(to: target) }
 
     /// Conversions are English ↔ Cyrillic only.
-    static func targets(for source: Layout) -> [Layout] {
+    static func targets(for source: KeyboardLayout) -> [KeyboardLayout] {
         source == .english ? [.russian, .ukrainian] : [.english]
     }
 }
@@ -365,7 +368,7 @@ struct LexiconEntryForm: View {
                 GridRow {
                     Text(L10n.tr("Typed on:"))
                     Picker("", selection: $draft.sourceLayout) {
-                        ForEach(Layout.allCases, id: \.self) { layout in
+                        ForEach(KeyboardLayout.allCases, id: \.self) { layout in
                             Text(L10n.tr(layout.displayName)).tag(layout)
                         }
                     }
