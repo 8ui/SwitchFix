@@ -505,7 +505,7 @@ func score(word: String, source: Layout, alternatives: [(Layout, String)]) -> La
 
 ## 11. Definition of Done
 
-- [x] В репозитории и в `.app` нет словарей; модуль `Dictionary` удалён (`.app` 3.3 МБ).
+- [x] В репозитории и в `.app` нет словарей; модуль `Dictionary` удалён (`.app` ~3.8 МБ).
 - [x] Модели `.sfng` ≤ 1 МБ, `ModelTrainer` + `fetch-corpora.sh` воспроизводимо собирают их.
 - [x] Метрики §8 выполнены на eval-наборе (с допусками §10.6); перебор порогов в `plan/benchmarks/thresholds_005.md`.
 - [x] `PersonalLexicon` работает: revert запоминается, ручная конвертация запоминается

@@ -7,9 +7,9 @@ phase: impl
 created: 2026-09-29
 updated: 2026-09-29
 blocked_by: null
-steps_done: 5
+steps_done: 7
 steps_total: 8
-step_current: 6
+step_current: 8
 artifacts:
   spec: plan/005_ngram_layout_detection.md
   plan: docs/plans/ngram-only-learning-ui-plan.md
@@ -28,9 +28,9 @@ artifacts:
 3. ✅ лексикон в детекторе
 4. ✅ происхождение коррекции, обучение в `InputEngine`
 5. ✅ вкладка «Слова» с полным CRUD
-6. ▶ позиции чувствительности в `DetectionThresholds` и ползунок
-7. ⬜ перебор порогов, калибровка ползунка, защита от устаревших порогов
-8. ⬜ документация и Definition of Done
+6. ✅ позиции чувствительности в `DetectionThresholds` и ползунок
+7. ✅ перебор порогов, калибровка ползунка, защита от устаревших порогов
+8. ▶ документация и Definition of Done
 
 ## Log
 
@@ -53,6 +53,10 @@ artifacts:
 - 2026-09-29: verify: `CI зелёный (шаги 2–6, 234f49e): https://github.com/8ui/SwitchFix/actions/runs/36559220374` → exit 0 ✅
 - 2026-09-29: шаг 4 ✅ происхождение коррекции, обучение в `InputEngine` — CI 36559220374; был красный прогон из-за гонки в тесте last-Cyrillic (исправлено drain)
 - 2026-09-29: шаг 5 ✅ вкладка «Слова» с полным CRUD — CI 36559220374 (сборка UI); визуальная проверка на macOS — в долг
+- 2026-09-29: verify: `CI зелёный (шаги 6–7, e1935c2): https://github.com/8ui/SwitchFix/actions/runs/36559786804` → exit 0 ✅
+- 2026-09-29: шаг 6 ✅ позиции чувствительности в `DetectionThresholds` и ползунок — CI 36559786804
+- 2026-09-29: шаг 7 ✅ перебор порогов, калибровка ползунка, защита от устаревших порогов — positions +4/+2/0/-2/-4; базовые пороги не менялись; thresholds_005.md
+- 2026-09-29: шаг 8 ▶ документация и Definition of Done
 
 ## Decisions
 
@@ -81,6 +85,12 @@ artifacts:
 
   ```
   все шаги success: L10n без дублей, build, TestRunner, InputPipelineTestRunner (включая 8 learning-сьютов), build-app
+  ```
+
+- 2026-09-29 · `CI зелёный (шаги 6–7, e1935c2): https://github.com/8ui/SwitchFix/actions/runs/36559786804` · exit 0 ✅
+
+  ```
+  L10n ok; build; TestRunner ok (checksum guard); Threshold sweep 24s, строки SWEEP совпадают с Linux-харнессом; InputPipeline 878 passed 0 failed; build-app ok, .app 3.8M
   ```
 
 ## Handoff
