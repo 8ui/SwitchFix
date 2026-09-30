@@ -81,6 +81,14 @@ struct ScreenSuffix {
 public struct InputStateMachine {
     public private(set) var currentBuffer = ""
     public private(set) var isInvalidUntilBoundary = false
+    /// Set by caret keys (arrows, Home/End, Page Up/Down, with or without modifiers): the
+    /// caret may now be inside a word, so the characters typed until the next boundary are
+    /// kept for the hotkey but never flushed for automatic correction. Other shortcuts
+    /// (Option+Backspace, Cmd+V) do not set it: the word retyped after them is corrected.
+    /// Clicks do not set it either — the first word typed after a click must be corrected.
+    /// Cleared at a boundary or an app switch, not by focus resolution, which replaces the
+    /// context after every arrow key.
+    public private(set) var skipsAutomaticFlushUntilBoundary = false
     public private(set) var layoutSwitchWord = ""
     private var screenSuffix = ScreenSuffix()
     public private(set) var context: InputContextSnapshot
@@ -93,6 +101,9 @@ public struct InputStateMachine {
 
     public mutating func updateContext(_ context: InputContextSnapshot) -> [InputStateCommand] {
         let changed = self.context != context
+        if context.frontmostPID != self.context.frontmostPID {
+            skipsAutomaticFlushUntilBoundary = false
+        }
         self.context = context
         guard changed else { return [] }
         currentBuffer = ""
@@ -146,6 +157,9 @@ public struct InputStateMachine {
             return [.invalidate(.queueOverflow)]
         case .navigation:
             invalidate(untilBoundary: false)
+            if KeyboardMonitor.navigationKeyCodes.contains(input.keyCode) {
+                skipsAutomaticFlushUntilBoundary = true
+            }
             screenSuffix.unknownEdit()
             return [.invalidate(.navigation)]
         case .inputSourceKey:
@@ -215,12 +229,14 @@ public struct InputStateMachine {
             defer {
                 currentBuffer = ""
                 isInvalidUntilBoundary = false
+                skipsAutomaticFlushUntilBoundary = false
             }
             guard canBuffer(input.context) else {
                 return invalidateForContext(input.context)
             }
             screenSuffix.typed(boundary)
             guard !isInvalidUntilBoundary, !currentBuffer.isEmpty else { return [] }
+            guard !skipsAutomaticFlushUntilBoundary else { return [] }
             switch preferences.correctionMode {
             case .automatic:
                 return [.flush(

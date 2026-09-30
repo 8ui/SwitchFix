@@ -50,6 +50,10 @@ public class LayoutDetector {
     /// Key tables for conversion; candidates of the source layout are tried in order.
     public var keyboardTables: KeyboardTables = .pc
     public var shortWordSuppressionLength: Int = 2
+    /// Low-confidence words longer than `shortWordSuppressionLength` and up to this length
+    /// are kept (not corrected, not deferred) inside a strong current-language context:
+    /// `в нову еру` stays Ukrainian. Automatic detection only.
+    public var contextKeepLength: Int = 3
     public var shortWordSuppressionMinValidContext: Int = 2
     public var shortWordSuppressionContextWindow: Int = 6
 
@@ -255,6 +259,16 @@ public class LayoutDetector {
             }
         }
 
+        if shouldSkipAutomaticCommandLineFlag(word: word, sourceLayout: sourceLayout) {
+            // Neutral: a flag is neither native-language context nor a correction
+            // (checked before the acronym rule, which would count '-R' as context).
+            consecutiveWrongCount = 0
+            lastDetectionResult = nil
+            pendingSwitchLayout = nil
+            pendingSwitchCount = 0
+            state = .buffering
+            return nil
+        }
         if shouldSkipAutomaticEnglishAcronymCorrection(word: word, sourceLayout: sourceLayout) {
             markValidInCurrentLanguage()
             return nil
@@ -415,6 +429,21 @@ public class LayoutDetector {
         var originalForCorrection = word
         let isLowConfidence = word.count <= lowConfidenceMaxLength
         let shouldSwitch = shouldSwitchLayout(isLowConfidence: isLowConfidence, targetLayout: targetLayout)
+
+        if isLowConfidence, !shouldSwitch, pendingBoundaryCharacter != nil,
+           targetLayout != sourceLayout,
+           word.count > shortWordSuppressionLength, word.count <= contextKeepLength,
+           hasStrongCurrentContext() {
+            SwitchFixLog.detector.info("kept short word '\(word)' -> '\(finalWord)' (strong current context)")
+            consecutiveWrongCount = 0
+            lastDetectionResult = nil
+            // The kept word must not count toward the next word's layout switch.
+            pendingSwitchLayout = nil
+            pendingSwitchCount = 0
+            recordOutcome(.unknown)
+            state = .buffering
+            return nil
+        }
 
         if shouldSuppressLowConfidenceCorrection(
             original: word,
@@ -696,6 +725,18 @@ public class LayoutDetector {
         guard pendingBoundaryCharacter != nil else { return false }
         guard word.count >= 2 else { return false }
         return isAllUppercase(word)
+    }
+
+    /// A Latin command-line flag (`-r`, `--x`) is never rewritten automatically:
+    /// `ls -r` must not become `ls -к`. Longer flags go through the model as usual.
+    private func shouldSkipAutomaticCommandLineFlag(word: String, sourceLayout: Layout) -> Bool {
+        guard sourceLayout == .english else { return false }
+        // Keep manual/hotkey correction available; suppress only automatic boundary-triggered rewrites.
+        guard pendingBoundaryCharacter != nil else { return false }
+        let parts = splitTokenForValidation(word)
+        guard parts.suffix.isEmpty, (1...2).contains(parts.prefix.count),
+              parts.prefix.allSatisfy({ $0 == "-" }) else { return false }
+        return parts.core.count == 1 && parts.core.allSatisfy(\.isLetter)
     }
 
     private func containsVowel(_ text: String, layout: Layout) -> Bool {

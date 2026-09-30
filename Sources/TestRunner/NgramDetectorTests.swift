@@ -159,4 +159,41 @@ func runNgramDetectorSuites() {
             )
         }
     }
+
+    runSuite("NgramDetector: command-line flags stay") {
+        for words in [["ls", "-r"], ["rm", "-r", "-f"], ["tar", "-c", "-z", "-f"], ["cp", "-r", "-d"], ["grep", "-r"], ["-r"], ["--x"], ["ls", "-R"]] {
+            let detector = ngramDetector(current: .english, allowed: [.english, .russian])
+            let recorder = MockDetectorDelegate()
+            detector.delegate = recorder
+            for word in words {
+                detector.addCharacter(word)
+                detector.flushBuffer(boundaryCharacter: " ")
+            }
+            assert(recorder.results.isEmpty, "\(words.joined(separator: " ")) must stay, got \(recorder.results.map(\.convertedWord))")
+        }
+        // A bare letter is still corrected: a preposition at the start of a sentence.
+        assertEqual(detectNgram("r", current: .english, allowed: [.english, .russian])?.convertedWord, "к")
+        // The hotkey (no boundary) still converts a flag.
+        let hotkey = ngramDetector(current: .english, allowed: [.english, .russian])
+        hotkey.addCharacter("-r")
+        assertEqual(hotkey.flushBuffer(boundaryCharacter: nil)?.convertedWord, "-к", "the hotkey converts a flag")
+    }
+
+    runSuite("NgramDetector: 3-letter word stays in a strong native context") {
+        func results(_ words: [String], boundary: String? = " ") -> [DetectionResult] {
+            let detector = ngramDetector(current: .ukrainian, allowed: [.english, .ukrainian])
+            let recorder = MockDetectorDelegate()
+            detector.delegate = recorder
+            for (index, word) in words.enumerated() {
+                detector.addCharacter(word)
+                detector.flushBuffer(boundaryCharacter: index == words.count - 1 ? boundary : " ")
+            }
+            return recorder.results
+        }
+        assert(results(["в", "нову", "еру"]).isEmpty, "'еру' after Ukrainian words stays")
+        assert(results(["в", "нову", "еру", "фтв"]).isEmpty, "a kept word does not count toward the next word's switch")
+        assert(results(["на", "еру"]).count == 1, "one short context word is not strong context")
+        assertEqual(results(["еру"]).first?.convertedWord, "the", "isolated 'еру' is still corrected")
+        assertEqual(results(["в", "нову", "еру"], boundary: nil).first?.convertedWord, "the", "the hotkey still converts")
+    }
 }
