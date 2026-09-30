@@ -549,7 +549,7 @@ public final class InputEngine {
     /// is about to delete. Never delays input: at most `fieldTextDeadline`, then fail-open;
     /// exactly one decision is made, on `inputQueue`. While the field has not shown the
     /// boundary yet (lagging), it is read again: autocorrect happens on that boundary.
-    private func verifyFieldText(plan: CorrectionPlan, word: String, boundary: String, request: FieldTextRequest) {
+    private func verifyFieldText(plan: CorrectionPlan, word: String, boundary: String, request: @escaping FieldTextRequest) {
         final class Decision { var isMade = false }
         let decision = Decision()
         let startedAt = DispatchTime.now().uptimeNanoseconds

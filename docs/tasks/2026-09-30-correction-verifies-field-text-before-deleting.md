@@ -56,6 +56,7 @@ Staleness-guards (`CorrectionPlan.isEligible`) этого не видят: ко�
 - 2026-09-30: шаг 4 ✅ Проводка AppDelegate + документация
 - 2026-09-30: шаг 5 ✅ Тесты движка
 - 2026-09-30: ревью (субагент): lagging перечитывается каждые 8 мс до появления границы (иначе автокоррекция на том же пробеле проскакивала); префикс ≥ половины слова; тест «клавиша во время чтения» теперь реально идёт через чтение; тест: слово с экрана не перечитывается; док-комментарий CaretContext на место
+- 2026-09-30: verify: `CI красный: https://github.com/8ui/SwitchFix/actions/runs/36776051345 (94e91b3) — request в verifyFieldText не @escaping, захват в локальных func ask/decide` → exit 1 ❌
 
 ## Decisions
 
@@ -69,7 +70,11 @@ _Нетривиальные решения по ходу задачи. Одна 
 
 ## Verification
 
-_Доказательства, а не утверждения. Заполняется `rtp verify <id> --run "<команда>"`: команда, exit code, хвост вывода._
+- 2026-09-30 · `CI красный: https://github.com/8ui/SwitchFix/actions/runs/36776051345 (94e91b3) — request в verifyFieldText не @escaping, захват в локальных func ask/decide` · exit 1 ❌
+
+  ```
+  (без вывода)
+  ```
 
 ## Handoff
 
