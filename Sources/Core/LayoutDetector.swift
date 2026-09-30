@@ -130,8 +130,18 @@ public class LayoutDetector {
     /// Called when a word boundary is detected (space, enter, tab, punctuation).
     /// This is the only point where detection fires and triggers correction.
     /// - Parameter boundaryCharacter: The character that triggered the flush (e.g. " ", "\n"), or nil for hotkey-triggered flush.
+    /// - Parameter continuesPreviousWord: The word was typed right after the previous flush, with
+    ///   no captured event in between that could change the screen (text inserted without a key
+    ///   event, e.g. dictation, is not seen). Only then may a deferred short word be merged into
+    ///   this correction, which deletes both words. Tests and the eval model continuous typing;
+    ///   `InputEngine` passes what `InputStateMachine` saw for automatic flushes and false for
+    ///   hotkey requests.
     @discardableResult
-    public func flushBuffer(boundaryCharacter: String? = nil) -> DetectionResult? {
+    public func flushBuffer(boundaryCharacter: String? = nil, continuesPreviousWord: Bool = true) -> DetectionResult? {
+        // Every flush consumes the deferred short word — used by this word or dropped — so it
+        // can never merge across a flush that stripped to nothing (symbols only).
+        let carriedShort = continuesPreviousWord ? consumePendingSuppressedShort() : nil
+        pendingSuppressedShort = nil
         guard !wordBuffer.isEmpty else {
             state = .idle
             isOutOfSync = false
@@ -153,7 +163,7 @@ public class LayoutDetector {
         pendingBoundaryCharacter = boundary.isEmpty ? nil : boundary
 
         // Check buffer at word boundaries (short words are handled by ShortWordTable)
-        let result = isOutOfSync ? nil : checkBuffer()
+        let result = isOutOfSync ? nil : checkBuffer(suppressedShort: carriedShort)
         if let result {
             delegate?.layoutDetector(self, didDetectWrongLayout: result, boundaryCharacter: pendingBoundaryCharacter)
         }
@@ -212,9 +222,8 @@ public class LayoutDetector {
 
     // MARK: - Detection Logic
 
-    private func checkBuffer() -> DetectionResult? {
+    private func checkBuffer(suppressedShort: SuppressedShort?) -> DetectionResult? {
         state = .detecting
-        let suppressedShort = consumePendingSuppressedShort()
 
         let word = wordBuffer
         let sourceLayout = resolvedSourceLayout(for: word)
@@ -456,12 +465,14 @@ public class LayoutDetector {
             SwitchFixLog.detector.info("suppressed short word '\(word)' -> '\(finalWord)' (weak evidence, deferring)")
             consecutiveWrongCount = 0
             lastDetectionResult = nil
-            if let boundary = pendingBoundaryCharacter, !boundary.isEmpty {
+            // Only a single space may be retyped by the merged correction: Enter would send
+            // the message or run the command, other boundaries may not be what is on screen.
+            if pendingBoundaryCharacter == " " {
                 pendingSuppressedShort = SuppressedShort(
                     originalWord: word,
                     convertedWord: finalWord,
                     targetLayout: targetLayout,
-                    boundaryAfterWord: boundary
+                    boundaryAfterWord: " "
                 )
             }
             recordOutcome(.unknown)

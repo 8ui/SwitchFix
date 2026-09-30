@@ -179,6 +179,36 @@ func runNgramDetectorSuites() {
         assertEqual(hotkey.flushBuffer(boundaryCharacter: nil)?.convertedWord, "-к", "the hotkey converts a flag")
     }
 
+    runSuite("NgramDetector: a deferred short word merges only with an adjacent word after a space") {
+        func merged(boundary: String, continues: Bool) -> [String] {
+            let detector = ngramDetector(current: .russian, allowed: [.english, .russian])
+            let recorder = MockDetectorDelegate()
+            detector.delegate = recorder
+            for word in ["сейчас", "на"] {
+                detector.addCharacter(word)
+                detector.flushBuffer(boundaryCharacter: " ")
+            }
+            detector.addCharacter("ше")
+            detector.flushBuffer(boundaryCharacter: boundary)
+            detector.addCharacter("цщклы")
+            detector.flushBuffer(boundaryCharacter: " ", continuesPreviousWord: continues)
+            return recorder.results.map(\.originalWord)
+        }
+        assertEqual(merged(boundary: " ", continues: true), ["ше цщклы"], "typed right after, one space")
+        assertEqual(merged(boundary: " ", continues: false), ["цщклы"], "not adjacent: only the current word")
+        assertEqual(merged(boundary: "\n", continues: true), ["цщклы"], "Enter is never a bridge")
+
+        // A flush with no letters in between (symbols only) still consumes the deferred word.
+        let detector = ngramDetector(current: .russian, allowed: [.english, .russian])
+        let recorder = MockDetectorDelegate()
+        detector.delegate = recorder
+        for word in ["сейчас", "на", "ше", "^!", "цщклы"] {
+            detector.addCharacter(word)
+            detector.flushBuffer(boundaryCharacter: " ")
+        }
+        assertEqual(recorder.results.map(\.originalWord), ["цщклы"], "no merge across a symbols-only flush")
+    }
+
     runSuite("NgramDetector: 3-letter word stays in a strong native context") {
         func results(_ words: [String], boundary: String? = " ") -> [DetectionResult] {
             let detector = ngramDetector(current: .ukrainian, allowed: [.english, .ukrainian])
