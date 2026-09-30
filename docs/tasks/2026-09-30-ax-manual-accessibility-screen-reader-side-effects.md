@@ -13,8 +13,8 @@ step_current: 4
 artifacts:
   spec: null
   plan: null
-  branch: null
-  pr: null
+  branch: claude/funny-ramanujan-sdgiso
+  pr: "https://github.com/8ui/SwitchFix/pull/8"
 ---
 
 ## Context
@@ -47,6 +47,7 @@ Electron атрибут не поддерживается (electron #37465).
 - 2026-09-30: шаг 3 ✅ Ревью
 - 2026-09-30: impl complete; ручная проверка — шаг 4 (локально)
 - 2026-09-30: verify: `CI зелёный: https://github.com/8ui/SwitchFix/actions/runs/36772967020 (374657a)` → exit 0 ✅
+- 2026-09-30: artifacts.branch = claude/funny-ramanujan-sdgiso; artifacts.pr = https://github.com/8ui/SwitchFix/pull/8
 
 ## Decisions
 

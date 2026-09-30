@@ -13,8 +13,8 @@ step_current: null
 artifacts:
   spec: null
   plan: null
-  branch: null
-  pr: null
+  branch: claude/funny-ramanujan-sdgiso
+  pr: "https://github.com/8ui/SwitchFix/pull/8"
 ---
 
 ## Context
@@ -46,6 +46,7 @@ artifacts:
 - 2026-09-30: verify: `CI зелёный: https://github.com/8ui/SwitchFix/actions/runs/36771299604 (коммит 9d5d2e7; keypad Enter 610f432 — ждёт прогона ветки)` → exit 0 ✅
 - 2026-09-30: verify: `CI зелёный: https://github.com/8ui/SwitchFix/actions/runs/36772505902 (9e5f0e8)` → exit 0 ✅
 - 2026-09-30: ревью учтено, CI зелёный (run 36772505902); ждёт мержа ветки
+- 2026-09-30: artifacts.branch = claude/funny-ramanujan-sdgiso; artifacts.pr = https://github.com/8ui/SwitchFix/pull/8
 
 ## Decisions
 
