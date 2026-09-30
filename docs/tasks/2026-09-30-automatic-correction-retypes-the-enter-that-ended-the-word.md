@@ -3,13 +3,13 @@ id: 2026-09-30-automatic-correction-retypes-the-enter-that-ended-the-word
 title: Automatic correction retypes the Enter that ended the word
 type: bug
 pipeline: minimal
-phase: impl
+phase: review
 created: 2026-09-30
 updated: 2026-09-30
 blocked_by: null
-steps_done: 2
+steps_done: 3
 steps_total: 3
-step_current: 3
+step_current: null
 artifacts:
   spec: null
   plan: null
@@ -32,7 +32,7 @@ artifacts:
 
 1. ✅ Отмена коррекции при границе Enter
 2. ✅ Тест пайплайна
-3. ▶ Ревью
+3. ✅ Ревью
 
 ## Log
 
@@ -41,6 +41,9 @@ artifacts:
 - 2026-09-30: шаг 1 ✅ Отмена коррекции при границе Enter — prepareCorrection: cancelReason word-ended-by-enter
 - 2026-09-30: шаг 2 ✅ Тест пайплайна — InputPipelineTestRunner: automatic correction: a word ended by Enter
 - 2026-09-30: ревью (субагент): keypad Enter (76) попадал в буфер как U+0003 — теперь граница \n; тест проверяет ровно одну коррекцию без \n; README: space or punctuation; два минорных — в долг
+- 2026-09-30: шаг 3 ✅ Ревью — ревью субагента учтено
+- 2026-09-30: impl complete
+- 2026-09-30: verify: `CI зелёный: https://github.com/8ui/SwitchFix/actions/runs/36771299604 (коммит 9d5d2e7; keypad Enter 610f432 — ждёт прогона ветки)` → exit 0 ✅
 
 ## Decisions
 
@@ -53,7 +56,11 @@ _Нетривиальные решения по ходу задачи. Одна 
 
 ## Verification
 
-_Доказательства, а не утверждения. Заполняется `rtp verify <id> --run "<команда>"`: команда, exit code, хвост вывода._
+- 2026-09-30 · `CI зелёный: https://github.com/8ui/SwitchFix/actions/runs/36771299604 (коммит 9d5d2e7; keypad Enter 610f432 — ждёт прогона ветки)` · exit 0 ✅
+
+  ```
+  (без вывода)
+  ```
 
 ## Handoff
 
