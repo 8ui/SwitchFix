@@ -3,13 +3,13 @@ id: 2026-09-30-layout-switch-mode-loses-the-word-when-switching-with-the
 title: Layout-switch mode loses the word when switching with the Globe key
 type: bug
 pipeline: minimal
-phase: review
+phase: done
 created: 2026-09-30
 updated: 2026-09-30
 blocked_by: null
-steps_done: 3
+steps_done: 4
 steps_total: 4
-step_current: 4
+step_current: null
 artifacts:
   spec: null
   plan: null
@@ -26,7 +26,7 @@ _2-5 строк: что делаем и зачем. Задача этой сек
 1. ✅ Падающий тест в InputPipelineTestRunner
 2. ✅ Вид ввода inputSourceKey для keyCode 179, слово откладывается для handleLayoutChange
 3. ✅ Сборка, тесты, ревью
-4. ▶ Проверка на Mac (./install.sh, 🌐 в режиме переключения)
+4. ✅ Проверка на Mac (./install.sh, 🌐 в режиме переключения)
 
 ## Log
 
@@ -44,6 +44,10 @@ _2-5 строк: что делаем и зачем. Задача этой сек
 - 2026-09-30: verify: `swift run -c release InputPipelineTestRunner` → exit 0 ✅
 - 2026-09-30: шаг 3 ✅ Сборка, тесты, ревью — ревью: 0 blocker; учтены окно 500 мс, reason inputSourceKey, тесты без маскировки фокусом, доп. сценарии; 927 passed
 - 2026-09-30: review-фиксы: окно 500 мс (диктовка по 🌐), InputInvalidationReason.inputSourceKey, тесты: notSecure-контекст, клик/стрелка/ввод/смена приложения/выключение/позднее уведомление, проверка wait; мутация окна → красный
+- 2026-09-30: verify: `CI зелёный: https://github.com/8ui/SwitchFix/actions/runs/36735042858` → exit 0 ✅
+- 2026-09-30: verify: `Ручная проверка на Mac 2026-09-30 после ./install.sh, режим «При смене раскладки»` → exit 0 ✅
+- 2026-09-30: шаг 4 ✅ Проверка на Mac (./install.sh, 🌐 в режиме переключения) — лог: коррекция при 🌐 применена; после стрелки — нет
+- 2026-09-30: исправлено и проверено на Mac; CI зелёный; открытые debts: Control-Space, тест классификации keyCode 179
 
 ## Decisions
 
@@ -165,6 +169,18 @@ _Нетривиальные решения по ходу задачи. Одна 
   
   Building for production...
   Build complete! (0,19 с)
+  ```
+
+- 2026-09-30 · `CI зелёный: https://github.com/8ui/SwitchFix/actions/runs/36735042858` · exit 0 ✅
+
+  ```
+  (без вывода)
+  ```
+
+- 2026-09-30 · `Ручная проверка на Mac 2026-09-30 после ./install.sh, режим «При смене раскладки»` · exit 0 ✅
+
+  ```
+  ghbdtn (seq 34-39) → 🌐 keyCode=179 seq 40 → layout changed english→russian через 18 мс → correction planned deletes=6 → APPLIED. ghbdtn → ← (123) → 🌐: layout changed, коррекции нет (дважды, seq 46-54 и 63-70). Режим возвращён в automatic.
   ```
 
 ## Handoff
