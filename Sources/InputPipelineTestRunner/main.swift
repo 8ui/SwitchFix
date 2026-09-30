@@ -107,6 +107,27 @@ run("ordered word") {
     check(flushes == ["code"], "c-o-d-e must flush exactly once and in order")
 }
 
+run("navigation skips automatic correction of the word it lands in") {
+    let current = context()
+    var machine = automaticMachine(current)
+    var sequence: UInt64 = 0
+    func send(_ kind: CapturedInput.Kind) -> [InputStateCommand] {
+        sequence += 1
+        return machine.consume(input(sequence: sequence, kind: kind, context: current))
+    }
+    func flushed(_ commands: [InputStateCommand]) -> [String] {
+        commands.compactMap { if case .flush(let word, _, _, _) = $0 { return word } else { return nil } }
+    }
+    for character in ["w", "o", "r"] { _ = send(.character(character)) }
+    _ = send(.navigation)
+    _ = send(.character("d"))
+    _ = send(.character("s"))
+    check(machine.currentBuffer == "ds", "keys after an arrow stay buffered for the hotkey")
+    check(flushed(send(.boundary(" "))).isEmpty, "a fragment typed after an arrow is not auto-corrected")
+    for character in ["g", "h", "b", "d", "t", "n"] { _ = send(.character(character)) }
+    check(flushed(send(.boundary(" "))) == ["ghbdtn"], "the next word is corrected again")
+}
+
 run("autorepeat preserved") {
     let current = context()
     var machine = automaticMachine(current)
@@ -1186,6 +1207,23 @@ run("hotkey converts the word before the caret after Cmd+A, Backspace") {
     check(waitUntil { harness.emitted.count == 1 }, "the word read from the screen is converted")
     check(harness.emitted.last?.originalText == "ujnjdj", "the whole word is replaced, got \(harness.emitted.last?.originalText ?? "nil")")
     check(harness.emitted.last?.correctedText == "готово", "ujnjdj becomes готово, got \(harness.emitted.last?.correctedText ?? "nil")")
+}
+
+run("arrow keys skip automatic correction, the hotkey still converts from the buffer") {
+    var harness = LearningHarness()
+    harness.caret.reply = .unavailable
+    harness.send(.navigation)
+    harness.resolveFocus()
+    harness.type("ghbdtn")
+    check(!waitUntil(0.3) { harness.emitted.count > 0 }, "the word after an arrow is not auto-corrected even after focus resolves")
+    harness.type("ghbdtn")
+    check(waitUntil { harness.emitted.count == 1 }, "the next word is corrected")
+    harness.send(.navigation)
+    harness.resolveFocus()
+    harness.type("ghbdtn", boundary: nil)
+    harness.send(.hotkey)
+    check(waitUntil { harness.emitted.count == 2 }, "the hotkey converts the buffered word without Accessibility")
+    check(harness.emitted.last?.originalText == "ghbdtn", "got \(harness.emitted.last?.originalText ?? "nil")")
 }
 
 run("hotkey on a screen word never teaches the lexicon") {

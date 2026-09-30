@@ -81,6 +81,11 @@ struct ScreenSuffix {
 public struct InputStateMachine {
     public private(set) var currentBuffer = ""
     public private(set) var isInvalidUntilBoundary = false
+    /// Set by arrow keys and shortcuts: the caret may now be inside a word, so the
+    /// characters typed until the next boundary are kept for the hotkey but never
+    /// flushed for automatic correction. Cleared only at a boundary: focus resolution
+    /// replaces the context after every arrow key and must not clear it.
+    public private(set) var skipsAutomaticFlushUntilBoundary = false
     public private(set) var layoutSwitchWord = ""
     private var screenSuffix = ScreenSuffix()
     public private(set) var context: InputContextSnapshot
@@ -146,6 +151,7 @@ public struct InputStateMachine {
             return [.invalidate(.queueOverflow)]
         case .navigation:
             invalidate(untilBoundary: false)
+            skipsAutomaticFlushUntilBoundary = true
             screenSuffix.unknownEdit()
             return [.invalidate(.navigation)]
         case .inputSourceKey:
@@ -215,12 +221,14 @@ public struct InputStateMachine {
             defer {
                 currentBuffer = ""
                 isInvalidUntilBoundary = false
+                skipsAutomaticFlushUntilBoundary = false
             }
             guard canBuffer(input.context) else {
                 return invalidateForContext(input.context)
             }
             screenSuffix.typed(boundary)
             guard !isInvalidUntilBoundary, !currentBuffer.isEmpty else { return [] }
+            guard !skipsAutomaticFlushUntilBoundary else { return [] }
             switch preferences.correctionMode {
             case .automatic:
                 return [.flush(
