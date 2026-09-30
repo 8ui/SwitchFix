@@ -159,4 +159,23 @@ func runNgramDetectorSuites() {
             )
         }
     }
+
+    runSuite("NgramDetector: command-line flags stay") {
+        for words in [["ls", "-r"], ["rm", "-r", "-f"], ["tar", "-c", "-z", "-f"], ["cp", "-r", "-d"], ["grep", "-r"], ["-r"], ["--x"]] {
+            let detector = ngramDetector(current: .english, allowed: [.english, .russian])
+            let recorder = MockDetectorDelegate()
+            detector.delegate = recorder
+            for word in words {
+                detector.addCharacter(word)
+                detector.flushBuffer(boundaryCharacter: " ")
+            }
+            assert(recorder.results.isEmpty, "\(words.joined(separator: " ")) must stay, got \(recorder.results.map(\.convertedWord))")
+        }
+        // A bare letter is still corrected: a preposition at the start of a sentence.
+        assertEqual(detectNgram("r", current: .english, allowed: [.english, .russian])?.convertedWord, "к")
+        // The hotkey (no boundary) still converts a flag.
+        let hotkey = ngramDetector(current: .english, allowed: [.english, .russian])
+        hotkey.addCharacter("-r")
+        assertEqual(hotkey.flushBuffer(boundaryCharacter: nil)?.convertedWord, "-к", "the hotkey converts a flag")
+    }
 }
