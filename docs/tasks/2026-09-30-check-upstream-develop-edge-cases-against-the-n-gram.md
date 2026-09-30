@@ -62,6 +62,8 @@ artifacts:
 - 2026-09-30: impl complete: A f669661, B 21b11b9, C (последний коммит)
 - 2026-09-30: verify: `swift build -c release` → exit 0 ✅
 - 2026-09-30: verify: `ревью кода: блокеров нет; should-fix (Option+Backspace/Cmd+V выключали исправление следующего слова) исправлен — флаг только для caret-клавиш, сброс при смене приложения, флаг раньше acronym-правила; новые проверки на старом коде FAIL 2, после — InputPipelineTestRunner 988/0, TestRunner 542/0, eval = после B` → exit 0 ✅
+- 2026-09-30: verify: `swift run -c release TestRunner` → exit 0 ✅
+- 2026-09-30: verify: `swift run -c release InputPipelineTestRunner` → exit 0 ✅
 
 ## Decisions
 
@@ -124,46 +126,106 @@ _Нетривиальные решения по ходу задачи. Одна 
   (без вывода)
   ```
 
+- 2026-09-30 · `swift run -c release TestRunner` · exit 0 ✅
+
+  ```
+  | fix ru←en word-forms | 11/11 |  |
+  | fix uk←en tech | 12/14 | пшерги (want github), згірув (want pushed) |
+  | fix uk←en word-forms | 10/11 | сфеі (want cats) |
+  | fix en←ru word-forms | 9/10 | pfdnhf→завтра (want завтра) |
+  | fix en←ru slang-tech | 5/7 | ofc (want щас), rhby; (want кринж) |
+  | fix en←uk word-forms | 6/6 |  |
+  | fix en←uk slang-tech | 3/4 | yjhv→норм (want норм) |
+  
+  ========================================
+  Results: 542 passed, 0 failed
+  ALL TESTS PASSED
+  
+  Building for production...
+  Build complete! (0,17 с)
+  ```
+
+- 2026-09-30 · `swift run -c release InputPipelineTestRunner` · exit 0 ✅
+
+  ```
+  --- learning: reverting a forced hotkey conversion forgets the lesson ---
+  --- learning: manual entries are not overwritten by reverts ---
+  --- learning: forced hotkey target follows the last Cyrillic layout ---
+  --- key tables: hotkey converts a shifted digit-row symbol through the key ---
+  --- key tables: .pc keeps today's result for the same input ---
+  --- learning: the revert hotkey's fallback conversion does not teach ---
+  --- learning: one- and two-key hotkey conversions are not learned ---
+  --- learning: trailing punctuation is not part of the learned word ---
+  --- learning: merged multi-word corrections are not learned ---
+  
+  Input pipeline: 988 passed, 0 failed
+  
+  Building for production...
+  Build complete! (0,18 с)
+  ```
+
 ## Handoff
 
 **Сгенерировано:** 2026-09-30 · `rtp handoff`
 
 - **Задача:** `2026-09-30-check-upstream-develop-edge-cases-against-the-n-gram` — Check upstream develop edge cases against the n-gram detector
-- **Фаза:** triage (pipeline `no-spec`, type `bug`)
+- **Фаза:** review (pipeline `no-spec`, type `bug`)
+- **Прогресс:** 3/4 ▰▰▰▱
 - **Worktree:** `/Users/andrejsokolov/Desktop/projects/SwitchFix`
-- **Ветка:** `master` — своих коммитов 0, отставание от origin/master 0
+- **Ветка:** `claude/upstream-develop-edge-cases` — своих коммитов 5, отставание от origin/master 0
 - **Незакоммиченного:** 2 файл(ов)
+
+**Шаги плана**
+
+1. ✅ A: флаги не исправляются автоматически
+2. ✅ B: 3-буквенные в сильном контексте остаются
+3. ✅ C: после стрелок нет автоисправления слова
+4. ▶ Ревью
 
 **Файлы в работе**
 
-- `ocs/tasks/index.md`
-- `docs/tasks/2026-09-30-check-upstream-develop-edge-cases-against-the-n-gram.md`
+- `ocs/tasks/2026-09-30-check-upstream-develop-edge-cases-against-the-n-gram.md`
+- `docs/tasks/index.md`
 
 **git diff HEAD --stat**
 
 ```
-docs/tasks/index.md | 6 ++++--
- 1 file changed, 4 insertions(+), 2 deletions(-)
+...stream-develop-edge-cases-against-the-n-gram.md | 40 ++++++++++++++++++++++
+ docs/tasks/index.md                                |  2 +-
+ 2 files changed, 41 insertions(+), 1 deletion(-)
 ```
 
 **Последние коммиты**
 
-- `8d79fdb docs(tasks): close release notes task`
-- `e81b78d ci(release): build release notes from commits instead of PRs`
-- `ae11039 docs(tasks): close release v0.0.12 task`
+- `d5b8ba5 docs(tasks): edge-case task review notes`
+- `b4caf8f fix(input): skip the automatic flush only after caret keys`
+- `0c0d7a1 fix(input): no automatic correction for a word entered by arrow keys`
 
 **Последние записи лога**
 
-- 2026-09-30: triage — pipeline `no-spec`, reason: 8 коммитов upstream/develop не перенесены; проверить тестами -r/одиночные символы, исправление внутри слова, смешанный ввод; портировать только падающее
+- 2026-09-30: impl complete: A f669661, B 21b11b9, C (последний коммит)
+- 2026-09-30: verify: `swift build -c release` → exit 0 ✅
+- 2026-09-30: verify: `ревью кода: блокеров нет; should-fix (Option+Backspace/Cmd+V выключали исправление следующего слова) исправлен — флаг только для caret-клавиш, сброс при смене приложения, флаг раньше acronym-правила; новые проверки на старом коде FAIL 2, после — InputPipelineTestRunner 988/0, TestRunner 542/0, eval = после B` → exit 0 ✅
+- 2026-09-30: verify: `swift run -c release TestRunner` → exit 0 ✅
+- 2026-09-30: verify: `swift run -c release InputPipelineTestRunner` → exit 0 ✅
+
+**Открытые долги (5)**
+
+- 2-буквенный merge (pendingSuppressedShort) удаляет 'отложенное + bridge + текущее' без проверки экрана: двойной пробел, '!' перед пробелом, Cmd+Z (.undo не сбрасывает детектор), Enter как bridge (перенабор \n отправит сообщение/выполнит команду) — отдельная задача: adjacency-флаг от InputStateMachine + bridge только пробел
+- C не покрывает клик мышью посреди слова (focusMayChange) — отключать исправление первого слова после клика слишком дорого
+- B теряет 3-буквенные английские слова внутри русской/украинской фразы (eval: 'у меня дфп в игре' → lag больше не восстанавливается)
+- многобуквенные флаги (-rf, -la, -xzf) идут через модель; проверить eval-ом, не станет ли 'rm -rf' → 'rm -ка'
+- B считает word.count с пунктуацией: 3-буквенное слово в кавычке/скобке (4 символа) не удерживается — редкий край
 
 **Следующее действие**
 
-- написать план → rtp phase 2026-09-30-check-upstream-develop-edge-cases-against-the-n-gram --to plan-review
+- rtp verify по командам проекта (rtp next 2026-09-30-check-upstream-develop-edge-cases-against-the-n-gram), затем ревью субагентом → rtp phase 2026-09-30-check-upstream-develop-edge-cases-against-the-n-gram --to done
 
 **Заметки агента** (не выводятся из кода — грабли, тупики, договорённости)
 
 <!-- handoff-notes -->
 - 2026-09-30: Не начата: только заведена по итогам разбора develop. Начать с brainstorming + плана; тесты — в TestRunner (детектор) и InputPipelineTestRunner (пайплайн).
+- 2026-09-30: Работа в ветке claude/upstream-develop-edge-cases (запушена), master = origin/master. CI на ветку не стартовал: tip-коммит только docs/tasks (paths-ignore). Ждём решения пользователя: PR или прямой merge в master; CI запустится на PR/master.
 <!-- /handoff-notes -->
 
 ## Blockers
