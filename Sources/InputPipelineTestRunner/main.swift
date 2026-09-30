@@ -1679,11 +1679,11 @@ run("screen check: corrects only what the field still shows") {
     check(harness.emitted.count == 1, "automatic capitalization keeps the length: corrected")
 
     harness = screenChecked(.selection(length: 5), emits: false)
-    check(harness.emitted.isEmpty, "an inline suggestion is selected: Backspace would delete it")
+    check(harness.emitted.count == 0, "an inline suggestion is selected: Backspace would delete it")
     check(harness.screen?.queries == 1, "a selection is decided at once, got \(harness.screen?.queries ?? -1)")
 
     harness = screenChecked(.text(before: "привет "), emits: false)
-    check(harness.emitted.isEmpty, "the field replaced the word (autocorrect, prediction)")
+    check(harness.emitted.count == 0, "the field replaced the word (autocorrect, prediction)")
     check(harness.screen?.queries == 1, "a changed word is decided at once, got \(harness.screen?.queries ?? -1)")
 
     harness = screenChecked(.unavailable(transient: false), emits: true)
@@ -1700,7 +1700,7 @@ run("screen check: waits for a field that lags behind") {
     check(harness.emitted.count == 1, "a timeout is asked again")
 
     harness = screenChecked(.text(before: "ghbd"), emits: false)
-    check(harness.emitted.isEmpty, "a field that never catches up is not touched")
+    check(harness.emitted.count == 0, "a field that never catches up is not touched")
     check((harness.screen?.queries ?? 0) >= 2, "it was asked again before giving up")
 
     harness = screenChecked(.text(before: "ghbdtn"), emits: true)
@@ -1723,7 +1723,7 @@ run("screen check: typing during the check cancels it") {
             _ = drained.wait(timeout: .now() + 1)
         }
     }
-    check(harness.emitted.isEmpty, "the next key makes the correction stale")
+    check(harness.emitted.count == 0, "the next key makes the correction stale")
     check((harness.screen?.queries ?? 0) <= 1, "and stops the retries, got \(harness.screen?.queries ?? -1)")
 }
 
