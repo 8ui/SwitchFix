@@ -14,7 +14,7 @@ artifacts:
   spec: null
   plan: null
   branch: null
-  pr: null
+  pr: "https://github.com/8ui/SwitchFix/pull/6"
 ---
 
 ## Context
@@ -58,6 +58,8 @@ artifacts:
 - 2026-09-30: impl complete (ветка claude/merged-short-word-safety)
 - 2026-09-30: verify: `swift build -c release` → exit 0 ✅
 - 2026-09-30: verify: `ревью: блокеров нет; should-fix (отложенное слово переживало сброс из одних символов '^!') исправлен — забирается в начале каждого flushBuffer; тест до фикса FAIL; arrow-кейс заменён на hotkey; TestRunner 546/0, InputPipelineTestRunner 1002/0, eval идентичен` → exit 0 ✅
+- 2026-09-30: artifacts.pr = https://github.com/8ui/SwitchFix/pull/6
+- 2026-09-30: verify: `/code-review PR #6: 5 ревьюеров, 4 кандидата, оценки 75/0/0 (<80) → комментарий в PR не публикуется; 75 (незахваченная вставка текста) — остаточный риск, в долг; doc-комментарий flushBuffer уточнён` → exit 0 ✅
 
 ## Decisions
 
@@ -67,6 +69,7 @@ _Нетривиальные решения по ходу задачи. Одна 
 
 - [ ] unit-тест смежности в InputStateMachine не покрывает punctuation boundary, focusMayChange, revertHotkey, inputSourceKey, tapReset, queueOverflow, stale context, updateContext, delete на пустом буфере — сейчас корректно за счёт общего сброса, но не зафиксировано
 - [ ] updatePreferences сбрасывает смежность только при выключении SwitchFix, не при смене режима — на практике недостижимо (смена настроек требует клика)
+- [ ] смежность видит только захваченные события: текст, вставленный без key event (диктовка, emoji-панель, Edit > Paste мышью, drag-and-drop, text expander) между отложенным и текущим словом, не снимает признак → склейка может стереть вставленное. До PR было хуже (без проверки вообще). Ограничение по времени не подходит (ломает склейку при паузе); вариант — сверка с AX-текстом у каретки перед склеенной коррекцией
 
 ## Verification
 
@@ -92,6 +95,12 @@ _Нетривиальные решения по ходу задачи. Одна 
   ```
 
 - 2026-09-30 · `ревью: блокеров нет; should-fix (отложенное слово переживало сброс из одних символов '^!') исправлен — забирается в начале каждого flushBuffer; тест до фикса FAIL; arrow-кейс заменён на hotkey; TestRunner 546/0, InputPipelineTestRunner 1002/0, eval идентичен` · exit 0 ✅
+
+  ```
+  (без вывода)
+  ```
+
+- 2026-09-30 · `/code-review PR #6: 5 ревьюеров, 4 кандидата, оценки 75/0/0 (<80) → комментарий в PR не публикуется; 75 (незахваченная вставка текста) — остаточный риск, в долг; doc-комментарий flushBuffer уточнён` · exit 0 ✅
 
   ```
   (без вывода)

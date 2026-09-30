@@ -131,9 +131,11 @@ public class LayoutDetector {
     /// This is the only point where detection fires and triggers correction.
     /// - Parameter boundaryCharacter: The character that triggered the flush (e.g. " ", "\n"), or nil for hotkey-triggered flush.
     /// - Parameter continuesPreviousWord: The word was typed right after the previous flush, with
-    ///   nothing in between that could change the screen. Only then may a deferred short word be
-    ///   merged into this correction, which deletes both words. Tests and the eval model
-    ///   continuous typing; `InputEngine` always passes what `InputStateMachine` saw.
+    ///   no captured event in between that could change the screen (text inserted without a key
+    ///   event, e.g. dictation, is not seen). Only then may a deferred short word be merged into
+    ///   this correction, which deletes both words. Tests and the eval model continuous typing;
+    ///   `InputEngine` passes what `InputStateMachine` saw for automatic flushes and false for
+    ///   hotkey requests.
     @discardableResult
     public func flushBuffer(boundaryCharacter: String? = nil, continuesPreviousWord: Bool = true) -> DetectionResult? {
         // Every flush consumes the deferred short word — used by this word or dropped — so it
