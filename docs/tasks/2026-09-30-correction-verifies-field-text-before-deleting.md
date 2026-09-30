@@ -3,13 +3,13 @@ id: 2026-09-30-correction-verifies-field-text-before-deleting
 title: "Correction leaves stray letters when the field changed the text (inline autocomplete, predictions, autocorrect)"
 type: bug
 pipeline: no-spec
-phase: plan-review
+phase: impl
 created: 2026-09-30
 updated: 2026-09-30
 blocked_by: null
-steps_done: 0
-steps_total: 0
-step_current: null
+steps_done: 5
+steps_total: 7
+step_current: 6
 artifacts:
   spec: null
   plan: docs/plans/correction-verifies-field-text-plan.md
@@ -35,7 +35,13 @@ Staleness-guards (`CorrectionPlan.isEligible`) этого не видят: ко�
 
 ## Progress
 
-_Шаги не заданы. `rtp steps <id> --set "…"` или `--from-plan <файл>`._
+1. ✅ Вердикт FieldTextVerification + тесты
+2. ✅ AX-чтение requestFieldText (verifyQueue)
+3. ✅ InputEngine: проверка с дедлайном в prepareCorrection
+4. ✅ Проводка AppDelegate + документация
+5. ✅ Тесты движка
+6. ▶ Ревью
+7. ⬜ Ручная проверка: омнибокс, Spotlight, TextEdit с автокоррекцией, VS Code (локально)
 
 ## Log
 
@@ -43,6 +49,12 @@ _Шаги не заданы. `rtp steps <id> --set "…"` или `--from-plan <�
 - 2026-09-30: brainstorm: пользователь выбрал fail-open при недоступном AX и не включать AXManualAccessibility для проверки; критерий — тесты вердикта и движка + CI, ручная проверка в омнибоксе/Spotlight/TextEdit с автокоррекцией
 - 2026-09-30: artifacts.plan = docs/plans/correction-verifies-field-text-plan.md
 - 2026-09-30: plan drafted
+- 2026-09-30: plan-review (Plan-агент): правило отставания AX-текста (префикс), выделение без текста = mismatch, дедлайн 40 мс, отдельная verifyQueue, нормализация регистра/кавычек, окно UTF-16, пропуск для слова с экрана
+- 2026-09-30: шаг 1 ✅ Вердикт FieldTextVerification + тесты
+- 2026-09-30: шаг 2 ✅ AX-чтение requestFieldText (verifyQueue)
+- 2026-09-30: шаг 3 ✅ InputEngine: проверка с дедлайном в prepareCorrection
+- 2026-09-30: шаг 4 ✅ Проводка AppDelegate + документация
+- 2026-09-30: шаг 5 ✅ Тесты движка
 
 ## Decisions
 
@@ -50,10 +62,9 @@ _Нетривиальные решения по ходу задачи. Одна 
 
 ## Debt
 
-_Отложенное, упрощения, известные пробелы. Формат — чекбоксы (их считают индекс и отчёты по долгам):_
-_- `- [ ] <что отложено> — <почему/контекст>` — открытый долг_
-_- `- [x] <что было> — закрыто YYYY-MM-DD: <причина/ссылка на task>` — закрытый_
-_Без `[ ]`/`[x]` пункт невидим для агрегатора и теряется через 2 недели._
+- [ ] Ghost text (inline predictions macOS 14+, zsh-autosuggest) не в AXValue — не ловится; next после каретки в вердикте не используется
+- [ ] Режим layoutSwitch: handleLayoutChange конвертирует любое выделение — может быть inline-подсказкой омнибокса; отдельная задача
+- [ ] Если поле «съело» границу (пробел не появился), lagging пропустит коррекцию и она сотрёт на символ больше — редкий случай, принят ради отстающего AX Chromium
 
 ## Verification
 

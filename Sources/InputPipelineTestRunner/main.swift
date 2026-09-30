@@ -1432,6 +1432,136 @@ run("learning: revert of an automatic correction teaches neverCorrect") {
     check(!waitUntil(0.3) { harness.emitted.count > 1 }, "the reverted word is not corrected again")
 }
 
+run("field text verdict") {
+    func verdict(_ snapshot: FieldTextSnapshot, _ word: String = "ghbdtn", _ boundary: String = " ") -> FieldTextVerdict {
+        FieldTextVerification.verdict(snapshot, word: word, boundary: boundary)
+    }
+    check(verdict(.before("say ghbdtn ")) == .matches, "word and boundary on screen")
+    check(verdict(.before("ghbdtn")) == .lagging, "boundary not processed yet")
+    check(verdict(.before("say ghbdt")) == .lagging, "Chromium AX text lagging behind typing")
+    check(verdict(.before("Ghbdtn ")) == .matches, "autocapitalization keeps the count")
+    check(verdict(.before("ghbdtn\u{201D}"), "ghbdtn", "\"") == .matches, "smart quote boundary keeps the count")
+    check(verdict(.before("ghbdtnf ")) == .mismatch("changed"), "autocorrect changed the word")
+    check(verdict(.before("hello ")) == .mismatch("changed"), "replacement text")
+    check(verdict(.before("ghbdtn\u{00A0}!"), "ghbdtn", "!") == .mismatch("changed"), "NBSP inserted before punctuation")
+    check(verdict(.before("ghbdtn,")) == .mismatch("changed"), "a different boundary is not a match")
+    check(verdict(.before("ghbdtn,"), "ghbdtn", ",") == .matches, "comma boundary")
+    check(verdict(.before("b ghbdtn "), "b ghbdtn") == .matches, "merged short word")
+    check(verdict(.before("B ghbdtn "), "i ghbdtn") == .mismatch("changed"), "merged short word changed by autocorrect")
+    check(verdict(.before("ghbdtn"), "ghbdtn", "") == .matches, "empty boundary (hotkey, layout switch)")
+    check(verdict(.selection) == .mismatch("selection"), "inline suggestion selected after the caret")
+    check(verdict(.unavailable) == .unknown, "no AX answer")
+    check(FieldTextVerification.window(word: "ok😀", boundary: " ") == 5, "window is in UTF-16")
+}
+
+private func fieldTextEngine(
+    request: @escaping InputEngine.FieldTextRequest,
+    emitted: @escaping (CorrectionPlan) -> Void
+) -> (InputEngine, CaptureStateStore) {
+    let current = context()
+    let store = CaptureStateStore(context: current, hotkeys: HotkeyConfiguration(hotkeyModifiers: 0))
+    let engine = InputEngine(
+        captureState: store,
+        initialContext: current,
+        preferences: InputPreferencesSnapshot(isEnabled: true, correctionMode: .automatic),
+        exactDetection: { request in
+            DetectionResult(
+                sourceLayout: .english,
+                targetLayout: .russian,
+                convertedWord: "привет",
+                originalWord: request.word,
+                shouldSwitchLayout: false
+            )
+        },
+        correctionEmission: { plan in
+            emitted(plan)
+            return true
+        },
+        fieldTextRequest: request
+    )
+    return (engine, store)
+}
+
+private func typeWord(_ word: String, into engine: InputEngine, store: CaptureStateStore, boundary: String = " ") {
+    var timestamp: UInt64 = 1
+    for character in word {
+        engine.enqueue(store.capture(
+            timestamp: timestamp, kind: .character(String(character)), keyCode: 0,
+            flagsRawValue: 0, isAutorepeat: false, sourcePID: 1, sourceUserData: 0
+        ))
+        timestamp += 1
+    }
+    engine.enqueue(store.capture(
+        timestamp: timestamp, kind: .boundary(boundary), keyCode: 0,
+        flagsRawValue: 0, isAutorepeat: false, sourcePID: 1, sourceUserData: 0
+    ))
+}
+
+run("field text verification gates automatic corrections") {
+    let cases: [(String, FieldTextSnapshot, Int)] = [
+        ("matches", .before("ghbdtn "), 1),
+        ("lagging", .before("ghbdt"), 1),
+        ("unavailable", .unavailable, 1),
+        ("changed", .before("ghbdtnf "), 0),
+        ("selection", .selection, 0),
+    ]
+    for (label, answer, expected) in cases {
+        let lock = NSLock()
+        var plans: [CorrectionPlan] = []
+        var windows: [Int] = []
+        let (engine, store) = fieldTextEngine(
+            request: { _, window, completion in
+                lock.lock(); windows.append(window); lock.unlock()
+                DispatchQueue.global().async { completion(answer) }
+            },
+            emitted: { plan in lock.lock(); plans.append(plan); lock.unlock() }
+        )
+        typeWord("ghbdtn", into: engine, store: store)
+        _ = waitUntil(0.3) { lock.lock(); defer { lock.unlock() }; return !plans.isEmpty }
+        lock.lock()
+        check(plans.count == expected, "\(label): expected \(expected) correction(s), got \(plans.count)")
+        check(windows == [7], "\(label): reads word + boundary, got \(windows)")
+        lock.unlock()
+    }
+}
+
+run("field text verification: no answer proceeds after the deadline, a late answer is ignored") {
+    let lock = NSLock()
+    var plans: [CorrectionPlan] = []
+    var pending: ((FieldTextSnapshot) -> Void)?
+    let (engine, store) = fieldTextEngine(
+        request: { _, _, completion in lock.lock(); pending = completion; lock.unlock() },
+        emitted: { plan in lock.lock(); plans.append(plan); lock.unlock() }
+    )
+    typeWord("ghbdtn", into: engine, store: store)
+    check(waitUntil(1) { lock.lock(); defer { lock.unlock() }; return plans.count == 1 }, "fail-open after the deadline")
+    lock.lock(); let late = pending; lock.unlock()
+    late?(.before("ghbdtnf "))
+    check(!waitUntil(0.2) { lock.lock(); defer { lock.unlock() }; return plans.count > 1 }, "the late answer changes nothing")
+}
+
+run("field text verification: a key pressed while reading cancels") {
+    let lock = NSLock()
+    var plans: [CorrectionPlan] = []
+    let release = DispatchSemaphore(value: 0)
+    let (engine, store) = fieldTextEngine(
+        request: { _, _, completion in
+            DispatchQueue.global().async {
+                _ = release.wait(timeout: .now() + 1)
+                completion(.before("ghbdtn "))
+            }
+        },
+        emitted: { plan in lock.lock(); plans.append(plan); lock.unlock() }
+    )
+    typeWord("ghbdtn", into: engine, store: store)
+    engine.enqueue(store.capture(
+        timestamp: 99, kind: .character("x"), keyCode: 0,
+        flagsRawValue: 0, isAutorepeat: false, sourcePID: 1, sourceUserData: 0
+    ))
+    release.signal()
+    check(!waitUntil(0.3) { lock.lock(); defer { lock.unlock() }; return !plans.isEmpty }, "stale sequence still cancels")
+}
+
 run("automatic correction: a word ended by Enter is not corrected") {
     var harness = LearningHarness()
     harness.type("ghbdtn", boundary: "\n")

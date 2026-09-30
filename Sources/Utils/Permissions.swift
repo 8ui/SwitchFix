@@ -123,6 +123,7 @@ public final class AccessibilityFocusCoordinator {
     public typealias FocusResolutionHandler = (AccessibilityFocusResolution) -> Void
 
     private let queryQueue = DispatchQueue(label: "com.switchfix.accessibility", qos: .userInitiated)
+    private let verifyQueue = DispatchQueue(label: "com.switchfix.accessibility-verify", qos: .userInteractive)
     private let onFocusInvalidated: FocusInvalidation
     private let onResolved: FocusResolutionHandler
     private struct QueryIdentity: Equatable {
@@ -245,6 +246,19 @@ public final class AccessibilityFocusCoordinator {
             DispatchQueue.main.async {
                 completion(context)
             }
+        }
+    }
+
+    /// The text before the caret, for verifying a correction before it deletes. Never turns
+    /// AXManualAccessibility on and runs on its own queue, so it waits neither for focus
+    /// queries nor for an Electron tree; `completion` is called on that queue.
+    public func requestFieldText(
+        pid: pid_t,
+        utf16Length: Int,
+        completion: @escaping (FieldTextSnapshot) -> Void
+    ) {
+        verifyQueue.async {
+            completion(Self.fieldTextBeforeCaret(pid: pid, utf16Length: utf16Length))
         }
     }
 
@@ -376,6 +390,30 @@ public final class AccessibilityFocusCoordinator {
 
     /// Above this size the whole `AXValue` is not fetched: serializing it blocks the target app.
     private static let maxValueFallbackLength = 20_000
+
+    /// Three AX round trips at most (focus, selected range, string for range), 20 ms each.
+    private static func fieldTextBeforeCaret(pid: pid_t, utf16Length: Int) -> FieldTextSnapshot {
+        guard utf16Length > 0 else { return .unavailable }
+        let application = AXUIElementCreateApplication(pid)
+        AXUIElementSetMessagingTimeout(application, 0.02)
+        guard let focused = focusedElement(application: application) else { return .unavailable }
+        AXUIElementSetMessagingTimeout(focused, 0.02)
+        var rangeValue: CFTypeRef?
+        var range = CFRange()
+        guard AXUIElementCopyAttributeValue(focused, kAXSelectedTextRangeAttribute as CFString, &rangeValue) == .success,
+              let rangeValue,
+              CFGetTypeID(rangeValue) == AXValueGetTypeID(),
+              AXValueGetValue(rangeValue as! AXValue, .cfRange, &range),
+              range.location >= 0 else {
+            return .unavailable
+        }
+        if range.length > 0 { return .selection }
+        let start = max(0, range.location - utf16Length)
+        guard let text = string(of: focused, location: start, length: range.location - start) else {
+            return .unavailable
+        }
+        return .before(text as String)
+    }
 
     private static func caretContext(pid: pid_t, window: Int?) -> CaretContext {
         let application = AXUIElementCreateApplication(pid)
@@ -606,6 +644,16 @@ public final class AccessibilityFocusCoordinator {
 }
 
 /// What surrounds the caret in the focused text element.
+/// The text right before the caret, as a correction's verification reads it.
+public enum FieldTextSnapshot: Equatable, Sendable {
+    /// Up to the requested UTF-16 length of text before the caret (shorter at the start of the text).
+    case before(String)
+    /// A non-empty selection, reported as text or only as a range.
+    case selection
+    /// No accessible text element, a timeout, or an answer that cannot be trusted.
+    case unavailable
+}
+
 public enum CaretContext: Equatable, Sendable {
     /// A non-empty selection.
     case selection(String)
