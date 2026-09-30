@@ -512,6 +512,19 @@ run("bounded tagged event batch") {
     check(events.allSatisfy { $0.sourceUserData == switchFixEventMarker }, "every generated event must carry the marker")
 }
 
+run("unicode events carry the character's own key code") {
+    let tables = KeyboardTables.pc
+    check(TextCorrector.keyCode(for: "c", layout: .english, tables: tables) == 8, "Latin c is on key 8")
+    check(TextCorrector.keyCode(for: "р", layout: .russian, tables: tables) == 4, "Cyrillic р is on the H key")
+    check(TextCorrector.keyCode(for: "Р", layout: .russian, tables: tables) == 4, "capitals keep their key")
+    check(TextCorrector.keyCode(for: "ї", layout: .ukrainian, tables: tables) == 30, "Ukrainian ї is on the ] key")
+    check(TextCorrector.keyCode(for: ".", layout: .russian, tables: tables) == 44, "Russian-PC period is on the / key")
+    check(TextCorrector.keyCode(for: ".", layout: .english, tables: tables) == 47, "English period is on the . key")
+    check(TextCorrector.keyCode(for: "р", layout: .english, tables: tables) == 4, "a character outside the layout falls back to any layout")
+    check(TextCorrector.keyCode(for: " ", layout: nil, tables: tables) == 49, "space is on the space bar")
+    check(TextCorrector.keyCode(for: "😀", layout: nil, tables: tables) == 0, "a character on no key keeps 0")
+}
+
 run("undo generation") {
     let originalContext = context(epoch: 4, pid: 100)
     let plan = CorrectionPlan(
