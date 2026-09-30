@@ -285,8 +285,10 @@ public class LayoutDetector {
         let typedIsCamelCase = AutomaticCorrectionSkipRules.isCamelCase(core)
 
         let letterCount = core.filter(\.isLetter).count
+        // 'to`' is not the English 'to' but 'ещё': a letter typed on an edge punctuation key.
         if letterCount <= ShortWordTable.maxLength,
-           ShortWordTable.contains(core, language: sourceLayout.modelLanguage) {
+           ShortWordTable.contains(core, language: sourceLayout.modelLanguage),
+           !hasEdgeLetterKey(word, typedParts: originalParts, sourceLayout: sourceLayout) {
             SwitchFixLog.detector.debug("model: common short word '\(word)' in \(sourceLayout.rawValue) — no correction")
             markValidInCurrentLanguage()
             return nil
@@ -336,12 +338,18 @@ public class LayoutDetector {
                 }
 
                 guard let threshold = thresholds.threshold(forLetterCount: letters),
-                      let margin = scorer.margin(
+                      let modelMargin = scorer.margin(
                         typedCore: core,
                         source: sourceLayout,
                         convertedCore: convertedCore,
                         target: target
                       ) else { continue }
+                // The typed side is scored without its edge symbols; each one that became
+                // a letter of the converted core adds its price for being unusual in the
+                // typed language instead of the model's unknown-symbol price.
+                let margin = modelMargin + Self.edgeLetterKeyCost * Double(Self.edgeLetterKeyCount(
+                    typed: word, typedParts: originalParts, convertedParts: parts
+                ))
                 highestMargin = max(highestMargin, margin)
                 if margin > threshold {
                     // Between targets (Russian vs Ukrainian without history) the
@@ -878,6 +886,65 @@ public class LayoutDetector {
         let core = start < end ? String(chars[start..<end]) : ""
         let suffix = end < chars.count ? String(chars[end..<chars.count]) : ""
         return (prefix, core, suffix)
+    }
+
+    /// Punctuation that ends English words all the time ("hello.", "dogs'"): free even
+    /// when its key is a letter in the other layout ('pyf.' → 'знаю').
+    private static let commonTrailingPunctuation: Set<Character> = [",", ".", ";", ":", "'", "\""]
+    private static let wrappingPairs: [Character: Character] = [
+        "[": "]", "{": "}", "<": ">", "(": ")", "`": "`", "'": "'", "\"": "\"",
+    ]
+
+    /// Log-probability price of one edge symbol that became a letter ('.hbcn' → 'юрист').
+    /// Swept 0–6 on LayoutEval and the edge-symbol suite: 6 starts converting English
+    /// ('ps'']' → 'зієї'). The model's own unknown-symbol price (−12) alone clears every
+    /// threshold ('here]' → 'рукуї'), so it must not count as evidence.
+    private static let edgeLetterKeyCost: Double = 4
+
+    /// Typed keys at the word's edges that are letters of the converted core, except
+    /// punctuation that ends English words all the time and a wrapping pair
+    /// ('`code`,', '[link].').
+    private static func edgeLetterKeyCount(
+        typed: String,
+        typedParts: (prefix: String, core: String, suffix: String),
+        convertedParts: (prefix: String, core: String, suffix: String)
+    ) -> Int {
+        guard !typedParts.core.isEmpty, !convertedParts.core.isEmpty else { return 0 }
+        let chars = Array(typed)
+        let count = chars.count
+        let typedStart = typedParts.prefix.count, typedEnd = count - typedParts.suffix.count
+        let convertedStart = convertedParts.prefix.count, convertedEnd = count - convertedParts.suffix.count
+        var lead = convertedStart < typedStart ? Array(chars[convertedStart..<typedStart]) : []
+        var trail = typedEnd < convertedEnd ? Array(chars[typedEnd..<convertedEnd]) : []
+        if let opener = lead.first, let closer = wrappingPairs[opener],
+           let close = trail.lastIndex(of: closer),
+           trail[(close + 1)...].allSatisfy(commonTrailingPunctuation.contains) {
+            lead.removeFirst()
+            trail.removeSubrange(close...)
+        }
+        while let last = trail.last, commonTrailingPunctuation.contains(last) {
+            trail.removeLast()
+        }
+        // A closer whose opener is inside the word ('see[1]', 'f(x)') is not a letter either.
+        if let last = trail.last,
+           chars[..<typedEnd].contains(where: { wrappingPairs[$0] == last }) {
+            trail.removeLast()
+        }
+        return lead.count + trail.count
+    }
+
+    /// Whether an edge key of the typed word is a letter in the first automatic target.
+    private func hasEdgeLetterKey(
+        _ word: String,
+        typedParts: (prefix: String, core: String, suffix: String),
+        sourceLayout: Layout
+    ) -> Bool {
+        guard let target = automaticTargets(for: sourceLayout).first,
+              let conversion = LayoutMapper.convertCandidates(word, from: sourceLayout, to: target, tables: keyboardTables).first
+        else { return false }
+        return Self.edgeLetterKeyCount(
+            typed: word, typedParts: typedParts, convertedParts: splitTokenForValidation(conversion)
+        ) > 0
     }
 
     /// The word the detector looks up in the personal lexicon for a flushed token: the

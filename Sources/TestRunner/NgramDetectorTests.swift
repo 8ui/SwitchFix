@@ -226,4 +226,70 @@ func runNgramDetectorSuites() {
         assertEqual(results(["еру"]).first?.convertedWord, "the", "isolated 'еру' is still corrected")
         assertEqual(results(["в", "нову", "еру"], boundary: nil).first?.convertedWord, "the", "the hotkey still converts")
     }
+
+    // English words with a stray edge symbol: markdown split into words ('[click', 'here]'),
+    // inline code ('`git', '`code`,'), elisions ("'em"), HTML ('div>'), indices ('list[').
+    runSuite("NgramDetector: English words with an edge symbol stay") {
+        guard let text = try? String(contentsOfFile: "Tests/LayoutEval/en.txt", encoding: .utf8) else {
+            assert(false, "Tests/LayoutEval/en.txt must be readable (run from the repo root)")
+            return
+        }
+        var seen = Set<String>()
+        let words = text.split(whereSeparator: \.isWhitespace).map(String.init).filter {
+            $0.allSatisfy { $0.isASCII && $0.isLetter } && seen.insert($0).inserted
+        }
+        let forms: [(String, (String) -> String)] = [
+            ("w[", { $0 + "[" }), ("w]", { $0 + "]" }), ("[w", { "[" + $0 }), ("`w", { "`" + $0 }),
+            ("w`", { $0 + "`" }), ("'w", { "'" + $0 }), ("w>", { $0 + ">" }), ("w']", { $0 + "']" }),
+            ("`w`,", { "`" + $0 + "`," }), ("[w].", { "[" + $0 + "]." }), ("'w'", { "'" + $0 + "'" }),
+            ("[[w]]", { "[[" + $0 + "]]" }),
+        ]
+        // 'to`' is 'ещё' on the Russian layout: inline code ending in 'to' loses to the
+        // most common word it collides with.
+        let expected: Set<String> = ["to`"]
+        for native in [Layout.russian, .ukrainian] {
+            var converted = 0, total = 0
+            var examples: [String] = []
+            for (_, form) in forms {
+                for word in words {
+                    total += 1
+                    let token = form(word)
+                    if let result = detectNgram(token, current: .english, allowed: [.english, native]),
+                       !expected.contains(token) {
+                        converted += 1
+                        if examples.count < 8 { examples.append("\(token)→\(result.convertedWord)") }
+                    }
+                }
+            }
+            assert(converted == 0, "English words with an edge symbol converted on \(native.rawValue): \(converted)/\(total), e.g. \(examples.joined(separator: ", "))")
+        }
+    }
+
+    // х ъ ж э б ю ё (ї є і ґ) sit on , . ; ' [ ] ` \ — the keys English uses for punctuation.
+    runSuite("NgramDetector: letters on punctuation keys at word edges") {
+        for (typed, expected, layout) in [
+            ("yfib[", "наших", Layout.russian), ("to`", "ещё", .russian), ("dc`", "всё", .russian),
+            ("pyf.", "знаю", .russian), ("ltkf.", "делаю", .russian), ("uhb,", "гриб", .russian),
+            (",eltn", "будет", .russian), ("'nb[", "этих", .russian), (";tyf", "жена", .russian),
+            ("[jhjij", "хорошо", .russian), ("`krf", "ёлка", .russian), (".hbcn", "юрист", .russian),
+            ("gjl]tpl", "подъезд", .russian),
+            ("rhf]", "краї", .ukrainian), ("cdj'", "своє", .ukrainian), ("ljhjuj.", "дорогою", .ukrainian),
+        ] {
+            let result = detectNgram(typed, current: .english, allowed: [.english, layout])
+            assertEqual(result?.convertedWord, expected, "\(typed) → \(layout.rawValue)")
+        }
+        for (word, layout) in [
+            ("hello.", Layout.russian), ("hello,", .russian), ("done;", .russian), ("items[", .russian),
+            ("don't", .russian), ("it's", .ukrainian), ("world.", .ukrainian), ("thanks,", .ukrainian),
+            ("to.", .russian), ("to,", .russian), ("in:", .russian), ("(to", .russian), ("\"to\"", .russian),
+            (".env", .russian), (".gitignore", .russian), ("'hello'", .russian), ("[link]", .russian), ("`code`", .russian), ("{key}", .russian), ("<tag>", .russian),
+            ("here]", .russian), ("here]", .ukrainian), ("[click", .russian), ("list[", .russian), ("`git", .russian),
+            ("status`", .ukrainian), ("'em", .russian), ("'til", .russian), ("div>", .russian), ("see[1]", .russian), ("see[1]", .ukrainian), ("fig[1]", .russian),
+            ("fig[1]", .ukrainian), ("page[2]", .ukrainian), ("f(x)", .russian),
+            ("`code`,", .russian), ("[link].", .russian), ("'word'.", .russian), ("to!", .russian),
+        ] {
+            let result = detectNgram(word, current: .english, allowed: [.english, layout])
+            assert(result == nil, "\(word) must stay, got \(result?.convertedWord ?? "")")
+        }
+    }
 }
