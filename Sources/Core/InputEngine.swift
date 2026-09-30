@@ -283,8 +283,12 @@ public final class InputEngine {
     /// The key code of a typed character identifies the character, so it is logged only
     /// with the text itself.
     private static func logDescription(_ input: CapturedInput) -> String {
-        if case .character(let text) = input.kind, !SwitchFixLog.logsTypedText {
-            return "character(\(SwitchFixLog.text(text)))"
+        if !SwitchFixLog.logsTypedText {
+            switch input.kind {
+            case .character(let text): return "character(\(SwitchFixLog.text(text)))"
+            case .boundary(let text): return "boundary(\(SwitchFixLog.text(text)))"
+            default: break
+            }
         }
         return "\(input.kind) keyCode=\(input.keyCode)"
     }
@@ -334,7 +338,7 @@ public final class InputEngine {
             resetDetectorState()
             logger.debug("buffer invalidated reason=\(String(describing: reason))")
         case .flush(let word, let boundary, let sequence, let context, let continuesPreviousWord):
-            logger.notice("word flushed \(SwitchFixLog.text(word), privacy: .public) boundary='\(boundary)' seq=\(sequence) layout=\(context.layout.rawValue)")
+            logger.notice("word flushed \(SwitchFixLog.text(word), privacy: .public) boundary=\(SwitchFixLog.text(boundary), privacy: .public) seq=\(sequence) layout=\(context.layout.rawValue)")
             let latest = captureState.snapshot()
             runDetection(DetectionRequest(
                 word: word,

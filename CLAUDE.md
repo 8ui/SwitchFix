@@ -73,7 +73,7 @@ Module graph (Package.swift): `Utils` ← `Core` ← `UI` ← `SwitchFixApp`, an
 
 ## Debugging
 
-Logs go through `SwitchFixLog.<category>` (subsystem `com.switchfix`), every message prefixed `[SwitchFix]` with public values. Typed text (buffer, words, selection, per-key key codes) must go through `SwitchFixLog.text(_:)`, which logs only the length unless `defaults write com.switchfix.app SwitchFix_logTypedText -bool YES` (read at launch):
+Logs go through `SwitchFixLog.<category>` (subsystem `com.switchfix`), every message prefixed `[SwitchFix]` with public values (the raw `Logger`s in `InputEngine`/`TextCorrector` mark values public explicitly). Typed text (buffer, words, selection) must go through `SwitchFixLog.text(_:)`, which logs only the length, and per-key input is logged without its key code (`InputEngine.logDescription`), unless `defaults write com.switchfix.app SwitchFix_logTypedText -bool YES` (read at launch):
 
 ```bash
 log stream --level debug --predicate 'subsystem == "com.switchfix"'

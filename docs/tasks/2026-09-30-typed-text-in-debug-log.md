@@ -3,13 +3,13 @@ id: 2026-09-30-typed-text-in-debug-log
 title: Typed words are written to the debug log as public values
 type: bug
 pipeline: minimal
-phase: impl
+phase: review
 created: 2026-09-30
 updated: 2026-09-30
 blocked_by: null
-steps_done: 3
+steps_done: 4
 steps_total: 4
-step_current: 4
+step_current: null
 artifacts:
   spec: null
   plan: null
@@ -34,7 +34,7 @@ Debugging в CLAUDE.md, если поменяется поведение.
 1. ✅ SwitchFixLog.text + флаг
 2. ✅ Все места логирования текста
 3. ✅ CLAUDE.md
-4. ▶ Ревью
+4. ✅ Ревью
 
 ## Log
 
@@ -43,6 +43,9 @@ Debugging в CLAUDE.md, если поменяется поведение.
 - 2026-09-30: шаг 1 ✅ SwitchFixLog.text + флаг
 - 2026-09-30: шаг 2 ✅ Все места логирования текста
 - 2026-09-30: шаг 3 ✅ CLAUDE.md
+- 2026-09-30: ревью (субагент): boundary-символы и keyCode границ теперь тоже скрыты, boundary в 'word flushed' через SwitchFixLog.text, CLAUDE.md уточнён; Option-клавиши (.navigation) логируют keyCode как и раньше — низкая ценность
+- 2026-09-30: шаг 4 ✅ Ревью
+- 2026-09-30: impl complete
 
 ## Decisions
 
