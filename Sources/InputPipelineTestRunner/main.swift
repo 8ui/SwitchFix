@@ -131,7 +131,7 @@ run("manual hotkey resyncs buffer") {
         ))
     }
     let hotkeyCommands = machine.consume(input(sequence: 7, kind: .hotkey, context: current))
-    guard case .requestManualCorrection(let word?, _, _) = hotkeyCommands.first else {
+    guard case .requestManualCorrection(let word?, _, _, _) = hotkeyCommands.first else {
         check(false, "hotkey must request manual correction with the buffered word")
         return
     }
@@ -745,6 +745,29 @@ run("Globe key without a layout change does not keep the word buffered") {
     check(machine.layoutSwitchWord.isEmpty, "any input after the Globe key must drop the pending layout-switch word")
 }
 
+run("caret word extraction") {
+    func word(_ prefix: String, atStart: Bool = true, next: Character? = nil) -> String? {
+        CaretWordExtractor.word(before: prefix, prefixStartsAtTextStart: atStart, next: next)
+    }
+    check(word("ujnjdj") == "ujnjdj", "a whole field is one word")
+    check(word("hello ujnjdj") == "ujnjdj", "the last word after a space")
+    check(word("hello\nujnjdj") == "ujnjdj", "the last word after a newline")
+    check(word("(ghbdtn") == "ghbdtn", "hard punctuation ends the word")
+    check(word("что-то") == "что-то", "a hyphen stays inside the word")
+    check(word("b[jl") == "b[jl", "Cyrillic-letter punctuation stays inside the word")
+    check(word("ghbdtn.") == "ghbdtn.", "a trailing soft boundary is kept, as in the buffer")
+    check(word("❤️ghbdtn") == "ghbdtn", "an emoji ends the word")
+    check(word("ujnjdj ") == nil, "nothing after a trailing space")
+    check(word("") == nil, "nothing in an empty field")
+    check(word("hel", next: "l") == nil, "the caret inside a word converts nothing")
+    check(word("hello", next: " ") == "hello", "a space after the caret is fine")
+    check(word("ujnjdj", atStart: false) == nil, "a word reaching a cut window start may be longer")
+    check(word("x ujnjdj", atStart: false) == "ujnjdj", "a cut window is fine when the word starts inside it")
+    check(word("123") == nil, "a word needs a letter")
+    check(word("ghbdtné") == nil, "a character no layout can type rejects the word")
+    check(word(String(repeating: "a", count: 65)) == nil, "a word over 64 characters is rejected")
+}
+
 run("100,000 event stress") {
     let current = context()
     let store = CaptureStateStore(context: current, hotkeys: HotkeyConfiguration(hotkeyModifiers: 0))
@@ -1025,11 +1048,34 @@ private func waitUntil(_ timeout: TimeInterval = 2, _ condition: () -> Bool) -> 
     return condition()
 }
 
+/// What the fake Accessibility query answers for the manual hotkey.
+private final class CaretStub {
+    private let lock = NSLock()
+    private var _reply: CaretContext = .unavailable
+    private var _textQueries = 0
+    /// Runs on the query queue before the reply (e.g. to type while AX is answering).
+    var beforeReply: (() -> Void)?
+    var reply: CaretContext {
+        get { lock.lock(); defer { lock.unlock() }; return _reply }
+        set { lock.lock(); _reply = newValue; lock.unlock() }
+    }
+    /// Queries that asked for the text around the caret, not just the selection.
+    var textQueries: Int { lock.lock(); defer { lock.unlock() }; return _textQueries }
+    func answer(wantsCaretText: Bool, _ completion: @escaping (CaretContext) -> Void) {
+        if wantsCaretText { lock.lock(); _textQueries += 1; lock.unlock() }
+        beforeReply?()
+        let reply = self.reply
+        if case .selection = reply { return completion(reply) }
+        completion(wantsCaretText ? reply : .unavailable)
+    }
+}
+
 private struct LearningHarness {
     let store: CaptureStateStore
     let engine: InputEngine
     let lexicon: PersonalLexicon
     let emitted: EmissionLog
+    let caret = CaretStub()
     var timestamp: UInt64 = 0
 
     init(mode: InputCorrectionMode = .automatic, revertReturnsNothing: Bool = false) {
@@ -1043,6 +1089,9 @@ private struct LearningHarness {
             initialContext: current,
             preferences: InputPreferencesSnapshot(isEnabled: true, correctionMode: mode),
             correctionEmission: { plan in emitted.append(plan); return true },
+            caretContextRequest: { [caret] _, _, wantsCaretText, completion in
+                caret.answer(wantsCaretText: wantsCaretText, completion)
+            },
             lexicon: lexicon,
             revertEmission: { _, _ in revertReturnsNothing ? nil : emitted.last }
         )
@@ -1061,6 +1110,189 @@ private struct LearningHarness {
         for character in word { send(.character(String(character))) }
         if let boundary { send(.boundary(boundary)) }
     }
+
+    /// Focus resolves as a plain text field and the engine gets the new context, as
+    /// AccessibilityFocusCoordinator and AppDelegate do after a click.
+    func resolveFocus() {
+        let drained = DispatchSemaphore(value: 0)
+        engine.drain { drained.signal() }
+        _ = drained.wait(timeout: .now() + 1)
+        let current = store.snapshot().context
+        if let resolved = store.resolveFocus(.notSecure, frontmostPID: current.frontmostPID, epoch: current.epoch) {
+            engine.updateContext(resolved)
+        }
+    }
+
+    /// Cmd+A (navigation), then Backspace into unknown text: the buffer is invalid until a space.
+    mutating func selectAllAndDelete() {
+        send(.navigation)
+        resolveFocus()
+        send(.delete)
+    }
+}
+
+run("state machine: screen suffix for the hotkey") {
+    let current = context()
+    var machine = automaticMachine(current)
+    var sequence: UInt64 = 0
+    func send(_ kind: CapturedInput.Kind) -> [InputStateCommand] {
+        sequence += 1
+        return machine.consume(input(sequence: sequence, kind: kind, context: current))
+    }
+    func type(_ text: String) { for character in text { _ = send(.character(String(character))) } }
+    func hotkeySuffix() -> String?? {
+        guard case .requestManualCorrection(_, let suffix, _, _) = send(.hotkey).first else { return .none }
+        return .some(suffix)
+    }
+    check(hotkeySuffix() == .some(nil), "at start the screen is unknown")
+    _ = send(.navigation)
+    check(hotkeySuffix() == .some(nil), "a click or shortcut may have edited the screen unseen")
+    type("a")
+    check(hotkeySuffix() == .some("a"), "typed characters are the suffix")
+    check(hotkeySuffix() == .some(nil), "a hotkey rewrites the screen, so the next one cannot trust it")
+    _ = send(.navigation)
+    _ = send(.delete)
+    check(hotkeySuffix() == .some(nil), "an unseen deletion needs typing before the screen is trusted")
+    _ = send(.navigation)
+    _ = send(.delete)
+    type("ujnjdj")
+    check(machine.currentBuffer.isEmpty, "characters after an unknown Backspace stay out of the buffer")
+    check(hotkeySuffix() == .some("ujnjdj"), "the screen must end with what was typed")
+    _ = send(.navigation)
+    type("ujnjdjk")
+    _ = send(.delete)
+    check(hotkeySuffix() == .some("ujnjdj"), "Backspace removes the last typed character only")
+    _ = send(.navigation)
+    type("ab")
+    _ = send(.boundary(" "))
+    check(hotkeySuffix() == .some("ab "), "a typed boundary is part of the suffix")
+    _ = send(.navigation)
+    type(String(repeating: "a", count: 70))
+    check(hotkeySuffix() == .some(String(repeating: "a", count: CaretWordExtractor.maxWordLength)), "the suffix keeps the last 64 characters")
+    _ = send(.navigation)
+    _ = send(.undo)
+    check(hotkeySuffix() == .some(nil), "undo changes the screen unseen")
+    _ = send(.undo)
+    type("x")
+    check(hotkeySuffix() == .some("x"), "typing after an unseen change makes the suffix usable again")
+}
+
+run("hotkey converts the word before the caret after Cmd+A, Backspace") {
+    var harness = LearningHarness()
+    harness.caret.reply = .caret(textBefore: "ujnjdj", startsAtTextStart: true, next: nil)
+    harness.selectAllAndDelete()
+    harness.type("ujnjdj", boundary: nil)
+    harness.send(.hotkey)
+    check(waitUntil { harness.emitted.count == 1 }, "the word read from the screen is converted")
+    check(harness.emitted.last?.originalText == "ujnjdj", "the whole word is replaced, got \(harness.emitted.last?.originalText ?? "nil")")
+    check(harness.emitted.last?.correctedText == "готово", "ujnjdj becomes готово, got \(harness.emitted.last?.correctedText ?? "nil")")
+}
+
+run("hotkey on a screen word never teaches the lexicon") {
+    var harness = LearningHarness()
+    harness.caret.reply = .caret(textBefore: "rehk", startsAtTextStart: true, next: nil)
+    harness.selectAllAndDelete()
+    harness.type("rehk", boundary: nil)
+    harness.send(.hotkey)
+    check(waitUntil { harness.emitted.count == 1 }, "an unrecognized screen word is still converted")
+    check(harness.emitted.last?.provenance == .hotkey, "a screen word is not a forced lesson")
+    check(!waitUntil(0.3) { !harness.lexicon.entries.isEmpty }, "the lexicon stays empty")
+}
+
+run("hotkey after a click without typing does not read the screen") {
+    var harness = LearningHarness()
+    harness.caret.reply = .caret(textBefore: "старое ujnjdj", startsAtTextStart: false, next: " ")
+    harness.send(.focusMayChange)
+    harness.resolveFocus()
+    harness.send(.hotkey)
+    check(!waitUntil(0.3) { harness.emitted.count > 0 }, "nothing typed since the click: the screen cannot be verified")
+    check(harness.caret.textQueries == 0, "so it is not even read")
+}
+
+run("hotkey does not trust a screen word it cannot verify") {
+    func emittedCount(_ reply: CaretContext, typed: String = "ujnjdj", configure: (inout LearningHarness) -> Void = { _ in }) -> Int {
+        var harness = LearningHarness()
+        harness.caret.reply = reply
+        configure(&harness)
+        harness.selectAllAndDelete()
+        harness.type(typed, boundary: nil)
+        harness.send(.hotkey)
+        _ = waitUntil(0.3) { harness.emitted.count > 0 }
+        return harness.emitted.count
+    }
+    check(emittedCount(.caret(textBefore: "ujnjd", startsAtTextStart: true, next: nil)) == 0,
+          "accessibility text lagging behind typing must not be converted")
+    check(emittedCount(.caret(textBefore: "ujnjdj", startsAtTextStart: true, next: "x")) == 0,
+          "the caret inside a word converts nothing")
+    check(emittedCount(.caret(textBefore: "ujnjdj ", startsAtTextStart: true, next: nil)) == 0,
+          "a space before the caret converts nothing")
+    check(emittedCount(.unavailable) == 0, "no accessibility text, no conversion")
+    check(emittedCount(.caret(textBefore: "ujnjdjk", startsAtTextStart: true, next: nil), typed: "ujnjdjk") { harness in
+        harness.caret.beforeReply = nil
+    } == 1, "sanity: a matching screen converts")
+    check(emittedCount(.caret(textBefore: "ujnjdj", startsAtTextStart: true, next: nil)) { harness in
+        let store = harness.store, engine = harness.engine
+        harness.caret.beforeReply = {
+            engine.enqueue(store.capture(
+                timestamp: 99, kind: .character("x"), keyCode: 0, flagsRawValue: 0,
+                isAutorepeat: false, sourcePID: 1, sourceUserData: 0
+            ))
+            let drained = DispatchSemaphore(value: 0)
+            engine.drain { drained.signal() }
+            _ = drained.wait(timeout: .now() + 1)
+        }
+    } == 0, "typing while accessibility answers makes the reply stale")
+}
+
+run("hotkey rejects a screen that lags behind Backspace or a space") {
+    var harness = LearningHarness()
+    // The app still shows the deleted k.
+    harness.caret.reply = .caret(textBefore: "ujnjdjk", startsAtTextStart: true, next: nil)
+    harness.selectAllAndDelete()
+    harness.type("ujnjdjk", boundary: nil)
+    harness.send(.delete)
+    harness.send(.hotkey)
+    check(!waitUntil(0.3) { harness.emitted.count > 0 }, "a screen still showing a deleted character is not trusted")
+
+    var spaced = LearningHarness(mode: .hotkey)
+    // The app has not shown the space yet.
+    spaced.caret.reply = .caret(textBefore: "ghbdtn", startsAtTextStart: true, next: nil)
+    spaced.send(.focusMayChange)
+    spaced.resolveFocus()
+    spaced.type("ghbdtn")
+    spaced.send(.hotkey)
+    check(!waitUntil(0.3) { spaced.emitted.count > 0 }, "a screen missing the typed space is not trusted")
+}
+
+run("revert of a screen-word conversion restores it and teaches nothing") {
+    var harness = LearningHarness()
+    harness.caret.reply = .caret(textBefore: "rehk", startsAtTextStart: true, next: nil)
+    harness.selectAllAndDelete()
+    harness.type("rehk", boundary: nil)
+    harness.send(.hotkey)
+    check(waitUntil { harness.emitted.count == 1 }, "converted")
+    harness.send(.revertHotkey)
+    check(!waitUntil(0.3) { !harness.lexicon.entries.isEmpty }, "neither the conversion nor its revert teaches")
+}
+
+run("revert hotkey with nothing to undo does not read the screen") {
+    var harness = LearningHarness(revertReturnsNothing: true)
+    harness.caret.reply = .caret(textBefore: "Hello", startsAtTextStart: true, next: nil)
+    harness.send(.focusMayChange)
+    harness.resolveFocus()
+    harness.send(.revertHotkey)
+    check(!waitUntil(0.3) { harness.emitted.count > 0 }, "Caps Lock must not convert the word before the caret")
+    check(harness.caret.textQueries == 0, "Caps Lock must not even read the text around the caret")
+}
+
+run("hotkey prefers the buffer over the screen") {
+    var harness = LearningHarness()
+    harness.caret.reply = .caret(textBefore: "zzz", startsAtTextStart: true, next: nil)
+    harness.type("ujnjdj", boundary: nil)
+    harness.send(.hotkey)
+    check(waitUntil { harness.emitted.count == 1 }, "the buffered word is converted")
+    check(harness.emitted.last?.originalText == "ujnjdj", "the buffer wins, got \(harness.emitted.last?.originalText ?? "nil")")
+    check(harness.caret.textQueries == 0, "with a buffered word only the selection is read")
 }
 
 run("learning: revert of an automatic correction teaches neverCorrect") {

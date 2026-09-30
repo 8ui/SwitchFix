@@ -62,14 +62,6 @@ public final class KeyboardMonitor {
         117, // forward delete: must not reach the character buffer as U+F728
     ])
 
-    private static let boundaryCharacterSet: CharacterSet = {
-        var set = CharacterSet.punctuationCharacters.union(.symbols)
-        set.subtract(CharacterSet(charactersIn: "'’`-"))
-        return set
-    }()
-
-    private static let softBoundaryCharacterSet = CharacterSet(charactersIn: ",.;'[]`<>:\"{}~")
-
     public init(captureState: CaptureStateStore? = nil) {
         if let captureState {
             self.captureState = captureState
@@ -403,10 +395,7 @@ public final class KeyboardMonitor {
         guard let text = translated ?? KeyboardMonitor.eventCharacterString(from: event) else {
             return .navigation
         }
-        if text.count == 1,
-           let scalar = text.unicodeScalars.first,
-           KeyboardMonitor.boundaryCharacterSet.contains(scalar),
-           !KeyboardMonitor.softBoundaryCharacterSet.contains(scalar) {
+        if WordBoundary.isPunctuationBoundary(text) {
             return .boundary(text)
         }
         return .character(text)

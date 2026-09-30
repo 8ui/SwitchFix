@@ -64,6 +64,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                     completion: completion
                 ) ?? completion(nil)
             },
+            caretContextRequest: { [weak self] pid, epoch, wantsCaretText, completion in
+                guard let coordinator = self?.focusCoordinator else { return completion(.unavailable) }
+                coordinator.requestCaretContext(
+                    pid: pid,
+                    epoch: epoch,
+                    maxWordLength: wantsCaretText ? CaretWordExtractor.maxWordLength : nil,
+                    completion: completion
+                )
+            },
             lexicon: PersonalLexicon.shared
         )
         engine.onFocusMayChange = { [weak self] pid, epoch in

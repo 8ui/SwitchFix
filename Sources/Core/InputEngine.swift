@@ -31,6 +31,9 @@ public final class InputEngine {
     public typealias ExactDetection = (DetectionRequest) -> DetectionResult?
     public typealias CorrectionEmission = (CorrectionPlan) -> Bool
     public typealias SelectedTextRequest = (pid_t, UInt64, @escaping (String?) -> Void) -> Void
+    /// Selection or, when `wantsCaretText`, text around the caret (Accessibility); used by
+    /// the manual hotkey. Without `wantsCaretText` only the selection is read.
+    public typealias CaretContextRequest = (pid_t, UInt64, Bool, @escaping (CaretContext) -> Void) -> Void
     /// Reverts the last correction; returns the reverted plan (tests replace `TextCorrector.undo`).
     public typealias RevertEmission = (UInt64, InputContextSnapshot) -> CorrectionPlan?
 
@@ -53,6 +56,7 @@ public final class InputEngine {
     private let customDetection: ExactDetection?
     private let customEmission: CorrectionEmission?
     private let selectedTextRequest: SelectedTextRequest?
+    private let caretContextRequest: CaretContextRequest?
     private let revertEmission: RevertEmission?
     private let lexicon: PersonalLexicon?
     private let detectionConfiguration = OSAllocatedUnfairLock(initialState: DetectionConfiguration())
@@ -75,6 +79,7 @@ public final class InputEngine {
         exactDetection: ExactDetection? = nil,
         correctionEmission: CorrectionEmission? = nil,
         selectedTextRequest: SelectedTextRequest? = nil,
+        caretContextRequest: CaretContextRequest? = nil,
         lexicon: PersonalLexicon? = nil,
         revertEmission: RevertEmission? = nil
     ) {
@@ -85,6 +90,7 @@ public final class InputEngine {
         self.customDetection = exactDetection
         self.customEmission = correctionEmission
         self.selectedTextRequest = selectedTextRequest
+        self.caretContextRequest = caretContextRequest
         self.lexicon = lexicon
         self.revertEmission = revertEmission
         detector.lexicon = lexicon
@@ -324,9 +330,9 @@ public final class InputEngine {
                 correctionEpoch: correctionEpoch,
                 context: context
             ))
-        case .requestManualCorrection(let word, let sequence, let context):
+        case .requestManualCorrection(let word, let screenSuffix, let sequence, let context):
             logger.notice("hotkey correction requested word='\(word ?? "nil")' seq=\(sequence)")
-            requestManualCorrection(word: word, sequence: sequence, context: context)
+            requestManualCorrection(word: word, screenSuffix: screenSuffix, sequence: sequence, context: context)
         case .requestRevert(let word, let sequence, let context):
             logger.notice("revert hotkey pressed word='\(word ?? "nil")' seq=\(sequence)")
             correctionQueue.async { [weak self] in
@@ -347,7 +353,15 @@ public final class InputEngine {
                     self.inputQueue.async {
                         // Nothing to revert: convert instead, but the user asked to reject,
                         // so this conversion must not teach "always correct".
-                        self.requestManualCorrection(word: word, sequence: sequence, context: context, teaches: false)
+                        // Nor read a word from the screen: the default revert key is Caps Lock,
+                        // pressed to type capitals, not to convert the word before the caret.
+                        self.requestManualCorrection(
+                            word: word,
+                            screenSuffix: nil,
+                            sequence: sequence,
+                            context: context,
+                            teaches: false
+                        )
                     }
                 }
             }
@@ -557,8 +571,11 @@ public final class InputEngine {
         }
     }
 
+    /// `screenSuffix`: the text before the caret must end with it (Chromium's accessibility
+    /// text can lag behind typing); nil disables reading the word before the caret.
     private func requestManualCorrection(
         word: String?,
+        screenSuffix: String?,
         sequence: UInt64,
         context: InputContextSnapshot,
         teaches: Bool = true
@@ -570,7 +587,24 @@ public final class InputEngine {
         let latest = captureState.snapshot()
         let generation = latest.editGeneration
         let requestCorrectionEpoch = correctionEpoch
-        guard let selectedTextRequest else {
+
+        // The screen is read only when there is no word and it can be verified.
+        let wantsCaretText = word == nil && screenSuffix != nil
+        let query: ((@escaping (CaretContext) -> Void) -> Void)?
+        if let caretContextRequest {
+            query = { completion in
+                caretContextRequest(context.frontmostPID, context.epoch, wantsCaretText, completion)
+            }
+        } else if let selectedTextRequest {
+            query = { completion in
+                selectedTextRequest(context.frontmostPID, context.epoch) { text in
+                    completion(text.map(CaretContext.selection) ?? .unavailable)
+                }
+            }
+        } else {
+            query = nil
+        }
+        guard let query else {
             if let word {
                 runDetection(DetectionRequest(
                     word: word,
@@ -585,7 +619,7 @@ public final class InputEngine {
         }
 
         selectionQueue.async { [weak self] in
-            selectedTextRequest(context.frontmostPID, context.epoch) { [weak self] selectedText in
+            query { [weak self] caret in
                 guard let self else { return }
                 self.inputQueue.async {
                 let latest = self.captureState.snapshot()
@@ -598,9 +632,28 @@ public final class InputEngine {
                     )
                     return
                 }
-                SwitchFixLog.engine.notice("manual: selectionLen=\(selectedText?.count ?? -1)")
-
                 let configuration = self.detectionConfiguration.withLock { $0 }
+                var selectedText: String?
+                var caretWord: String?
+                switch caret {
+                case .selection(let text):
+                    selectedText = text
+                case .caret(let before, let startsAtTextStart, let next):
+                    if wantsCaretText, let screenSuffix, before.hasSuffix(screenSuffix) {
+                        caretWord = CaretWordExtractor.word(
+                            before: before,
+                            prefixStartsAtTextStart: startsAtTextStart,
+                            next: next,
+                            tables: configuration.keyboardTables
+                        )
+                    }
+                case .unavailable:
+                    break
+                }
+                SwitchFixLog.engine.notice(
+                    "manual: selectionLen=\(selectedText?.count ?? -1) caretWordLen=\(caretWord?.count ?? -1)"
+                )
+
                 if let selectedText, !selectedText.isEmpty,
                    let (sourceLayout, targetLayout, converted) = Self.selectionConversion(
                     selectedText,
@@ -619,15 +672,17 @@ public final class InputEngine {
                         correctionEpoch: requestCorrectionEpoch,
                         latestCaptureState: self.captureState.snapshot
                     )
-                } else if let word {
+                } else if let target = word ?? caretWord {
+                    // A word read from the screen may have been pasted or typed long ago:
+                    // weak evidence of intent, so it never teaches the lexicon.
                     self.runDetection(DetectionRequest(
-                        word: word,
+                        word: target,
                         boundary: "",
                         sequence: sequence,
                         editGeneration: generation,
                         correctionEpoch: requestCorrectionEpoch,
                         context: context
-                    ), forceConversion: true, teaches: teaches)
+                    ), forceConversion: true, teaches: teaches && word != nil)
                 }
                 }
             }
