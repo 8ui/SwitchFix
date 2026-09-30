@@ -56,7 +56,9 @@ public final class KeyboardMonitor {
         105, 107, 113, 106, 64, 79, 80,
     ])
 
-    private static let navigationKeyCodes: Set<UInt16> = Set([
+    /// Arrows, Home/End, Page Up/Down and forward delete: keys that move the caret or edit
+    /// around it. `InputStateMachine` uses them to tell caret moves from other shortcuts.
+    static let navigationKeyCodes: Set<UInt16> = Set([
         123, 124, 125, 126,
         115, 119, 116, 121,
         117, // forward delete: must not reach the character buffer as U+F728

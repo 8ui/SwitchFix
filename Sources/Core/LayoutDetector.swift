@@ -259,17 +259,18 @@ public class LayoutDetector {
             }
         }
 
-        if shouldSkipAutomaticEnglishAcronymCorrection(word: word, sourceLayout: sourceLayout) {
-            markValidInCurrentLanguage()
-            return nil
-        }
         if shouldSkipAutomaticCommandLineFlag(word: word, sourceLayout: sourceLayout) {
-            // Neutral: a flag is neither native-language context nor a correction.
+            // Neutral: a flag is neither native-language context nor a correction
+            // (checked before the acronym rule, which would count '-R' as context).
             consecutiveWrongCount = 0
             lastDetectionResult = nil
             pendingSwitchLayout = nil
             pendingSwitchCount = 0
             state = .buffering
+            return nil
+        }
+        if shouldSkipAutomaticEnglishAcronymCorrection(word: word, sourceLayout: sourceLayout) {
+            markValidInCurrentLanguage()
             return nil
         }
         let typedIsCamelCase = AutomaticCorrectionSkipRules.isCamelCase(core)

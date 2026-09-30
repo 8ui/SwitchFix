@@ -60,13 +60,14 @@ private func input(
     context: InputContextSnapshot,
     editGeneration: UInt64? = nil,
     autorepeat: Bool = false,
-    marker: Int64 = 0
+    marker: Int64 = 0,
+    keyCode: UInt16 = 0
 ) -> CapturedInput {
     CapturedInput(
         sequence: sequence,
         timestamp: sequence,
         kind: kind,
-        keyCode: 0,
+        keyCode: keyCode,
         flagsRawValue: 0,
         isAutorepeat: autorepeat,
         sourcePID: 1,
@@ -111,21 +112,38 @@ run("navigation skips automatic correction of the word it lands in") {
     let current = context()
     var machine = automaticMachine(current)
     var sequence: UInt64 = 0
-    func send(_ kind: CapturedInput.Kind) -> [InputStateCommand] {
+    func send(_ kind: CapturedInput.Kind, keyCode: UInt16 = 0) -> [InputStateCommand] {
         sequence += 1
-        return machine.consume(input(sequence: sequence, kind: kind, context: current))
+        return machine.consume(input(sequence: sequence, kind: kind, context: current, keyCode: keyCode))
     }
     func flushed(_ commands: [InputStateCommand]) -> [String] {
         commands.compactMap { if case .flush(let word, _, _, _) = $0 { return word } else { return nil } }
     }
+    let leftArrow: UInt16 = 123
+    let backspace: UInt16 = 51
     for character in ["w", "o", "r"] { _ = send(.character(character)) }
-    _ = send(.navigation)
+    _ = send(.navigation, keyCode: leftArrow)
     _ = send(.character("d"))
     _ = send(.character("s"))
     check(machine.currentBuffer == "ds", "keys after an arrow stay buffered for the hotkey")
     check(flushed(send(.boundary(" "))).isEmpty, "a fragment typed after an arrow is not auto-corrected")
     for character in ["g", "h", "b", "d", "t", "n"] { _ = send(.character(character)) }
     check(flushed(send(.boundary(" "))) == ["ghbdtn"], "the next word is corrected again")
+    // Option+Backspace (a shortcut, not a caret key) deletes a word; the retyped word is corrected.
+    _ = send(.navigation, keyCode: backspace)
+    for character in ["g", "h", "b", "d", "t", "n"] { _ = send(.character(character)) }
+    check(flushed(send(.boundary(" "))) == ["ghbdtn"], "a word retyped after Option+Backspace is corrected")
+    // An app switch after an arrow starts fresh.
+    _ = send(.navigation, keyCode: leftArrow)
+    let otherApp = context(epoch: 2, pid: 200)
+    _ = machine.updateContext(otherApp)
+    for character in ["g", "h", "b", "d", "t", "n"] {
+        sequence += 1
+        _ = machine.consume(input(sequence: sequence, kind: .character(character), context: otherApp))
+    }
+    sequence += 1
+    let afterSwitch = machine.consume(input(sequence: sequence, kind: .boundary(" "), context: otherApp))
+    check(flushed(afterSwitch) == ["ghbdtn"], "the first word in another app is corrected")
 }
 
 run("autorepeat preserved") {
@@ -1119,10 +1137,10 @@ private struct LearningHarness {
         engine.updateDetectionConfiguration(allowedLayouts: [.english, .russian])
     }
 
-    mutating func send(_ kind: CapturedInput.Kind) {
+    mutating func send(_ kind: CapturedInput.Kind, keyCode: UInt16 = 0) {
         timestamp += 1
         engine.enqueue(store.capture(
-            timestamp: timestamp, kind: kind, keyCode: 0, flagsRawValue: 0,
+            timestamp: timestamp, kind: kind, keyCode: keyCode, flagsRawValue: 0,
             isAutorepeat: false, sourcePID: 1, sourceUserData: 0
         ))
     }
@@ -1212,13 +1230,13 @@ run("hotkey converts the word before the caret after Cmd+A, Backspace") {
 run("arrow keys skip automatic correction, the hotkey still converts from the buffer") {
     var harness = LearningHarness()
     harness.caret.reply = .unavailable
-    harness.send(.navigation)
+    harness.send(.navigation, keyCode: 123)
     harness.resolveFocus()
     harness.type("ghbdtn")
     check(!waitUntil(0.3) { harness.emitted.count > 0 }, "the word after an arrow is not auto-corrected even after focus resolves")
     harness.type("ghbdtn")
     check(waitUntil { harness.emitted.count == 1 }, "the next word is corrected")
-    harness.send(.navigation)
+    harness.send(.navigation, keyCode: 123)
     harness.resolveFocus()
     harness.type("ghbdtn", boundary: nil)
     harness.send(.hotkey)

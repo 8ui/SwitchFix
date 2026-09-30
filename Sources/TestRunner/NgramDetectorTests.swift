@@ -161,7 +161,7 @@ func runNgramDetectorSuites() {
     }
 
     runSuite("NgramDetector: command-line flags stay") {
-        for words in [["ls", "-r"], ["rm", "-r", "-f"], ["tar", "-c", "-z", "-f"], ["cp", "-r", "-d"], ["grep", "-r"], ["-r"], ["--x"]] {
+        for words in [["ls", "-r"], ["rm", "-r", "-f"], ["tar", "-c", "-z", "-f"], ["cp", "-r", "-d"], ["grep", "-r"], ["-r"], ["--x"], ["ls", "-R"]] {
             let detector = ngramDetector(current: .english, allowed: [.english, .russian])
             let recorder = MockDetectorDelegate()
             detector.delegate = recorder
