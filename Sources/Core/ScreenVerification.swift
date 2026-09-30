@@ -42,6 +42,9 @@ public enum ScreenVerification {
             let field = folded(before)
             let expected = folded(word + boundary)
             if field.hasSuffix(expected) { return .match }
+            // Nothing before the caret: the app has not handled the keys yet, or the element
+            // is not the field (a container reporting an empty range). Never proof of a change.
+            if field.isEmpty { return final ? .unknown : .retry }
             let lagging = (1..<max(expected.count, 1)).contains { missing in
                 field.hasSuffix(expected.dropLast(missing))
             }

@@ -81,6 +81,7 @@ public final class InputEngine {
     /// have started dictation and the layout changed by an uncaptured path.
     static let layoutSwitchWordLifetimeNanoseconds: UInt64 = 500_000_000
     /// How long a correction waits for the field to show the typed text before deciding.
+    /// Soft: checked when an answer arrives, and one read of a busy app can take ~250 ms.
     static let screenCheckDeadlineNanoseconds: UInt64 = 150_000_000
     static let screenCheckRetryInterval: DispatchTimeInterval = .milliseconds(20)
     private var maximumQueueDepth = 0
@@ -576,6 +577,8 @@ public final class InputEngine {
             SwitchFixLog.engine.notice("correction cancelled reason=stale-during-screen-check attempts=\(attempt - 1) provenance=\(String(describing: plan.provenance))")
             return
         }
+        // AX ranges are UTF-16; the margin covers a decomposed accent in the field. Only the
+        // suffix is compared, so a character cut at the window's start does not matter.
         let window = (plan.originalText + plan.boundaryText).utf16.count + 2
         selectionQueue.async {
             query(request.context.frontmostPID, request.context.epoch, window) { [weak self] probe in
@@ -592,17 +595,19 @@ public final class InputEngine {
                         probe: probe,
                         final: elapsed >= Self.screenCheckDeadlineNanoseconds
                     )
-                    if verdict == .retry {
+                    // Shadow reads once and corrects as before: waiting for a lagging field
+                    // would delay corrections and lose them to the next keystroke.
+                    let shadow = self.screenCheckMode == .shadow
+                    if verdict == .retry, !shadow {
                         self.inputQueue.asyncAfter(deadline: .now() + Self.screenCheckRetryInterval) { [weak self] in
                             self?.verifyScreen(plan, request: request, query: query, startedAt: startedAt, attempt: attempt + 1)
                         }
                         return
                     }
-                    let enforced = self.screenCheckMode == .enforce
                     SwitchFixLog.engine.notice(
                         "screen check verdict=\(String(describing: verdict)) probe=\(Self.logDescription(probe)) attempts=\(attempt) ms=\(Double(elapsed) / 1_000_000.0) mode=\(self.screenCheckMode.rawValue) provenance=\(String(describing: plan.provenance)) pid=\(request.context.frontmostPID)"
                     )
-                    if verdict == .mismatch, enforced {
+                    if verdict == .mismatch, !shadow {
                         SwitchFixLog.engine.notice("correction cancelled reason=screen-mismatch")
                         return
                     }

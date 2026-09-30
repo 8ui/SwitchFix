@@ -1622,7 +1622,7 @@ run("learning: merged multi-word corrections are not learned") {
 }
 
 run("screen verification: verdict") {
-    func verdict(_ word: String, _ boundary: String = " ", _ probe: FieldTextProbe, final: Bool = false) -> ScreenVerdict {
+    func verdict(_ word: String, _ probe: FieldTextProbe, boundary: String = " ", final: Bool = false) -> ScreenVerdict {
         ScreenVerification.verdict(word: word, boundary: boundary, probe: probe, final: final)
     }
     check(verdict("ghbdtn", .text(before: "старое ghbdtn ")) == .match, "the field ends with the typed word")
@@ -1633,7 +1633,7 @@ run("screen verification: verdict") {
     check(verdict("ie ww", .text(before: "ie\u{00A0}ww ")) == .match, "an NBSP inside a merged pair")
     check(verdict("caf\u{00E9}", .text(before: "cafe\u{0301} ")) == .match, "a decomposed accent is one character")
     check(verdict("ghbdtn", .text(before: "\u{1F600}ghbdtn ")) == .match, "an emoji before the word")
-    check(verdict("ghbdtn", "", .text(before: "ghbdtn")) == .match, "the hotkey has no boundary")
+    check(verdict("ghbdtn", .text(before: "ghbdtn"), boundary: "") == .match, "the hotkey has no boundary")
     check(verdict("ghbdtn", .selection(length: 7)) == .mismatch, "an inline suggestion is selected")
     check(verdict("teh", .text(before: "the ")) == .mismatch, "autocorrect replaced the word")
     check(verdict("helo", .text(before: "hello ")) == .mismatch, "a prediction was accepted")
@@ -1644,70 +1644,74 @@ run("screen verification: verdict") {
     check(verdict("ghbdtn", .text(before: "ghbdtn"), final: true) == .match,
           "at the deadline an unchanged word without its space is deleted: the editor hides trailing spaces")
     check(verdict("ghbdtn", .text(before: "ghb"), final: true) == .mismatch, "at the deadline a lagging word is not")
-    check(verdict("ghbdtn", "", .text(before: "ghb"), final: true) == .mismatch, "nor without a boundary")
+    check(verdict("ghbdtn", .text(before: "ghb"), boundary: "", final: true) == .mismatch, "nor without a boundary")
     check(verdict("ghbdtn", .unavailable(transient: true)) == .retry, "a timeout is asked again")
     check(verdict("ghbdtn", .unavailable(transient: true), final: true) == .unknown, "until the deadline")
     check(verdict("ghbdtn", .unavailable(transient: false)) == .unknown, "no text field: correct as before")
+    check(verdict("ghbdtn", .text(before: "")) == .retry, "nothing of the word shown yet")
+    check(verdict("ghbdtn", .text(before: ""), final: true) == .unknown, "an empty field at the deadline is unreadable, not changed")
 }
 
 /// Types `ghbdtn ` with the field answering `replies`; returns the harness after the
 /// correction was emitted or given up.
+/// `emits`: whether a correction is expected (waited for up to 2 s; otherwise 0.4 s).
 private func screenChecked(
     _ replies: FieldTextProbe...,
+    emits: Bool,
     mode: ScreenCheckMode = .enforce,
     configure: (inout LearningHarness) -> Void = { _ in }
 ) -> LearningHarness {
     var harness = LearningHarness(screen: ScreenStub(replies: replies), screenCheckMode: mode)
     configure(&harness)
     harness.type("ghbdtn")
-    _ = waitUntil(0.4) { harness.emitted.count > 0 }
+    _ = waitUntil(emits ? 2 : 0.4) { harness.emitted.count > 0 }
     return harness
 }
 
 run("screen check: corrects only what the field still shows") {
-    var harness = screenChecked(.text(before: "old ghbdtn "))
+    var harness = screenChecked(.text(before: "old ghbdtn "), emits: true)
     check(harness.emitted.count == 1, "a matching field is corrected")
     check(harness.screen?.queries == 1, "one query, got \(harness.screen?.queries ?? -1)")
     check((harness.screen?.windows.first ?? 0) >= "ghbdtn ".utf16.count,
           "the window covers what is deleted, got \(harness.screen?.windows ?? [])")
 
-    harness = screenChecked(.text(before: "Ghbdtn "))
+    harness = screenChecked(.text(before: "Ghbdtn "), emits: true)
     check(harness.emitted.count == 1, "automatic capitalization keeps the length: corrected")
 
-    harness = screenChecked(.selection(length: 5))
+    harness = screenChecked(.selection(length: 5), emits: false)
     check(harness.emitted.isEmpty, "an inline suggestion is selected: Backspace would delete it")
     check(harness.screen?.queries == 1, "a selection is decided at once, got \(harness.screen?.queries ?? -1)")
 
-    harness = screenChecked(.text(before: "привет "))
+    harness = screenChecked(.text(before: "привет "), emits: false)
     check(harness.emitted.isEmpty, "the field replaced the word (autocorrect, prediction)")
     check(harness.screen?.queries == 1, "a changed word is decided at once, got \(harness.screen?.queries ?? -1)")
 
-    harness = screenChecked(.unavailable(transient: false))
+    harness = screenChecked(.unavailable(transient: false), emits: true)
     check(harness.emitted.count == 1, "no readable field: corrected as before")
     check(harness.screen?.queries == 1, "without retries")
 }
 
 run("screen check: waits for a field that lags behind") {
-    var harness = screenChecked(.text(before: "ghbdtn"), .text(before: "ghbdtn "))
+    var harness = screenChecked(.text(before: "ghbdtn"), .text(before: "ghbdtn "), emits: true)
     check(harness.emitted.count == 1, "the space arrived on the second read")
     check(harness.screen?.queries == 2, "got \(harness.screen?.queries ?? -1)")
 
-    harness = screenChecked(.unavailable(transient: true), .text(before: "ghbdtn "))
+    harness = screenChecked(.unavailable(transient: true), .text(before: "ghbdtn "), emits: true)
     check(harness.emitted.count == 1, "a timeout is asked again")
 
-    harness = screenChecked(.text(before: "ghbd"))
+    harness = screenChecked(.text(before: "ghbd"), emits: false)
     check(harness.emitted.isEmpty, "a field that never catches up is not touched")
     check((harness.screen?.queries ?? 0) >= 2, "it was asked again before giving up")
 
-    harness = screenChecked(.text(before: "ghbdtn"))
+    harness = screenChecked(.text(before: "ghbdtn"), emits: true)
     check(harness.emitted.count == 1, "the word without its space at the deadline: the editor hides trailing spaces")
 
-    harness = screenChecked(.unavailable(transient: true))
+    harness = screenChecked(.unavailable(transient: true), emits: true)
     check(harness.emitted.count == 1, "timeouts until the deadline: corrected as before")
 }
 
 run("screen check: typing during the check cancels it") {
-    let harness = screenChecked(.text(before: "ghbdtn")) { harness in
+    let harness = screenChecked(.text(before: "ghbdtn"), emits: false) { harness in
         let store = harness.store, engine = harness.engine
         harness.screen?.beforeFirstReply = {
             engine.enqueue(store.capture(
@@ -1724,10 +1728,10 @@ run("screen check: typing during the check cancels it") {
 }
 
 run("screen check: shadow mode logs but corrects") {
-    let harness = screenChecked(.selection(length: 5), mode: .shadow)
+    let harness = screenChecked(.selection(length: 5), emits: true, mode: .shadow)
     check(harness.emitted.count == 1, "shadow never cancels")
     check(harness.screen?.queries == 1, "but still reads the field")
-    let off = screenChecked(.selection(length: 5), mode: .off)
+    let off = screenChecked(.selection(length: 5), emits: true, mode: .off)
     check(off.emitted.count == 1 && off.screen?.queries == 0, "off does not read the field")
 }
 
