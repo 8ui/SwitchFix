@@ -11,6 +11,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var captureState: CaptureStateStore?
     private var focusCoordinator: AccessibilityFocusCoordinator?
     private var secureInputMonitor: SecureInputMonitor?
+    private var clickWatchdog: Any?
+    private var lastTapRestartUptime: TimeInterval = 0
     private let inputSourceManager = InputSourceManager.shared
     private var observersRegistered = false
     private var readyLayouts: Set<Layout> = []
@@ -107,6 +109,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationWillTerminate(_ notification: Notification) {
         PersonalLexicon.shared.flush()
         secureInputMonitor?.stop()
+        if let clickWatchdog {
+            NSEvent.removeMonitor(clickWatchdog)
+        }
         focusCoordinator?.stop()
         keyboardMonitor?.stop()
     }
@@ -157,6 +162,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         secureInput.start()
         secureInputMonitor = secureInput
+        startTapWatchdog()
         SwitchFixLog.app.notice("monitoring started pid=\(context.frontmostPID) layout=\(context.layout.rawValue) appAllowed=\(context.appAllowed)")
     }
 
@@ -198,6 +204,66 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             object: nil,
             suspensionBehavior: .deliverImmediately
         )
+        for name in [
+            NSWorkspace.didWakeNotification,
+            NSWorkspace.screensDidWakeNotification,
+            NSWorkspace.sessionDidBecomeActiveNotification,
+        ] {
+            NSWorkspace.shared.notificationCenter.addObserver(
+                self,
+                selector: #selector(sessionResumed(_:)),
+                name: name,
+                object: nil
+            )
+        }
+        DistributedNotificationCenter.default().addObserver(
+            self,
+            selector: #selector(sessionResumed(_:)),
+            name: NSNotification.Name("com.apple.screenIsUnlocked"),
+            object: nil,
+            suspensionBehavior: .deliverImmediately
+        )
+    }
+
+    /// After sleep, a screen lock or a user switch the tap can stay "enabled" and still get
+    /// nothing, without any tapDisabled event: recreate it.
+    @objc private func sessionResumed(_ notification: Notification) {
+        restartTap(reason: notification.name.rawValue)
+    }
+
+    /// A click another app received that the tap did not see means the tap is dead.
+    /// Global monitors need no permission for mouse events, so this keeps working when the tap
+    /// does not; the 0.5 s slack covers clock skew between the two deliveries.
+    private func startTapWatchdog() {
+        guard clickWatchdog == nil else { return }
+        clickWatchdog = NSEvent.addGlobalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown]) { [weak self] _ in
+            let seenAt = ProcessInfo.processInfo.systemUptime
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1) {
+                guard let self, let monitor = self.keyboardMonitor else { return }
+                if monitor.lastMouseDownUptime >= seenAt - 0.5, monitor.isTapEnabled { return }
+                self.restartTap(reason: monitor.isTapEnabled ? "tap missed a click" : "tap disabled")
+            }
+        }
+    }
+
+    private func restartTap(reason: String) {
+        guard let monitor = keyboardMonitor else { return }
+        // Wake, screen wake and unlock arrive together; a dead tap would also retrigger on
+        // every click.
+        let now = ProcessInfo.processInfo.systemUptime
+        guard now - lastTapRestartUptime >= 5 else { return }
+        lastTapRestartUptime = now
+        monitor.refreshInputTranslations()
+        guard monitor.restart(reason: reason) else {
+            SwitchFixLog.app.error("event tap could not be recreated (\(reason))")
+            return
+        }
+        // Key presses may have been missed while the tap was dead: drop the buffered word.
+        guard let pid = captureState?.snapshot().context.frontmostPID,
+              let epoch = publishUnknownFocus(for: pid) else {
+            return
+        }
+        focusCoordinator?.focusMayChange(pid: pid, epoch: epoch)
     }
 
     /// A layout was added or removed in System Settings: rebuild the key tables.

@@ -3,13 +3,13 @@ id: 2026-09-30-event-tap-dies-after-sleep-without-disabled-event
 title: "Event tap silently dies after sleep, lock or re-signing"
 type: bug
 pipeline: minimal
-phase: triage
+phase: impl
 created: 2026-09-30
 updated: 2026-09-30
 blocked_by: null
-steps_done: 0
-steps_total: 0
-step_current: null
+steps_done: 2
+steps_total: 4
+step_current: 3
 artifacts:
   spec: null
   plan: null
@@ -32,11 +32,17 @@ discussion #11819, OpenKey #87, Keyboop #23 — «со временем авто
 
 ## Progress
 
-_Шаги не заданы. `rtp steps <id> --set "…"` или `--from-plan <файл>`._
+1. ✅ restart/isTapEnabled/lastMouseDownUptime в KeyboardMonitor
+2. ✅ Wake/unlock + сторож кликов в AppDelegate
+3. ▶ Ревью
+4. ⬜ Ручная проверка sleep/lock/переподпись (локально)
 
 ## Log
 
 - 2026-09-30: triage — pipeline `minimal`, reason: исследование: tap умирает после sleep/wake/lock без tapDisabled-события (Ghostty, OpenKey, Keyboop); нет подписки на wake и healthcheck
+- 2026-09-30: brainstorm: что — пересоздавать tap по wake/screensDidWake/sessionDidBecomeActive/screenIsUnlocked + сторож: глобальный монитор кликов (без разрешений) сверяет, видел ли tap тот же клик; зачем — tap умирает молча; критерий — CI + ручная проверка sleep/lock (локально). stop() уже делал tapEnable(false)+CFMachPortInvalidate. Tap на main run loop, но listen-only — нажатия системы не задерживает, только наше наблюдение
+- 2026-09-30: шаг 1 ✅ restart/isTapEnabled/lastMouseDownUptime в KeyboardMonitor
+- 2026-09-30: шаг 2 ✅ Wake/unlock + сторож кликов в AppDelegate
 
 ## Decisions
 
