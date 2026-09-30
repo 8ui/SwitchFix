@@ -54,6 +54,7 @@ Staleness-guards (`CorrectionPlan.isEligible`) этого не видят: ко�
 - 2026-09-30: шаг 3 ✅ Coordinator + AppDelegate — requestFieldText без AXManualAccessibility, режим SwitchFix_fieldTextCheck (shadow), обход терминалов
 - 2026-09-30: шаг 4 ✅ Тесты пайплайна — ScreenStub + 7 сценариев пайплайна (проверит CI)
 - 2026-09-30: code-review (субагент, opus): blocker — порядок аргументов в тестовом verdict() не компилировался; should-fix — shadow задерживал коррекцию ретраями (теперь одно чтение и эмиссия), пустое поле давало mismatch (теперь retry/unknown), тайминг тестов 0.4 с для позитивных (теперь 2 с); нит nonisolated в AppDelegate не взят — тот же паттерн, что у существующих замыканий
+- 2026-09-30: verify: `CI красный: https://github.com/8ui/SwitchFix/actions/runs/36777848431 (eba69c1) — EmissionLog.isEmpty не существует в тестах; исправлено в 99d374a` → exit 1 ❌
 
 ## Decisions
 
@@ -68,7 +69,11 @@ _Нетривиальные решения по ходу задачи. Одна 
 
 ## Verification
 
-_Доказательства, а не утверждения. Заполняется `rtp verify <id> --run "<команда>"`: команда, exit code, хвост вывода._
+- 2026-09-30 · `CI красный: https://github.com/8ui/SwitchFix/actions/runs/36777848431 (eba69c1) — EmissionLog.isEmpty не существует в тестах; исправлено в 99d374a` · exit 1 ❌
+
+  ```
+  (без вывода)
+  ```
 
 ## Handoff
 
