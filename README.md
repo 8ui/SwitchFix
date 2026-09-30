@@ -29,6 +29,8 @@ A macOS menu bar utility that automatically corrects keyboard layout mistakes. T
   больше не трогается; перевели горячей клавишей слово, которое SwitchFix не узнал, — дальше оно
   исправляется само. Все правила видны и редактируются на вкладке настроек **Слова**: поиск, фильтр,
   добавление, правка, удаление, сброс выученного. Ваши собственные записи обучение не меняет.
+- **Слово, законченное Enter, автоматически не исправляется.** В чатах и терминале Enter уже отправил
+  текст: исправление стёрло бы не то и отправило бы сообщение повторно.
 - **Ползунок «Чувствительность»** (вкладка **Исправление**) — от «Осторожно» до «Смело». Каждое деление
   откалибровано перебором порогов на отложенном наборе текстов (`plan/benchmarks/thresholds_005.md`).
 
@@ -87,7 +89,7 @@ git pull upstream master
 
 ## Features
 
-- **Automatic correction** — detects wrong-layout words on space/enter and corrects them instantly.
+- **Automatic correction** — detects wrong-layout words on space and corrects them instantly (a word ended by Enter is left alone: the text may already be sent).
 - **Hotkey mode** — correct only when you press Ctrl+Shift+Space (configurable).
 - **Selection correction** — select text and press the hotkey to convert it.
 - **Permissions indicator** — missing macOS permissions show up at the top of the menu and in Settings → General.

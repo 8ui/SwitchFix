@@ -3,7 +3,7 @@ id: 2026-09-30-words-ending-on-punctuation-key-letters
 title: Words ending in letters on punctuation keys (х ъ ж э б ю ё) may be cut as trailing punctuation
 type: bug
 pipeline: minimal
-phase: review
+phase: done
 created: 2026-09-30
 updated: 2026-09-30
 blocked_by: null
@@ -56,6 +56,7 @@ artifacts:
 - 2026-09-30: verify: `swift run -c release InputPipelineTestRunner` → exit 0 ✅
 - 2026-09-30: шаг 4 ✅ Ревью — 2 ревью: FP от штрафа −12 → цена 4; парность закрывающей скобки внутри слова (see[1])
 - 2026-09-30: ревью 2: see[1]/fig[1] получали бонус за ']' — закрывающая скобка с открывающей внутри токена не буква; набор FP строгий (0 сверх to`); 603/0; ждёт коммита и CI
+- 2026-09-30: влито в master: https://github.com/8ui/SwitchFix/pull/7 (b7845d3)
 
 ## Decisions
 

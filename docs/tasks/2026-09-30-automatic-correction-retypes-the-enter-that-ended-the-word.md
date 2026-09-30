@@ -3,13 +3,13 @@ id: 2026-09-30-automatic-correction-retypes-the-enter-that-ended-the-word
 title: Automatic correction retypes the Enter that ended the word
 type: bug
 pipeline: minimal
-phase: triage
+phase: impl
 created: 2026-09-30
 updated: 2026-09-30
 blocked_by: null
-steps_done: 0
-steps_total: 0
-step_current: null
+steps_done: 2
+steps_total: 3
+step_current: 3
 artifacts:
   spec: null
   plan: null
@@ -30,11 +30,16 @@ artifacts:
 
 ## Progress
 
-_Шаги не заданы. `rtp steps <id> --set "…"` или `--from-plan <файл>`._
+1. ✅ Отмена коррекции при границе Enter
+2. ✅ Тест пайплайна
+3. ▶ Ревью
 
 ## Log
 
 - 2026-09-30: triage — pipeline `minimal`, reason: KeyboardMonitor: Return → .boundary("\n"); CorrectionPlan.replacementText = converted + boundary → после Enter (сообщение уже отправлено) коррекция перенабирает '\n' — в чатах возможна повторная отправка; найдено ревью задачи 2026-09-30-merged-short-word-correction-deletes-text-without-checking
+- 2026-09-30: brainstorm: вывод — слово, законченное Enter, не исправлять автоматически (текст уже отправлен); критерий — тест пайплайна: Enter → нет эмиссии, следующий пробел → коррекция
+- 2026-09-30: шаг 1 ✅ Отмена коррекции при границе Enter — prepareCorrection: cancelReason word-ended-by-enter
+- 2026-09-30: шаг 2 ✅ Тест пайплайна — InputPipelineTestRunner: automatic correction: a word ended by Enter
 
 ## Decisions
 

@@ -480,6 +480,10 @@ public final class InputEngine {
             cancelReason = "correction-disallowed"
         } else if result.originalWord.count > 64 {
             cancelReason = "word-too-long"
+        } else if request.boundary.contains("\n") {
+            // Enter has already submitted the text in chats and terminals: deleting now
+            // erases the wrong thing and retyping the newline would submit it again.
+            cancelReason = "word-ended-by-enter"
         }
         guard cancelReason == nil else {
             SwitchFixLog.engine.notice("correction cancelled reason=\(cancelReason!)")
