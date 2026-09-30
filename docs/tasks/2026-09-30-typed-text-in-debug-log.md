@@ -3,13 +3,13 @@ id: 2026-09-30-typed-text-in-debug-log
 title: Typed words are written to the debug log as public values
 type: bug
 pipeline: minimal
-phase: triage
+phase: impl
 created: 2026-09-30
 updated: 2026-09-30
 blocked_by: null
-steps_done: 0
-steps_total: 0
-step_current: null
+steps_done: 3
+steps_total: 4
+step_current: 4
 artifacts:
   spec: null
   plan: null
@@ -31,11 +31,18 @@ Debugging в CLAUDE.md, если поменяется поведение.
 
 ## Progress
 
-_Шаги не заданы. `rtp steps <id> --set "…"` или `--from-plan <файл>`._
+1. ✅ SwitchFixLog.text + флаг
+2. ✅ Все места логирования текста
+3. ✅ CLAUDE.md
+4. ▶ Ревью
 
 ## Log
 
 - 2026-09-30: triage — pipeline `minimal`, reason: исследование: gswitch #6 — debug-лог как кейлоггер; InputEngine/LayoutDetector пишут слова с public-приватностью
+- 2026-09-30: brainstorm: что — набранный текст в логах только длиной, флаг SwitchFix_logTypedText для отладки; зачем — public-логи читает любой локальный процесс, notice-уровень сохраняется; критерий — ни один вызов лога не интерполирует слово/буфер/keyCode символа напрямую, CI зелёный
+- 2026-09-30: шаг 1 ✅ SwitchFixLog.text + флаг
+- 2026-09-30: шаг 2 ✅ Все места логирования текста
+- 2026-09-30: шаг 3 ✅ CLAUDE.md
 
 ## Decisions
 
