@@ -58,6 +58,11 @@ public final class InputEngine {
     private let detectionConfiguration = OSAllocatedUnfairLock(initialState: DetectionConfiguration())
     private var correctionEpoch: UInt64
     private var latestProcessedSequence: UInt64 = 0
+    /// Uptime when the state machine set aside a word at a Globe press.
+    private var layoutSwitchWordUptime: UInt64 = 0
+    /// A switch notification later than this is not the Globe press's: Globe may
+    /// have started dictation and the layout changed by an uncaptured path.
+    static let layoutSwitchWordLifetimeNanoseconds: UInt64 = 500_000_000
     private var maximumQueueDepth = 0
     private let logger = Logger(subsystem: "com.switchfix", category: "input-engine")
 
@@ -139,7 +144,10 @@ public final class InputEngine {
     ) {
         inputQueue.async { [weak self] in
             guard let self else { return }
-            let bufferedWord = self.stateMachine.currentBuffer
+            let switchWordAge = DispatchTime.now().uptimeNanoseconds &- self.layoutSwitchWordUptime
+            let bufferedWord = self.stateMachine.layoutSwitchWord.isEmpty
+                ? self.stateMachine.currentBuffer
+                : switchWordAge <= Self.layoutSwitchWordLifetimeNanoseconds ? self.stateMachine.layoutSwitchWord : ""
             let preferences = self.stateMachine.preferences
             _ = self.stateMachine.updateContext(context)
             self.resetDetectorState()
@@ -290,6 +298,9 @@ public final class InputEngine {
 
         for command in stateMachine.consume(input) {
             handle(command)
+        }
+        if !stateMachine.layoutSwitchWord.isEmpty {
+            layoutSwitchWordUptime = DispatchTime.now().uptimeNanoseconds
         }
     }
 
@@ -665,7 +676,7 @@ private extension CapturedInput.Kind {
 
     var recordsUserEdit: Bool {
         switch self {
-        case .character, .boundary, .delete, .navigation, .focusMayChange, .undo:
+        case .character, .boundary, .delete, .navigation, .inputSourceKey, .focusMayChange, .undo:
             return true
         default:
             return false

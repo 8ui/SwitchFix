@@ -49,6 +49,7 @@ public final class KeyboardMonitor {
     private static let deleteKeyCode: UInt16 = 51
     private static let capsLockKeyCode: UInt16 = 57
     private static let zKeyCode: UInt16 = 6
+    private static let globeKeyCode: UInt16 = 179
 
     private static let functionKeyCodes: Set<UInt16> = Set([
         122, 120, 99, 118, 96, 97, 98, 100, 101, 109, 103, 111,
@@ -378,6 +379,9 @@ public final class KeyboardMonitor {
         }
         if KeyboardMonitor.navigationKeyCodes.contains(keyCode) {
             return .navigation
+        }
+        if keyCode == KeyboardMonitor.globeKeyCode {
+            return .inputSourceKey
         }
         if keyCode == KeyboardMonitor.tabKeyCode || keyCode == KeyboardMonitor.escapeKeyCode {
             return .focusMayChange

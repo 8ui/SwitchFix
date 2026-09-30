@@ -23,6 +23,7 @@ public enum InputInvalidationReason: Equatable {
     case secureFocus
     case unknownFocus
     case navigation
+    case inputSourceKey
     case focusChanged
     case tapReset
     case queueOverflow
@@ -43,6 +44,7 @@ public enum InputStateCommand: Equatable {
 public struct InputStateMachine {
     public private(set) var currentBuffer = ""
     public private(set) var isInvalidUntilBoundary = false
+    public private(set) var layoutSwitchWord = ""
     public private(set) var context: InputContextSnapshot
     public private(set) var preferences: InputPreferencesSnapshot
 
@@ -57,6 +59,7 @@ public struct InputStateMachine {
         guard changed else { return [] }
         currentBuffer = ""
         isInvalidUntilBoundary = false
+        layoutSwitchWord = ""
         return [.invalidate(.contextChanged)]
     }
 
@@ -72,11 +75,15 @@ public struct InputStateMachine {
         guard wasEnabled && !preferences.isEnabled else { return [] }
         currentBuffer = ""
         isInvalidUntilBoundary = false
+        layoutSwitchWord = ""
         return [.invalidate(.disabled)]
     }
 
     public mutating func consume(_ input: CapturedInput) -> [InputStateCommand] {
         guard input.sourceUserData != switchFixEventMarker else { return [] }
+        // Cleared by any consumed input; text inserted without a captured event
+        // (dictation, emoji picker) does not clear it — InputEngine bounds its age.
+        layoutSwitchWord = ""
 
         guard input.context.epoch == context.epoch,
               input.context.frontmostPID == context.frontmostPID,
@@ -96,6 +103,14 @@ public struct InputStateMachine {
         case .navigation:
             invalidate(untilBoundary: false)
             return [.invalidate(.navigation)]
+        case .inputSourceKey:
+            // The key may insert text instead of switching (emoji picker), so the
+            // buffer must not continue across it; the word is only set aside for a
+            // layout change that follows before any other input.
+            let word = canBuffer(input.context) && !isInvalidUntilBoundary ? currentBuffer : ""
+            invalidate(untilBoundary: false)
+            layoutSwitchWord = word
+            return [.invalidate(.inputSourceKey)]
         case .focusMayChange:
             invalidate(untilBoundary: false)
             return [.invalidate(.focusChanged)]

@@ -259,7 +259,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 context: context,
                 keyboardTables: keyboardTables
             )
-            // The switch key (e.g. Globe) is captured as navigation and leaves focus
+            // A modifier shortcut (e.g. Control-Space) is captured as navigation and leaves focus
             // unknown; the new epoch orphans that pending query, so re-resolve here —
             // otherwise every keystroke is dropped until the next click.
             if context.secureFocus != .notSecure {

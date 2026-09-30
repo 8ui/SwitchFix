@@ -3,13 +3,13 @@ id: 2026-09-30-layout-switch-mode-loses-the-word-when-switching-with-the
 title: Layout-switch mode loses the word when switching with the Globe key
 type: bug
 pipeline: minimal
-phase: triage
+phase: review
 created: 2026-09-30
 updated: 2026-09-30
 blocked_by: null
-steps_done: 0
-steps_total: 0
-step_current: null
+steps_done: 3
+steps_total: 4
+step_current: 4
 artifacts:
   spec: null
   plan: null
@@ -23,11 +23,27 @@ _2-5 строк: что делаем и зачем. Задача этой сек
 
 ## Progress
 
-_Шаги не заданы. `rtp steps <id> --set "…"` или `--from-plan <файл>`._
+1. ✅ Падающий тест в InputPipelineTestRunner
+2. ✅ Вид ввода inputSourceKey для keyCode 179, слово откладывается для handleLayoutChange
+3. ✅ Сборка, тесты, ревью
+4. ▶ Проверка на Mac (./install.sh, 🌐 в режиме переключения)
 
 ## Log
 
 - 2026-09-30: triage — pipeline `minimal`, reason: ручная проверка D2: keyCode 179 (🌐) приходит как ввод и инвалидирует буфер до kTISNotifySelectedKeyboardInputSourceChanged; handleLayoutChange видит пустой буфер
+- 2026-09-30: root cause: keyCode 179 → .navigation (нет в таблице перевода) → буфер очищен И фокус инвалидирован (secureFocus unknown) → handleLayoutChange видит пустой буфер и не проходит guard secureFocus; фикс: отдельный kind, не трогающий фокус, слово откладывается до следующего ввода
+- 2026-09-30: шаг 1 ▶ Падающий тест в InputPipelineTestRunner
+- 2026-09-30: шаг 1 ✅ Падающий тест в InputPipelineTestRunner — red без фикса: 3 FAIL (0 plans)
+- 2026-09-30: шаг 2 ✅ Вид ввода inputSourceKey для keyCode 179, слово откладывается для handleLayoutChange — InputPipelineTestRunner 896 passed
+- 2026-09-30: impl: CapturedInput.Kind.inputSourceKey для keyCode 179 (не сбрасывает фокус, слово откладывается в InputStateMachine.layoutSwitchWord до следующего ввода), handleLayoutChange берёт его
+- 2026-09-30: verify: `swift build -c release` → exit 0 ✅
+- 2026-09-30: verify: `swift run -c release TestRunner` → exit 0 ✅
+- 2026-09-30: verify: `swift run -c release InputPipelineTestRunner` → exit 0 ✅
+- 2026-09-30: verify: `swift build -c release` → exit 0 ✅
+- 2026-09-30: verify: `swift run -c release TestRunner` → exit 0 ✅
+- 2026-09-30: verify: `swift run -c release InputPipelineTestRunner` → exit 0 ✅
+- 2026-09-30: шаг 3 ✅ Сборка, тесты, ревью — ревью: 0 blocker; учтены окно 500 мс, reason inputSourceKey, тесты без маскировки фокусом, доп. сценарии; 927 passed
+- 2026-09-30: review-фиксы: окно 500 мс (диктовка по 🌐), InputInvalidationReason.inputSourceKey, тесты: notSecure-контекст, клик/стрелка/ввод/смена приложения/выключение/позднее уведомление, проверка wait; мутация окна → красный
 
 ## Decisions
 
@@ -35,14 +51,121 @@ _Нетривиальные решения по ходу задачи. Одна 
 
 ## Debt
 
-_Отложенное, упрощения, известные пробелы. Формат — чекбоксы (их считают индекс и отчёты по долгам):_
-_- `- [ ] <что отложено> — <почему/контекст>` — открытый долг_
-_- `- [x] <что было> — закрыто YYYY-MM-DD: <причина/ссылка на task>` — закрытый_
-_Без `[ ]`/`[x]` пункт невидим для агрегатора и теряется через 2 недели._
+- [ ] Control-Space и другие сочетания с модификатором для смены раскладки всё ещё классифицируются как navigation (буфер и фокус сбрасываются) — режим «по переключению» теряет слово; проверить на Mac, нужен ли тот же подход без сброса фокуса
+- [ ] KeyboardMonitor.classify приватный и не покрыт тестом: регресс классификации keyCode 179 → .inputSourceKey вернёт баг незаметно (замечание ревью)
 
 ## Verification
 
-_Доказательства, а не утверждения. Заполняется `rtp verify <id> --run "<команда>"`: команда, exit code, хвост вывода._
+- 2026-09-30 · `swift build -c release` · exit 0 ✅
+
+  ```
+  Building for production...
+  [2 / 9] UI
+  [4 / 10] TestRunner-product
+  [7 / 12] UI
+  [10 / 15] SwitchFixApp-product
+  [11 / 16] SwitchFixApp-product
+  [13 / 16] SwitchFixApp-product
+  [14 / 16] SwitchFixApp-product
+  [17 / 19] TestRunner-product
+  [19 / 19] TestRunner-product
+  [20 / 21] TestRunner-product
+  Build complete! (4,83 с)
+  ```
+
+- 2026-09-30 · `swift run -c release TestRunner` · exit 0 ✅
+
+  ```
+  | fix ru←en word-forms | 11/11 |  |
+  | fix uk←en tech | 12/14 | пшерги (want github), згірув (want pushed) |
+  | fix uk←en word-forms | 10/11 | сфеі (want cats) |
+  | fix en←ru word-forms | 9/10 | pfdnhf→завтра (want завтра) |
+  | fix en←ru slang-tech | 5/7 | ofc (want щас), rhby; (want кринж) |
+  | fix en←uk word-forms | 6/6 |  |
+  | fix en←uk slang-tech | 3/4 | yjhv→норм (want норм) |
+  
+  ========================================
+  Results: 522 passed, 0 failed
+  ALL TESTS PASSED
+  
+  Building for production...
+  Build complete! (0,19 с)
+  ```
+
+- 2026-09-30 · `swift run -c release InputPipelineTestRunner` · exit 0 ✅
+
+  ```
+  --- learning: reverting a forced hotkey conversion forgets the lesson ---
+  --- learning: manual entries are not overwritten by reverts ---
+  --- learning: forced hotkey target follows the last Cyrillic layout ---
+  --- key tables: hotkey converts a shifted digit-row symbol through the key ---
+  --- key tables: .pc keeps today's result for the same input ---
+  --- learning: the revert hotkey's fallback conversion does not teach ---
+  --- learning: one- and two-key hotkey conversions are not learned ---
+  --- learning: trailing punctuation is not part of the learned word ---
+  --- learning: merged multi-word corrections are not learned ---
+  
+  Input pipeline: 896 passed, 0 failed
+  
+  Building for production...
+  Build complete! (0,19 с)
+  ```
+
+- 2026-09-30 · `swift build -c release` · exit 0 ✅
+
+  ```
+  /Users/andrejsokolov/Desktop/projects/SwitchFix/Sources/Core/InputEngine.swift:201:82: [1;33mwarning: [1;39m'weak' ownership of capture 'self' differs from implicitly-captured strong reference in outer scope[0;0m [#]8;;https://docs.swift.org/compiler/documentation/diagnostics/implicit-strong-cap… [обрезано 35 симв.]
+  [0;36m198 |[0;0m                 return
+  [0;36m199 |[0;0m             }
+  [0;36m200 |[0;0m             self.selectionQueue.async {
+      [0;36m|[0;0m                                       |- [1;39mnote: [1;39m'self' implicitly strongly captured here[0;0m
+      [0;36m|[0;0m                                       `- [1;39mnote: [1;39madd 'self' as a capture list item to silence[0;0m
+  [0;36m201 |[0;0m                 selectedTextRequest(context.frontmostPID, context.epoch) { [weak self] selectedText in
+      [0;36m|[0;0m                                                                                  |- [1;33mwarning: [1;39m'weak' ownership of capture 'self' differs from implicitly-captured strong reference in outer scope[0;0m [#]8;;https://docs.swift.org/compiler/documentation/diagnostics/imp… [обрезано 51 симв.]
+      [0;36m|[0;0m                                                                                  `- [1;39mnote: [1;39mexplicitly assign the capture list item to silence[0;0m
+  [0;36m202 |[0;0m                     guard let self else { return }
+  [0;36m203 |[0;0m                     self.inputQueue.async {
+  
+  [#ImplicitStrongCapture]: <https://docs.swift.org/compiler/documentation/diagnostics/implicit-strong-capture>
+  ```
+
+- 2026-09-30 · `swift run -c release TestRunner` · exit 0 ✅
+
+  ```
+  | fix uk←en tech | 12/14 | пшерги (want github), згірув (want pushed) |
+  | fix uk←en word-forms | 10/11 | сфеі (want cats) |
+  | fix en←ru word-forms | 9/10 | pfdnhf→завтра (want завтра) |
+  | fix en←ru slang-tech | 5/7 | ofc (want щас), rhby; (want кринж) |
+  | fix en←uk word-forms | 6/6 |  |
+  | fix en←uk slang-tech | 3/4 | yjhv→норм (want норм) |
+  
+  ========================================
+  Results: 522 passed, 0 failed
+  ALL TESTS PASSED
+  
+  Building for production...
+  [1 / 9]
+  Build complete! (0,33 с)
+  ```
+
+- 2026-09-30 · `swift run -c release InputPipelineTestRunner` · exit 0 ✅
+
+  ```
+  --- learning: reverting a forced hotkey conversion forgets the lesson ---
+  --- learning: manual entries are not overwritten by reverts ---
+  --- learning: forced hotkey target follows the last Cyrillic layout ---
+  --- key tables: hotkey converts a shifted digit-row symbol through the key ---
+  --- key tables: .pc keeps today's result for the same input ---
+  --- learning: the revert hotkey's fallback conversion does not teach ---
+  --- learning: one- and two-key hotkey conversions are not learned ---
+  --- learning: trailing punctuation is not part of the learned word ---
+  --- learning: merged multi-word corrections are not learned ---
+  
+  Input pipeline: 927 passed, 0 failed
+  
+  Building for production...
+  Build complete! (0,19 с)
+  ```
 
 ## Handoff
 

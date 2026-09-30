@@ -615,6 +615,136 @@ run("disabling invalidates queued corrections") {
     )
 }
 
+private func layoutSwitchPlans(
+    typing word: String,
+    then switchKind: CapturedInput.Kind,
+    afterSwitch: [CapturedInput.Kind] = [],
+    notificationDelay: TimeInterval = 0,
+    beforeNotification: (InputEngine, CaptureStateStore) -> Void = { _, _ in }
+) -> [CorrectionPlan] {
+    let current = context()
+    let store = CaptureStateStore(context: current, hotkeys: HotkeyConfiguration(hotkeyModifiers: 0))
+    let lock = NSLock()
+    var plans: [CorrectionPlan] = []
+    let engine = InputEngine(
+        captureState: store,
+        initialContext: current,
+        preferences: InputPreferencesSnapshot(isEnabled: true, correctionMode: .layoutSwitch),
+        correctionEmission: { plan in
+            lock.lock()
+            plans.append(plan)
+            lock.unlock()
+            return true
+        }
+    )
+    func press(_ kind: CapturedInput.Kind) {
+        engine.enqueue(store.capture(
+            timestamp: 0,
+            kind: kind,
+            keyCode: 0,
+            flagsRawValue: 0,
+            isAutorepeat: false,
+            sourcePID: 1,
+            sourceUserData: 0
+        ))
+    }
+    func drain(_ label: String) {
+        let done = DispatchSemaphore(value: 0)
+        engine.drain { done.signal() }
+        check(done.wait(timeout: .now() + 2) == .success, "input queue must drain (\(label))")
+    }
+    for character in word {
+        press(.character(String(character)))
+    }
+    press(switchKind)
+    afterSwitch.forEach(press)
+    // The input-source notification arrives after the keys are processed (~20 ms in
+    // the field); replacing the context earlier would drop them as stale.
+    drain("keys")
+    beforeNotification(engine, store)
+    drain("before notification")
+    if notificationDelay > 0 {
+        Thread.sleep(forTimeInterval: notificationDelay)
+    }
+    let latest = store.snapshot().context
+    // Focus resolved as not secure, so only the word decides whether a plan is made.
+    let switched = store.replaceContext(
+        frontmostPID: latest.frontmostPID,
+        appAllowed: latest.appAllowed,
+        layout: .russian,
+        inputSourceID: "com.test.russian",
+        secureFocus: .notSecure
+    )
+    engine.handleLayoutChange(from: .english, to: .russian, context: switched, keyboardTables: .pc)
+    drain("layout change")
+    // The correction is emitted on the correction queue.
+    Thread.sleep(forTimeInterval: 0.2)
+    lock.lock()
+    defer { lock.unlock() }
+    return plans
+}
+
+private func convertedWords(_ plans: [CorrectionPlan]) -> [String] {
+    plans.map(\.originalText)
+}
+
+run("layout switch keeps the word across the Globe key") {
+    let plans = layoutSwitchPlans(typing: "ghbdtn", then: .inputSourceKey)
+    check(plans.count == 1, "switching layout with the Globe key must convert the word before it, got \(plans.count) plans")
+    check(plans.first?.correctedText == "привет", "Globe switch must convert ghbdtn to привет, got \(plans.first?.correctedText ?? "nil")")
+    check(plans.first?.provenance == .layoutSwitch, "Globe switch correction must be tagged layoutSwitch")
+}
+
+run("layout switch drops the Globe word when anything intervenes") {
+    check(
+        convertedWords(layoutSwitchPlans(typing: "ghbdtn", then: .navigation)).isEmpty,
+        "a cursor move before the switch must drop the word"
+    )
+    for (label, kind) in [("typing", CapturedInput.Kind.character("x")), ("click", .focusMayChange), ("arrow", .navigation)] {
+        let words = convertedWords(layoutSwitchPlans(typing: "ghbdtn", then: .inputSourceKey, afterSwitch: [kind]))
+        check(!words.contains { $0.contains("ghbdtn") }, "\(label) after the Globe key must drop the word, got \(words)")
+    }
+    let appSwitch = convertedWords(layoutSwitchPlans(typing: "ghbdtn", then: .inputSourceKey) { engine, store in
+        let other = store.replaceContext(
+            frontmostPID: 200,
+            appAllowed: true,
+            layout: .english,
+            inputSourceID: "com.test.english",
+            secureFocus: .notSecure
+        )
+        engine.updateContext(other)
+    })
+    check(appSwitch.isEmpty, "a frontmost-app change after the Globe key must drop the word, got \(appSwitch)")
+    let toggled = convertedWords(layoutSwitchPlans(typing: "ghbdtn", then: .inputSourceKey) { engine, _ in
+        engine.updatePreferences(InputPreferencesSnapshot(isEnabled: false, correctionMode: .layoutSwitch))
+        engine.updatePreferences(InputPreferencesSnapshot(isEnabled: true, correctionMode: .layoutSwitch))
+    })
+    check(toggled.isEmpty, "disabling after the Globe key must drop the word, got \(toggled)")
+    // Globe may start dictation instead; a much later switch must not delete what was dictated.
+    let late = convertedWords(layoutSwitchPlans(typing: "ghbdtn", then: .inputSourceKey, notificationDelay: 0.6))
+    check(late.isEmpty, "a layout change long after the Globe key must not convert the word, got \(late)")
+}
+
+run("Globe key without a layout change does not keep the word buffered") {
+    let current = context()
+    var machine = automaticMachine(current)
+    for (index, character) in ["g", "h"].enumerated() {
+        _ = machine.consume(input(sequence: UInt64(index + 1), kind: .character(character), context: current))
+    }
+    let globe = machine.consume(input(sequence: 3, kind: .inputSourceKey, context: current))
+    check(globe == [.invalidate(.inputSourceKey)], "the Globe key must invalidate the buffer with its own reason, got \(globe)")
+    check(machine.layoutSwitchWord == "gh", "the Globe key must set the word aside, got '\(machine.layoutSwitchWord)'")
+    _ = machine.consume(input(sequence: 4, kind: .character("x"), context: current))
+    let commands = machine.consume(input(sequence: 5, kind: .boundary(" "), context: current))
+    let flushed = commands.compactMap { command -> String? in
+        if case .flush(let word, _, _, _) = command { return word }
+        return nil
+    }
+    // The Globe key may insert text (emoji picker), so the buffer must not glue across it.
+    check(flushed == ["x"], "the word before a Globe press must not be flushed together with later input, got \(flushed)")
+    check(machine.layoutSwitchWord.isEmpty, "any input after the Globe key must drop the pending layout-switch word")
+}
+
 run("100,000 event stress") {
     let current = context()
     let store = CaptureStateStore(context: current, hotkeys: HotkeyConfiguration(hotkeyModifiers: 0))

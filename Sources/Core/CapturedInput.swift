@@ -40,6 +40,9 @@ public struct CapturedInput: Equatable {
         case boundary(String)
         case delete
         case navigation
+        /// The Globe key (keyCode 179): usually switches the input source and
+        /// leaves focus and the word on screen alone.
+        case inputSourceKey
         case hotkey
         case revertHotkey
         case undo
@@ -370,6 +373,9 @@ private extension CapturedInput.Kind {
     var isPhysicalEdit: Bool {
         switch self {
         case .character, .boundary, .delete, .navigation, .focusMayChange:
+            return true
+        case .inputSourceKey:
+            // It may insert text (emoji picker), so pending corrections go stale.
             return true
         case .undo:
             return true
