@@ -3,13 +3,13 @@ id: 2026-09-30-merged-short-word-correction-deletes-text-without-checking
 title: Merged short-word correction deletes text without checking the screen
 type: bug
 pipeline: no-spec
-phase: triage
+phase: review
 created: 2026-09-30
 updated: 2026-09-30
 blocked_by: null
-steps_done: 0
-steps_total: 0
-step_current: null
+steps_done: 3
+steps_total: 4
+step_current: 4
 artifacts:
   spec: null
   plan: null
@@ -40,11 +40,24 @@ artifacts:
 
 ## Progress
 
-_Шаги не заданы. `rtp steps <id> --set "…"` или `--from-plan <файл>`._
+1. ✅ Детектор: continuesPreviousWord + bridge только пробел
+2. ✅ Автомат и движок: признак смежности
+3. ✅ Тесты сценариев на уровне движка
+4. ▶ Ревью
 
 ## Log
 
 - 2026-09-30: triage — pipeline `no-spec`, reason: pendingSuppressedShort merge удаляет 'отложенное + bridge + текущее' без проверки, что экран не менялся; Enter-bridge может отправить сообщение/выполнить команду; затрагивает LayoutDetector + InputStateMachine/InputEngine
+- 2026-09-30: brainstorm (bounded): дизайн одобрен в чате — признак смежности в .flush/DetectionRequest/flushBuffer(continuesPreviousWord:), откладывание только при bridge ' '; план-документ не пишется (bounded)
+- 2026-09-30: шаг 1 ▶ Детектор: continuesPreviousWord + bridge только пробел
+- 2026-09-30: verify: `4 сценария (двойной пробел, '!'+пробел, Cmd+Z, Enter) на старом Core: 4 FAIL; после фикса InputPipelineTestRunner 1002/0, TestRunner 545/0, eval идентичен` → exit 0 ✅
+- 2026-09-30: шаг 1 ✅ Детектор: continuesPreviousWord + bridge только пробел
+- 2026-09-30: шаг 2 ✅ Автомат и движок: признак смежности
+- 2026-09-30: шаг 3 ✅ Тесты сценариев на уровне движка
+- 2026-09-30: шаг 4 ▶ Ревью
+- 2026-09-30: impl complete (ветка claude/merged-short-word-safety)
+- 2026-09-30: verify: `swift build -c release` → exit 0 ✅
+- 2026-09-30: verify: `ревью: блокеров нет; should-fix (отложенное слово переживало сброс из одних символов '^!') исправлен — забирается в начале каждого flushBuffer; тест до фикса FAIL; arrow-кейс заменён на hotkey; TestRunner 546/0, InputPipelineTestRunner 1002/0, eval идентичен` → exit 0 ✅
 
 ## Decisions
 
@@ -52,14 +65,37 @@ _Нетривиальные решения по ходу задачи. Одна 
 
 ## Debt
 
-_Отложенное, упрощения, известные пробелы. Формат — чекбоксы (их считают индекс и отчёты по долгам):_
-_- `- [ ] <что отложено> — <почему/контекст>` — открытый долг_
-_- `- [x] <что было> — закрыто YYYY-MM-DD: <причина/ссылка на task>` — закрытый_
-_Без `[ ]`/`[x]` пункт невидим для агрегатора и теряется через 2 недели._
+- [ ] unit-тест смежности в InputStateMachine не покрывает punctuation boundary, focusMayChange, revertHotkey, inputSourceKey, tapReset, queueOverflow, stale context, updateContext, delete на пустом буфере — сейчас корректно за счёт общего сброса, но не зафиксировано
+- [ ] updatePreferences сбрасывает смежность только при выключении SwitchFix, не при смене режима — на практике недостижимо (смена настроек требует клика)
 
 ## Verification
 
-_Доказательства, а не утверждения. Заполняется `rtp verify <id> --run "<команда>"`: команда, exit code, хвост вывода._
+- 2026-09-30 · `4 сценария (двойной пробел, '!'+пробел, Cmd+Z, Enter) на старом Core: 4 FAIL; после фикса InputPipelineTestRunner 1002/0, TestRunner 545/0, eval идентичен` · exit 0 ✅
+
+  ```
+  (без вывода)
+  ```
+
+- 2026-09-30 · `swift build -c release` · exit 0 ✅
+
+  ```
+  Building for production...
+  [Using on-disk description]
+  [2 / 13]
+  [3 / 7] UI
+  [5 / 9] UI
+  [8 / 11] SwitchFixApp-product
+  [9 / 12] SwitchFixApp-product
+  [11 / 12] SwitchFixApp-product
+  [12 / 12] SwitchFixApp-product
+  Build complete! (8,36 с)
+  ```
+
+- 2026-09-30 · `ревью: блокеров нет; should-fix (отложенное слово переживало сброс из одних символов '^!') исправлен — забирается в начале каждого flushBuffer; тест до фикса FAIL; arrow-кейс заменён на hotkey; TestRunner 546/0, InputPipelineTestRunner 1002/0, eval идентичен` · exit 0 ✅
+
+  ```
+  (без вывода)
+  ```
 
 ## Handoff
 
