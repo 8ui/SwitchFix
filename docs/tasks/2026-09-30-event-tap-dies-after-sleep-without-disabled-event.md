@@ -46,6 +46,7 @@ discussion #11819, OpenKey #87, Keyboop #23 — «со временем авто
 - 2026-09-30: ревью (субагент): сторож сравнивает время самого клика (NSEvent.timestamp) с приёмом в tap — зависание main не даёт ложных рестартов; HID-tap не проверяется (не видит session-клики); wake/unlock — один рестарт через 1 с после последнего уведомления, мимо лимита; keyboardMonitor присваивается только после успешного start
 - 2026-09-30: шаг 3 ✅ Ревью
 - 2026-09-30: impl complete; ручная проверка — шаг 4 (локально)
+- 2026-09-30: verify: `CI зелёный: https://github.com/8ui/SwitchFix/actions/runs/36772967020 (374657a)` → exit 0 ✅
 
 ## Decisions
 
@@ -57,11 +58,70 @@ _Нетривиальные решения по ходу задачи. Одна 
 
 ## Verification
 
-_Доказательства, а не утверждения. Заполняется `rtp verify <id> --run "<команда>"`: команда, exit code, хвост вывода._
+- 2026-09-30 · `CI зелёный: https://github.com/8ui/SwitchFix/actions/runs/36772967020 (374657a)` · exit 0 ✅
+
+  ```
+  (без вывода)
+  ```
 
 ## Handoff
 
-_Передача контекста следующему агенту. Перезаписывается целиком через `rtp handoff <id>`._
+**Сгенерировано:** 2026-09-30 · `rtp handoff`
+
+- **Задача:** `2026-09-30-event-tap-dies-after-sleep-without-disabled-event` — Event tap silently dies after sleep, lock or re-signing
+- **Фаза:** review (pipeline `minimal`, type `bug`)
+- **Прогресс:** 3/4 ▰▰▰▱
+- **Worktree:** `/home/user/SwitchFix`
+- **Ветка:** `claude/funny-ramanujan-sdgiso` — своих коммитов 75, отставание от origin/master 78
+- **Незакоммиченного:** 2 файл(ов)
+
+**Шаги плана**
+
+1. ✅ restart/isTapEnabled/lastMouseDownUptime в KeyboardMonitor
+2. ✅ Wake/unlock + сторож кликов в AppDelegate
+3. ✅ Ревью
+4. ▶ Ручная проверка sleep/lock/переподпись (локально)
+
+**Файлы в работе**
+
+- `ocs/tasks/2026-09-30-event-tap-dies-after-sleep-without-disabled-event.md`
+- `docs/tasks/index.md`
+
+**git diff HEAD --stat**
+
+```
+...2026-09-30-event-tap-dies-after-sleep-without-disabled-event.md | 7 ++++++-
+ docs/tasks/index.md                                                | 2 +-
+ 2 files changed, 7 insertions(+), 2 deletions(-)
+```
+
+**Последние коммиты**
+
+- `2bb721b docs(tasks): CI evidence, close Enter and log tasks`
+- `374657a fix(monitor,focus): review fixes for the tap watchdog and AXManualAccessibility`
+- `684a327 docs(tasks): Enter task to review with CI evidence`
+
+**Последние записи лога**
+
+- 2026-09-30: шаг 2 ✅ Wake/unlock + сторож кликов в AppDelegate
+- 2026-09-30: ревью (субагент): сторож сравнивает время самого клика (NSEvent.timestamp) с приёмом в tap — зависание main не даёт ложных рестартов; HID-tap не проверяется (не видит session-клики); wake/unlock — один рестарт через 1 с после последнего уведомления, мимо лимита; keyboardMonitor присваивается только после успешного start
+- 2026-09-30: шаг 3 ✅ Ревью
+- 2026-09-30: impl complete; ручная проверка — шаг 4 (локально)
+- 2026-09-30: verify: `CI зелёный: https://github.com/8ui/SwitchFix/actions/runs/36772967020 (374657a)` → exit 0 ✅
+
+**Открытые долги (1)**
+
+- Сторож доказывает только доставку мыши: tap, получающий клики без клавиш (переподпись со старым Input Monitoring), не ловится; состояние модификатор-хоткея (controlTapArmed, lastAlphaShiftState) переживает рестарт
+
+**Следующее действие**
+
+- rtp verify по командам проекта (rtp next 2026-09-30-event-tap-dies-after-sleep-without-disabled-event), затем ревью субагентом → rtp phase 2026-09-30-event-tap-dies-after-sleep-without-disabled-event --to done
+
+**Заметки агента** (не выводятся из кода — грабли, тупики, договорённости)
+
+<!-- handoff-notes -->
+- 2026-09-30: Код в ветке claude/funny-ramanujan-sdgiso, CI зелёный; осталась только ручная проверка на macOS (последний шаг), после неё — done
+<!-- /handoff-notes -->
 
 ## Blockers
 

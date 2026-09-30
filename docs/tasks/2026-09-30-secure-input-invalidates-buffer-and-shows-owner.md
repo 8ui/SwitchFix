@@ -48,6 +48,7 @@ AX (Permissions.swift:283). Secure Input часто «залипает»: 1Passw
 - 2026-09-30: шаг 4 ✅ Ревью
 - 2026-09-30: impl complete; ручная проверка — шаг 5 (локально)
 - 2026-09-30: verify: `CI зелёный: https://github.com/8ui/SwitchFix/actions/runs/36772505902 (9e5f0e8)` → exit 0 ✅
+- 2026-09-30: verify: `CI зелёный: https://github.com/8ui/SwitchFix/actions/runs/36772967020 (374657a)` → exit 0 ✅
 
 ## Decisions
 
@@ -68,9 +69,71 @@ _Без `[ ]`/`[x]` пункт невидим для агрегатора и т�
   (без вывода)
   ```
 
+- 2026-09-30 · `CI зелёный: https://github.com/8ui/SwitchFix/actions/runs/36772967020 (374657a)` · exit 0 ✅
+
+  ```
+  (без вывода)
+  ```
+
 ## Handoff
 
-_Передача контекста следующему агенту. Перезаписывается целиком через `rtp handoff <id>`._
+**Сгенерировано:** 2026-09-30 · `rtp handoff`
+
+- **Задача:** `2026-09-30-secure-input-invalidates-buffer-and-shows-owner` — Invalidate the buffer on Secure Input changes and show which app holds it
+- **Фаза:** review (pipeline `minimal`, type `feature`)
+- **Прогресс:** 4/5 ▰▰▰▰▱
+- **Worktree:** `/home/user/SwitchFix`
+- **Ветка:** `claude/funny-ramanujan-sdgiso` — своих коммитов 75, отставание от origin/master 78
+- **Незакоммиченного:** 4 файл(ов)
+
+**Шаги плана**
+
+1. ✅ SecureInput + SecureInputMonitor (Utils)
+2. ✅ Инвалидация в AppDelegate
+3. ✅ Пункт меню + L10n + README
+4. ✅ Ревью
+5. ▶ Ручная проверка: Terminal Secure Keyboard Entry, 1Password (локально)
+
+**Файлы в работе**
+
+- `ocs/tasks/2026-09-30-ax-manual-accessibility-screen-reader-side-effects.md`
+- `docs/tasks/2026-09-30-event-tap-dies-after-sleep-without-disabled-event.md`
+- `docs/tasks/2026-09-30-secure-input-invalidates-buffer-and-shows-owner.md`
+- `docs/tasks/index.md`
+
+**git diff HEAD --stat**
+
+```
+...ual-accessibility-screen-reader-side-effects.md | 67 +++++++++++++++++++++-
+ ...-tap-dies-after-sleep-without-disabled-event.md | 64 ++++++++++++++++++++-
+ ...ure-input-invalidates-buffer-and-shows-owner.md |  7 +++
+ docs/tasks/index.md                                |  2 +-
+ 4 files changed, 135 insertions(+), 5 deletions(-)
+```
+
+**Последние коммиты**
+
+- `2bb721b docs(tasks): CI evidence, close Enter and log tasks`
+- `374657a fix(monitor,focus): review fixes for the tap watchdog and AXManualAccessibility`
+- `684a327 docs(tasks): Enter task to review with CI evidence`
+
+**Последние записи лога**
+
+- 2026-09-30: ревью (субагент): опрос 0.5 с (переход между опросами при 1 с терялся), имя владельца только для обычных приложений (loginwindow/фоновые PID часто устаревшие); остальное — минор
+- 2026-09-30: шаг 4 ✅ Ревью
+- 2026-09-30: impl complete; ручная проверка — шаг 5 (локально)
+- 2026-09-30: verify: `CI зелёный: https://github.com/8ui/SwitchFix/actions/runs/36772505902 (9e5f0e8)` → exit 0 ✅
+- 2026-09-30: verify: `CI зелёный: https://github.com/8ui/SwitchFix/actions/runs/36772967020 (374657a)` → exit 0 ✅
+
+**Следующее действие**
+
+- rtp verify по командам проекта (rtp next 2026-09-30-secure-input-invalidates-buffer-and-shows-owner), затем ревью субагентом → rtp phase 2026-09-30-secure-input-invalidates-buffer-and-shows-owner --to done
+
+**Заметки агента** (не выводятся из кода — грабли, тупики, договорённости)
+
+<!-- handoff-notes -->
+- 2026-09-30: Код в ветке claude/funny-ramanujan-sdgiso, CI зелёный; осталась только ручная проверка на macOS (последний шаг), после неё — done
+<!-- /handoff-notes -->
 
 ## Blockers
 
