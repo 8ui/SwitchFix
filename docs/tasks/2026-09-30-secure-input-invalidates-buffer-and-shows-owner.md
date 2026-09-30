@@ -3,13 +3,13 @@ id: 2026-09-30-secure-input-invalidates-buffer-and-shows-owner
 title: Invalidate the buffer on Secure Input changes and show which app holds it
 type: feature
 pipeline: minimal
-phase: impl
+phase: review
 created: 2026-09-30
 updated: 2026-09-30
 blocked_by: null
-steps_done: 3
+steps_done: 4
 steps_total: 5
-step_current: 4
+step_current: 5
 artifacts:
   spec: null
   plan: null
@@ -34,8 +34,8 @@ AX (Permissions.swift:283). Secure Input часто «залипает»: 1Passw
 1. ✅ SecureInput + SecureInputMonitor (Utils)
 2. ✅ Инвалидация в AppDelegate
 3. ✅ Пункт меню + L10n + README
-4. ▶ Ревью
-5. ⬜ Ручная проверка: Terminal Secure Keyboard Entry, 1Password (локально)
+4. ✅ Ревью
+5. ▶ Ручная проверка: Terminal Secure Keyboard Entry, 1Password (локально)
 
 ## Log
 
@@ -44,6 +44,9 @@ AX (Permissions.swift:283). Secure Input часто «залипает»: 1Passw
 - 2026-09-30: шаг 1 ✅ SecureInput + SecureInputMonitor (Utils)
 - 2026-09-30: шаг 2 ✅ Инвалидация в AppDelegate
 - 2026-09-30: шаг 3 ✅ Пункт меню + L10n + README
+- 2026-09-30: ревью (субагент): опрос 0.5 с (переход между опросами при 1 с терялся), имя владельца только для обычных приложений (loginwindow/фоновые PID часто устаревшие); остальное — минор
+- 2026-09-30: шаг 4 ✅ Ревью
+- 2026-09-30: impl complete; ручная проверка — шаг 5 (локально)
 
 ## Decisions
 

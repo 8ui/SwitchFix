@@ -260,7 +260,6 @@ public final class InputEngine {
             value.keyboardTables = keyboardTables
             value.thresholds = thresholds
         }
-        corrector.updateKeyboardTables(keyboardTables)
     }
 
     public func drain(completion: @escaping () -> Void) {

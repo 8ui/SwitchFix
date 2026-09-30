@@ -96,7 +96,6 @@ public final class TextCorrector {
     private let inputSourceManager: InputSourceManager
     private let eventSource: CGEventSource?
     private let undoState = OSAllocatedUnfairLock<UndoState?>(initialState: nil)
-    private let keyboardTables = OSAllocatedUnfairLock<KeyboardTables>(initialState: .pc)
     private let logger = Logger(subsystem: "com.switchfix", category: "correction")
 
     public init(inputSourceManager: InputSourceManager = .shared) {
@@ -105,26 +104,6 @@ public final class TextCorrector {
         source?.userData = switchFixEventMarker
         source?.localEventsSuppressionInterval = 0
         eventSource = source
-    }
-
-    /// The tables Unicode events take their key codes from (the enabled layouts').
-    public func updateKeyboardTables(_ tables: KeyboardTables) {
-        keyboardTables.withLock { $0 = tables }
-    }
-
-    /// The key a Unicode event claims to come from. Apps that translate the key code instead
-    /// of reading the Unicode string (Qt, Java, remote-desktop clients) must not see key 0,
-    /// which is A: the character's own key in the layout the text is in, else in any layout.
-    /// Characters on no key keep 0.
-    public static func keyCode(for character: Character, layout: Layout?, tables: KeyboardTables) -> UInt16 {
-        if character == " " { return 49 }
-        let order = (layout.map { [$0] } ?? []) + [.english, .russian, .ukrainian]
-        for candidate in order {
-            for table in tables.candidates(for: candidate) {
-                if let stroke = table.charToKey[character] { return stroke.keyCode }
-            }
-        }
-        return 0
     }
 
     public var canUndo: Bool {
@@ -398,12 +377,10 @@ public final class TextCorrector {
             events.append(keyUp)
         }
 
-        let tables = keyboardTables.withLock { $0 }
         for char in plan.replacementText {
             let str = String(char)
-            let keyCode = Self.keyCode(for: char, layout: plan.targetLayout, tables: tables)
-            guard let keyDown = makeUnicodeEvent(text: str, keyCode: keyCode, keyDown: true),
-                  let keyUp = makeUnicodeEvent(text: str, keyCode: keyCode, keyDown: false) else {
+            guard let keyDown = makeUnicodeEvent(text: str, keyDown: true),
+                  let keyUp = makeUnicodeEvent(text: str, keyDown: false) else {
                 return nil
             }
             events.append(keyDown)
@@ -445,8 +422,8 @@ public final class TextCorrector {
         return event
     }
 
-    private func makeUnicodeEvent(text: String, keyCode: UInt16, keyDown: Bool) -> CGEvent? {
-        guard let event = makeKeyEvent(keyCode: keyCode, keyDown: keyDown) else { return nil }
+    private func makeUnicodeEvent(text: String, keyDown: Bool) -> CGEvent? {
+        guard let event = makeKeyEvent(keyCode: 0, keyDown: keyDown) else { return nil }
         let utf16 = Array(text.utf16)
         utf16.withUnsafeBufferPointer { buffer in
             event.keyboardSetUnicodeString(

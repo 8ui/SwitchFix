@@ -7,9 +7,9 @@ phase: impl
 created: 2026-09-30
 updated: 2026-09-30
 blocked_by: null
-steps_done: 2
+steps_done: 0
 steps_total: 4
-step_current: 3
+step_current: 1
 artifacts:
   spec: null
   plan: null
@@ -30,10 +30,10 @@ Telegram, JetBrains, TextEdit, Chrome при `postToPid` и при session.
 
 ## Progress
 
-1. ✅ TextCorrector.keyCode(for:) + таблицы от InputEngine
-2. ✅ Тест
-3. ▶ Ревью
-4. ⬜ Проверка в Telegram/JetBrains/TextEdit/Chrome (локально)
+1. ▶ Локально выяснить, как Qt/Java/UTM транслируют keycode (Unicode-строка или keycode через активную раскладку)
+2. ⬜ Решение по результату
+3. ⬜ Тест
+4. ⬜ Ревью
 
 ## Log
 
@@ -41,6 +41,7 @@ Telegram, JetBrains, TextEdit, Chrome при `postToPid` и при session.
 - 2026-09-30: brainstorm: что — keycode символа из KeyboardTables (раскладка плана, потом любая), пробел 49; зачем — Qt/Java/удалённый доступ печатают «a» по keycode 0; критерий — тест keyCode(for:) + CI; проверка в Telegram/JetBrains — локально
 - 2026-09-30: шаг 1 ✅ TextCorrector.keyCode(for:) + таблицы от InputEngine
 - 2026-09-30: шаг 2 ✅ Тест
+- 2026-09-30: ревью (субагент): фикс отменён. События постятся до switchTo(target), так что приложение, транслирующее keycode через активную раскладку, напечатает букву ИСХОДНОЙ раскладки (key 4 → h, т. е. ghbdtn вместо привет); э/є/ё/ґ попадают на мёртвые клавиши US-International (39, 50). Нужна локальная проверка в Telegram/JetBrains: какую раскладку они используют для keycode, и помогает ли переключить раскладку ДО эмиссии
 
 ## Decisions
 
@@ -48,7 +49,7 @@ _Нетривиальные решения по ходу задачи. Одна 
 
 ## Debt
 
-- [ ] Символы вне таблиц (эмодзи и т. п.) по-прежнему идут с keycode 0; Shift для заглавных не выставляется (флаги очищены намеренно) — приложения, транслирующие по keycode, получат строчную
+- [ ] Если реальный keycode — то только вместе со сменой раскладки ДО эмиссии и с проверкой мёртвых клавиш (US-International: ' и `); первая попытка (48abd3f) откачена — переформулировано после ревью — переформулировано 2026-09-30
 
 ## Verification
 

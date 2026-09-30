@@ -27,7 +27,12 @@ public enum SecureInput {
 
     public static func ownerName() -> String? {
         guard let pid = ownerPID() else { return nil }
-        return NSRunningApplication(processIdentifier: pid)?.localizedName
+        guard let app = NSRunningApplication(processIdentifier: pid),
+              app.activationPolicy == .regular else {
+            // loginwindow keeps the PID after unlock, and background PIDs are often stale.
+            return nil
+        }
+        return app.localizedName
     }
 }
 
@@ -43,9 +48,8 @@ public final class SecureInputMonitor {
         lastState = SecureInput.isEnabled()
     }
 
-    public var isEnabled: Bool { lastState }
-
-    public func start(interval: TimeInterval = 1) {
+    /// Short enough that a password prompt blinking on and off between two polls is rare.
+    public func start(interval: TimeInterval = 0.5) {
         stop()
         lastState = SecureInput.isEnabled()
         let timer = Timer(timeInterval: interval, repeats: true) { [weak self] _ in
