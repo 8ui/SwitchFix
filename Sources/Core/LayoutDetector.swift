@@ -50,6 +50,10 @@ public class LayoutDetector {
     /// Key tables for conversion; candidates of the source layout are tried in order.
     public var keyboardTables: KeyboardTables = .pc
     public var shortWordSuppressionLength: Int = 2
+    /// Low-confidence words longer than `shortWordSuppressionLength` and up to this length
+    /// are kept (not corrected, not deferred) inside a strong current-language context:
+    /// `в нову еру` stays Ukrainian. Automatic detection only.
+    public var contextKeepLength: Int = 3
     public var shortWordSuppressionMinValidContext: Int = 2
     public var shortWordSuppressionContextWindow: Int = 6
 
@@ -424,6 +428,21 @@ public class LayoutDetector {
         var originalForCorrection = word
         let isLowConfidence = word.count <= lowConfidenceMaxLength
         let shouldSwitch = shouldSwitchLayout(isLowConfidence: isLowConfidence, targetLayout: targetLayout)
+
+        if isLowConfidence, !shouldSwitch, pendingBoundaryCharacter != nil,
+           targetLayout != sourceLayout,
+           word.count > shortWordSuppressionLength, word.count <= contextKeepLength,
+           hasStrongCurrentContext() {
+            SwitchFixLog.detector.info("kept short word '\(word)' -> '\(finalWord)' (strong current context)")
+            consecutiveWrongCount = 0
+            lastDetectionResult = nil
+            // The kept word must not count toward the next word's layout switch.
+            pendingSwitchLayout = nil
+            pendingSwitchCount = 0
+            recordOutcome(.unknown)
+            state = .buffering
+            return nil
+        }
 
         if shouldSuppressLowConfidenceCorrection(
             original: word,
