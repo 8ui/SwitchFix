@@ -4,6 +4,18 @@ set -e
 # ==========================================
 # SwitchFix User-Friendly Installer
 # ==========================================
+#
+# Usage: ./install.sh [--reset-permissions]
+#   --reset-permissions  reset SwitchFix's Accessibility and Input Monitoring
+#                        grants and walk through granting them again
+
+RESET_PERMISSIONS_REQUESTED=false
+for arg in "$@"; do
+    case "$arg" in
+        --reset-permissions) RESET_PERMISSIONS_REQUESTED=true ;;
+        *) echo "Unknown option: $arg (usage: ./install.sh [--reset-permissions])" >&2; exit 2 ;;
+    esac
+done
 
 echo "=========================================="
 echo "      Welcome to SwitchFix Setup!         "
@@ -38,6 +50,11 @@ fi
 echo ""
 echo "📦 Step 2: Installing to Applications folder..."
 
+APP_WAS_INSTALLED=false
+if [ -d "/Applications/SwitchFix.app" ]; then
+    APP_WAS_INSTALLED=true
+fi
+
 APP_WAS_RUNNING=0
 if pgrep -x "SwitchFixApp" > /dev/null; then
     APP_WAS_RUNNING=1
@@ -65,19 +82,20 @@ echo "✅ SwitchFix has been added to your startup items."
 # 5. Handle Permissions
 echo ""
 
-# Decide whether to walk through permission setup:
-#  - ad-hoc signed builds (no stable certificate) always need a fresh grant,
-#  - stable-signed builds keep their grants across rebuilds, except on a
-#    first install when no grant exists yet.
-SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+# Decide whether to walk through permission setup (which resets SwitchFix's
+# TCC entries first, so a grant bound to an older signature cannot linger):
+#  - ad-hoc signed builds always need a fresh grant,
+#  - certificate-signed builds keep their grants across rebuilds, so the
+#    walkthrough runs only when SwitchFix was not in /Applications before, or
+#    with --reset-permissions. This used to be a y/N prompt, and
+#    `yes | ./install.sh` silently wiped Accessibility on every reinstall.
+# The signature is read from the installed app: build-app.sh falls back to
+# ad-hoc when the identity in .codesign-identity is missing from the keychain.
 NEEDS_PERMISSION_SETUP=false
-if [ ! -f "$SCRIPT_DIR/.codesign-identity" ]; then
+if [ "$RESET_PERMISSIONS_REQUESTED" = true ] || [ "$APP_WAS_INSTALLED" = false ]; then
     NEEDS_PERMISSION_SETUP=true
-else
-    read -p "   Is this the first time SwitchFix is installed on this Mac? (y/N) " FIRST_INSTALL || FIRST_INSTALL="N"
-    if [[ "$FIRST_INSTALL" =~ ^[Yy]$ ]]; then
-        NEEDS_PERMISSION_SETUP=true
-    fi
+elif ! codesign -dvv "/Applications/SwitchFix.app" 2>&1 | grep -q '^Authority='; then
+    NEEDS_PERMISSION_SETUP=true
 fi
 
 if [ "$NEEDS_PERMISSION_SETUP" = true ]; then
@@ -85,7 +103,7 @@ if [ "$NEEDS_PERMISSION_SETUP" = true ]; then
     echo "SwitchFix intercepts keyboard input to fix layouts, so macOS requires you to grant it explicit permissions."
     echo ""
 
-    # Reset stale TCC cache for SwitchFix to avoid stale signature mismatches
+    # Drop TCC entries bound to an older signature so the new grant sticks
     tccutil reset Accessibility com.switchfix.app >/dev/null 2>&1 || true
     tccutil reset ListenEvent com.switchfix.app >/dev/null 2>&1 || true
 
@@ -124,6 +142,7 @@ EOF
 else
     echo "✅ Signed with stable certificate — permissions survive rebuilds."
     echo "   Your existing Accessibility and Input Monitoring grants are kept."
+    echo "   If they are missing, run ./install.sh --reset-permissions."
     echo ""
     echo "🚀 Launching SwitchFix..."
     open "/Applications/SwitchFix.app"
