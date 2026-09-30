@@ -3,7 +3,7 @@ id: 2026-09-30-correction-verifies-field-text-before-deleting
 title: "Correction leaves stray letters when the field changed the text (inline autocomplete, predictions, autocorrect)"
 type: bug
 pipeline: no-spec
-phase: triage
+phase: plan-review
 created: 2026-09-30
 updated: 2026-09-30
 blocked_by: null
@@ -12,7 +12,7 @@ steps_total: 0
 step_current: null
 artifacts:
   spec: null
-  plan: null
+  plan: docs/plans/correction-verifies-field-text-plan.md
   branch: null
   pr: null
 ---
@@ -40,6 +40,9 @@ _Шаги не заданы. `rtp steps <id> --set "…"` или `--from-plan <�
 ## Log
 
 - 2026-09-30: triage — pipeline `no-spec`, reason: исследование аналогов: самая частая жалоба (gпривет) — автодополнение/inline predictions/автозамена меняют поле, буфер ≠ текст; нужна AX-сверка перед эмиссией
+- 2026-09-30: brainstorm: пользователь выбрал fail-open при недоступном AX и не включать AXManualAccessibility для проверки; критерий — тесты вердикта и движка + CI, ручная проверка в омнибоксе/Spotlight/TextEdit с автокоррекцией
+- 2026-09-30: artifacts.plan = docs/plans/correction-verifies-field-text-plan.md
+- 2026-09-30: plan drafted
 
 ## Decisions
 
