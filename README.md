@@ -14,7 +14,7 @@ A macOS menu bar utility that automatically corrects keyboard layout mistakes. T
 - **Словари не находились при сборке на Swift 6.4** — `build-app.sh` клал `*.bin` в корень `SwitchFix_Dictionary.bundle`, а новый SwiftPM собирает бандл со структурой `Contents/Resources`. В итоге коррекция молча не работала совсем. ([#14](https://github.com/rundax/SwitchFix/issues/14))
 - **После переключения раскладки клавишей 🌐 (Globe) терялись нажатия** — отложенная проверка фокуса отбрасывалась как устаревшая, и до клика мышью все буквы выпадали из буфера (или терялась первая: `ghbdtn` → `gпривет`). ([#15](https://github.com/rundax/SwitchFix/issues/15))
 - **В Chromium/Electron (Claude, Chrome) хоткей стирал слова целиком** — синтетические Backspace доходили до приложения раньше отпускания модификатора и превращались в Option+Backspace. Теперь у синтетических нажатий модификаторы явно сброшены.
-- **Выделение в Electron-приложениях** — перед чтением выделения включается `AXManualAccessibility`, без него Electron не отдаёт поле ввода через Accessibility.
+- **Выделение в Electron-приложениях** — если без него поле ввода не видно через Accessibility, перед чтением выделения включается `AXManualAccessibility` и через 30 с после последнего запроса выключается обратно: оставленный включённым, он переводит VS Code в режим скринридера, а Telegram показывает баннер. Если его включил скринридер, SwitchFix его не трогает.
 - **Telegram (Qt) выбрасывал вставляемый текст** — для таких приложений есть режим отправки через системный поток событий (вкладка **Приложения** в настройках, см. ниже).
 
 ### Детекция без словарей
@@ -29,6 +29,12 @@ A macOS menu bar utility that automatically corrects keyboard layout mistakes. T
   больше не трогается; перевели горячей клавишей слово, которое SwitchFix не узнал, — дальше оно
   исправляется само. Все правила видны и редактируются на вкладке настроек **Слова**: поиск, фильтр,
   добавление, правка, удаление, сброс выученного. Ваши собственные записи обучение не меняет.
+- **Слово, законченное Enter, автоматически не исправляется.** В чатах и терминале Enter уже отправил
+  текст: исправление стёрло бы не то и отправило бы сообщение повторно.
+- **Защищённый ввод виден в меню.** Пока какое-то приложение держит Secure Input (поле пароля, менеджер
+  паролей, «Защищённый ввод с клавиатуры» в Терминале), macOS не показывает SwitchFix нажатия. В меню
+  появляется «Пауза: защищённый ввод включён в <приложение>», а после выключения буфер слова сбрасывается,
+  чтобы не исправить текст по неполным нажатиям.
 - **Ползунок «Чувствительность»** (вкладка **Исправление**) — от «Осторожно» до «Смело». Каждое деление
   откалибровано перебором порогов на отложенном наборе текстов (`plan/benchmarks/thresholds_005.md`).
 
@@ -87,7 +93,7 @@ git pull upstream master
 
 ## Features
 
-- **Automatic correction** — detects wrong-layout words on space/enter and corrects them instantly.
+- **Automatic correction** — detects wrong-layout words on space or punctuation and corrects them instantly (a word ended by Enter is left alone: the text may already be sent).
 - **Hotkey mode** — correct only when you press Ctrl+Shift+Space (configurable).
 - **Selection correction** — select text and press the hotkey to convert it.
 - **Permissions indicator** — missing macOS permissions show up at the top of the menu and in Settings → General.

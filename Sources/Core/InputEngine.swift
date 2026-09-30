@@ -279,9 +279,22 @@ public final class InputEngine {
         }
     }
 
+    /// The key code of a typed character identifies the character, so it is logged only
+    /// with the text itself.
+    private static func logDescription(_ input: CapturedInput) -> String {
+        if !SwitchFixLog.logsTypedText {
+            switch input.kind {
+            case .character(let text): return "character(\(SwitchFixLog.text(text)))"
+            case .boundary(let text): return "boundary(\(SwitchFixLog.text(text)))"
+            default: break
+            }
+        }
+        return "\(input.kind) keyCode=\(input.keyCode)"
+    }
+
     private func process(_ input: CapturedInput) {
         latestProcessedSequence = input.sequence
-        logger.debug("input seq=\(input.sequence) kind=\(String(describing: input.kind)) keyCode=\(input.keyCode) autorepeat=\(input.isAutorepeat) srcPid=\(input.sourcePID)")
+        logger.debug("input seq=\(input.sequence) kind=\(Self.logDescription(input), privacy: .public) autorepeat=\(input.isAutorepeat) srcPid=\(input.sourcePID)")
 
         if input.kind.recordsUserEdit {
             correctionQueue.async { [weak self] in
@@ -317,14 +330,14 @@ public final class InputEngine {
     private func handle(_ command: InputStateCommand) {
         switch command {
         case .append(let text):
-            logger.debug("buffer '\(self.stateMachine.currentBuffer)' (+ '\(text)')")
+            logger.debug("buffer \(SwitchFixLog.text(self.stateMachine.currentBuffer), privacy: .public) (+ \(SwitchFixLog.text(text), privacy: .public))")
         case .deleteLast:
-            logger.debug("buffer '\(self.stateMachine.currentBuffer)' (backspace)")
+            logger.debug("buffer \(SwitchFixLog.text(self.stateMachine.currentBuffer), privacy: .public) (backspace)")
         case .invalidate(let reason):
             resetDetectorState()
             logger.debug("buffer invalidated reason=\(String(describing: reason))")
         case .flush(let word, let boundary, let sequence, let context, let continuesPreviousWord):
-            logger.notice("word flushed '\(word)' boundary='\(boundary)' seq=\(sequence) layout=\(context.layout.rawValue)")
+            logger.notice("word flushed \(SwitchFixLog.text(word), privacy: .public) boundary=\(SwitchFixLog.text(boundary), privacy: .public) seq=\(sequence) layout=\(context.layout.rawValue)")
             let latest = captureState.snapshot()
             runDetection(DetectionRequest(
                 word: word,
@@ -336,10 +349,10 @@ public final class InputEngine {
                 continuesPreviousWord: continuesPreviousWord
             ))
         case .requestManualCorrection(let word, let screenSuffix, let sequence, let context):
-            logger.notice("hotkey correction requested word='\(word ?? "nil")' seq=\(sequence)")
+            logger.notice("hotkey correction requested word=\(SwitchFixLog.text(word), privacy: .public) seq=\(sequence)")
             requestManualCorrection(word: word, screenSuffix: screenSuffix, sequence: sequence, context: context)
         case .requestRevert(let word, let sequence, let context):
-            logger.notice("revert hotkey pressed word='\(word ?? "nil")' seq=\(sequence)")
+            logger.notice("revert hotkey pressed word=\(SwitchFixLog.text(word), privacy: .public) seq=\(sequence)")
             correctionQueue.async { [weak self] in
                 guard let self else { return }
                 let reverted: CorrectionPlan?
@@ -442,11 +455,11 @@ public final class InputEngine {
             let duration = DispatchTime.now().uptimeNanoseconds &- startedAt
             if let result {
                 SwitchFixLog.detector.notice(
-                    "detect '\(result.originalWord)' -> '\(result.convertedWord)' source=\(result.sourceLayout.rawValue) target=\(result.targetLayout.rawValue) switch=\(result.shouldSwitchLayout) ms=\(Double(duration) / 1_000_000.0)"
+                    "detect \(SwitchFixLog.text(result.originalWord)) -> \(SwitchFixLog.text(result.convertedWord)) source=\(result.sourceLayout.rawValue) target=\(result.targetLayout.rawValue) switch=\(result.shouldSwitchLayout) ms=\(Double(duration) / 1_000_000.0)"
                 )
             } else {
                 SwitchFixLog.detector.info(
-                    "detect '\(request.word)' -> keep (no correction, ms=\(Double(duration) / 1_000_000.0))"
+                    "detect \(SwitchFixLog.text(request.word)) -> keep (no correction, ms=\(Double(duration) / 1_000_000.0))"
                 )
             }
             guard let result else { return }
@@ -480,16 +493,20 @@ public final class InputEngine {
             cancelReason = "correction-disallowed"
         } else if result.originalWord.count > 64 {
             cancelReason = "word-too-long"
+        } else if request.boundary.contains("\n") {
+            // Enter has already submitted the text in chats and terminals: deleting now
+            // erases the wrong thing and retyping the newline would submit it again.
+            cancelReason = "word-ended-by-enter"
         }
         guard cancelReason == nil else {
             SwitchFixLog.engine.notice("correction cancelled reason=\(cancelReason!)")
-            logger.debug("correction cancelled reason=\(cancelReason!) word='\(result.originalWord)'")
+            logger.debug("correction cancelled reason=\(cancelReason!) word=\(SwitchFixLog.text(result.originalWord), privacy: .public)")
             return
         }
 
         let boundary = request.boundary
         logger.notice(
-            "correction planned '\(result.originalWord)' -> '\(result.convertedWord)' deletes=\(result.originalWord.count + boundary.count) pid=\(request.context.frontmostPID)"
+            "correction planned \(SwitchFixLog.text(result.originalWord), privacy: .public) -> \(SwitchFixLog.text(result.convertedWord), privacy: .public) deletes=\(result.originalWord.count + boundary.count) pid=\(request.context.frontmostPID)"
         )
         let plan = CorrectionPlan(
             boundarySequence: request.sequence,
@@ -510,7 +527,7 @@ public final class InputEngine {
         correctionQueue.async { [weak self] in
             guard let self else { return }
             guard plan.isEligible(using: self.captureState.snapshot()) else {
-                SwitchFixLog.corrector.debug("emission skipped: state changed before apply '\(plan.originalText)'")
+                SwitchFixLog.corrector.debug("emission skipped: state changed before apply \(SwitchFixLog.text(plan.originalText))")
                 return
             }
             let applied = self.customEmission.map { $0(plan) }

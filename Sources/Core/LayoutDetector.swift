@@ -230,7 +230,7 @@ public class LayoutDetector {
 
         // Skip if the word contains mixed scripts (both Latin and Cyrillic)
         if containsMixedScripts(word) {
-            SwitchFixLog.detector.debug("mixed scripts, skipping '\(word)'")
+            SwitchFixLog.detector.debug("mixed scripts, skipping \(SwitchFixLog.text(word))")
             state = .buffering
             return nil
         }
@@ -289,7 +289,7 @@ public class LayoutDetector {
         if letterCount <= ShortWordTable.maxLength,
            ShortWordTable.contains(core, language: sourceLayout.modelLanguage),
            !hasEdgeLetterKey(word, typedParts: originalParts, sourceLayout: sourceLayout) {
-            SwitchFixLog.detector.debug("model: common short word '\(word)' in \(sourceLayout.rawValue) — no correction")
+            SwitchFixLog.detector.debug("model: common short word \(SwitchFixLog.text(word)) in \(sourceLayout.rawValue) — no correction")
             markValidInCurrentLanguage()
             return nil
         }
@@ -316,7 +316,7 @@ public class LayoutDetector {
                 if parts.prefix.count > originalParts.prefix.count { continue }
                 let convertedCore = parts.core.isEmpty ? conversion : parts.core
                 if typedIsCamelCase && AutomaticCorrectionSkipRules.isCamelCase(convertedCore) {
-                    SwitchFixLog.detector.debug("camelCase identifier '\(word)' — skipping")
+                    SwitchFixLog.detector.debug("camelCase identifier \(SwitchFixLog.text(word)) — skipping")
                     markValidInCurrentLanguage()
                     return nil
                 }
@@ -327,7 +327,7 @@ public class LayoutDetector {
 
                 if letters <= ShortWordTable.maxLength,
                    ShortWordTable.contains(convertedCore, language: target.modelLanguage) {
-                    SwitchFixLog.detector.debug("model: '\(word)' → common short word '\(recomposed)' in \(target.rawValue)")
+                    SwitchFixLog.detector.debug("model: \(SwitchFixLog.text(word)) → common short word \(SwitchFixLog.text(recomposed)) in \(target.rawValue)")
                     return finishCorrection(
                         word: word,
                         recomposedWord: recomposed,
@@ -368,7 +368,7 @@ public class LayoutDetector {
                 "model decision corrected=true margin=\(String(format: "%.1f", best.margin)) threshold=\(String(format: "%.1f", best.threshold)) letters=\(letterCount)"
             )
             SwitchFixLog.detector.debug(
-                "model: '\(word)' → '\(best.recomposed)' margin=\(String(format: "%.1f", best.margin)) threshold=\(String(format: "%.1f", best.threshold)) letters=\(letterCount)"
+                "model: \(SwitchFixLog.text(word)) → \(SwitchFixLog.text(best.recomposed)) margin=\(String(format: "%.1f", best.margin)) threshold=\(String(format: "%.1f", best.threshold)) letters=\(letterCount)"
             )
             return finishCorrection(
                 word: word,
@@ -451,7 +451,7 @@ public class LayoutDetector {
            targetLayout != sourceLayout,
            word.count > shortWordSuppressionLength, word.count <= contextKeepLength,
            hasStrongCurrentContext() {
-            SwitchFixLog.detector.info("kept short word '\(word)' -> '\(finalWord)' (strong current context)")
+            SwitchFixLog.detector.info("kept short word \(SwitchFixLog.text(word)) -> \(SwitchFixLog.text(finalWord)) (strong current context)")
             consecutiveWrongCount = 0
             lastDetectionResult = nil
             // The kept word must not count toward the next word's layout switch.
@@ -470,7 +470,7 @@ public class LayoutDetector {
             isLowConfidence: isLowConfidence,
             shouldSwitch: shouldSwitch
         ) {
-            SwitchFixLog.detector.info("suppressed short word '\(word)' -> '\(finalWord)' (weak evidence, deferring)")
+            SwitchFixLog.detector.info("suppressed short word \(SwitchFixLog.text(word)) -> \(SwitchFixLog.text(finalWord)) (weak evidence, deferring)")
             consecutiveWrongCount = 0
             lastDetectionResult = nil
             // Only a single space may be retyped by the merged correction: Enter would send

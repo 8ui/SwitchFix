@@ -41,9 +41,14 @@ public final class KeyboardMonitor {
     // Tap-callback-thread confined: a lone hotkey-modifier press awaiting its release.
     private var controlTapArmed = false
     private var tapResetCount: UInt64 = 0
+    /// Uptime of the last mouse-down the tap delivered: a watchdog compares it with clicks
+    /// seen elsewhere to catch a tap that reports enabled but gets no events.
+    private let lastMouseDown = OSAllocatedUnfairLock<TimeInterval>(initialState: 0)
 
     private static let spaceKeyCode: UInt16 = 49
     private static let returnKeyCode: UInt16 = 36
+    /// Keypad Enter types U+0003, which would otherwise reach the word buffer as a letter.
+    private static let keypadEnterKeyCode: UInt16 = 76
     private static let tabKeyCode: UInt16 = 48
     private static let escapeKeyCode: UInt16 = 53
     private static let deleteKeyCode: UInt16 = 51
@@ -174,6 +179,30 @@ public final class KeyboardMonitor {
         return true
     }
 
+    public var lastMouseDownUptime: TimeInterval {
+        lastMouseDown.withLock { $0 }
+    }
+
+    /// The HID fallback tap misses clicks posted at session level (Screen Sharing,
+    /// Universal Control), so a missed click proves nothing there.
+    public var usesHIDTap: Bool {
+        lifecycle.withLock { $0.isMonitoring && $0.prefersLayoutTranslation }
+    }
+
+    public var isTapEnabled: Bool {
+        guard let tap = lifecycle.withLock({ $0.tap }) else { return false }
+        return CGEvent.tapIsEnabled(tap: tap)
+    }
+
+    /// Replaces the tap with a new one: after sleep, a screen lock or re-signing a tap may stop
+    /// receiving events without any tapDisabled event.
+    @discardableResult
+    public func restart(reason: String) -> Bool {
+        SwitchFixLog.monitor.notice("KeyboardMonitor: recreating event tap (\(reason))")
+        stop()
+        return start()
+    }
+
     /// Precompute HID fallback translations away from the event-tap callback.
     public func refreshInputTranslations() {
         let sources = [
@@ -257,6 +286,10 @@ public final class KeyboardMonitor {
         if type == .tapDisabledByTimeout || type == .tapDisabledByUserInput {
             handleTapReset(event: event)
             return
+        }
+        if type == .leftMouseDown || type == .rightMouseDown || type == .otherMouseDown {
+            let now = ProcessInfo.processInfo.systemUptime
+            lastMouseDown.withLock { $0 = now }
         }
 
         let sourceUserData = event.getIntegerValueField(.eventSourceUserData)
@@ -383,7 +416,7 @@ public final class KeyboardMonitor {
         if keyCode == KeyboardMonitor.spaceKeyCode {
             return .boundary(" ")
         }
-        if keyCode == KeyboardMonitor.returnKeyCode {
+        if keyCode == KeyboardMonitor.returnKeyCode || keyCode == KeyboardMonitor.keypadEnterKeyCode {
             return .boundary("\n")
         }
         if keyCode == KeyboardMonitor.deleteKeyCode {

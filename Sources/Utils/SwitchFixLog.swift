@@ -14,11 +14,27 @@ public enum SwitchFixLog {
     public static let permissions = SwitchFixLogger(category: "permissions")
     public static let preferences = SwitchFixLogger(category: "preferences")
     public static let lexicon = SwitchFixLogger(category: "lexicon")
+
+    /// Typed text is kept out of the log unless explicitly enabled for debugging
+    /// (`defaults write com.switchfix.app SwitchFix_logTypedText -bool YES`, then relaunch):
+    /// log messages are public and readable by any local admin process.
+    public static let logsTypedText = UserDefaults.standard.bool(forKey: "SwitchFix_logTypedText")
+
+    /// A word, buffer or selection for a log message: quoted when typed-text logging is on,
+    /// otherwise only its length.
+    public static func text(_ value: String) -> String {
+        logsTypedText ? "'\(value)'" : "<\(value.count) chars>"
+    }
+
+    public static func text(_ value: String?) -> String {
+        value.map { text($0) } ?? "nil"
+    }
 }
 
 /// Every message is prefixed "[SwitchFix]" so it survives filtering with
 /// `eventMessage CONTAINS "[SwitchFix]"`, and all dynamic values are logged
-/// public so they are readable in Console.app and `log stream`.
+/// public so they are readable in Console.app and `log stream` — so typed text
+/// must go through `SwitchFixLog.text(_:)`.
 public struct SwitchFixLogger {
     private let logger: Logger
 

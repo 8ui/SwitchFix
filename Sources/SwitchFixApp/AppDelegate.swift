@@ -10,6 +10,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var inputEngine: InputEngine?
     private var captureState: CaptureStateStore?
     private var focusCoordinator: AccessibilityFocusCoordinator?
+    private var secureInputMonitor: SecureInputMonitor?
+    private var clickWatchdog: Any?
+    private var lastTapRestartUptime: TimeInterval = 0
+    private var pendingSessionRestart: DispatchWorkItem?
     private let inputSourceManager = InputSourceManager.shared
     private var observersRegistered = false
     private var readyLayouts: Set<Layout> = []
@@ -105,6 +109,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationWillTerminate(_ notification: Notification) {
         PersonalLexicon.shared.flush()
+        secureInputMonitor?.stop()
+        if let clickWatchdog {
+            NSEvent.removeMonitor(clickWatchdog)
+        }
         focusCoordinator?.stop()
         keyboardMonitor?.stop()
     }
@@ -142,14 +150,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         monitor.onInput = { [weak engine] input in
             engine?.enqueue(input)
         }
-        keyboardMonitor = monitor
-
         guard monitor.start() else {
             SwitchFixLog.app.error("Monitoring failed to start (event tap creation failed)")
             return
         }
+        // Only a started monitor: restartTap must not bring up a tap without focus observation.
+        keyboardMonitor = monitor
         let context = state.snapshot().context
         focusCoordinator?.observeApplication(pid: context.frontmostPID, epoch: context.epoch)
+        let secureInput = SecureInputMonitor { [weak self] _ in
+            self?.secureInputDidChange()
+        }
+        secureInput.start()
+        secureInputMonitor = secureInput
+        startTapWatchdog()
         SwitchFixLog.app.notice("monitoring started pid=\(context.frontmostPID) layout=\(context.layout.rawValue) appAllowed=\(context.appAllowed)")
     }
 
@@ -191,6 +205,77 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             object: nil,
             suspensionBehavior: .deliverImmediately
         )
+        for name in [
+            NSWorkspace.didWakeNotification,
+            NSWorkspace.screensDidWakeNotification,
+            NSWorkspace.sessionDidBecomeActiveNotification,
+        ] {
+            NSWorkspace.shared.notificationCenter.addObserver(
+                self,
+                selector: #selector(sessionResumed(_:)),
+                name: name,
+                object: nil
+            )
+        }
+        DistributedNotificationCenter.default().addObserver(
+            self,
+            selector: #selector(sessionResumed(_:)),
+            name: NSNotification.Name("com.apple.screenIsUnlocked"),
+            object: nil,
+            suspensionBehavior: .deliverImmediately
+        )
+    }
+
+    /// After sleep, a screen lock or a user switch the tap can stay "enabled" and still get
+    /// nothing, without any tapDisabled event: recreate it.
+    /// Wake, screen wake and unlock arrive in a burst, possibly seconds apart (Touch ID):
+    /// restart once, a second after the last of them, whatever the watchdog did meanwhile.
+    @objc private func sessionResumed(_ notification: Notification) {
+        pendingSessionRestart?.cancel()
+        let reason = notification.name.rawValue
+        let restart = DispatchWorkItem { [weak self] in
+            self?.restartTap(reason: reason, force: true)
+        }
+        pendingSessionRestart = restart
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1, execute: restart)
+    }
+
+    /// A click another app received that the tap did not see means the tap is dead.
+    /// Global monitors need no permission for mouse events, so this keeps working when the tap
+    /// does not. The click's own time (seconds since boot, the clock the tap records with
+    /// `systemUptime`) is compared, so a stalled main thread cannot fake a miss: a healthy tap
+    /// receives the click after it happened.
+    /// Proves mouse delivery only: a tap that gets clicks but no keys passes.
+    private func startTapWatchdog() {
+        guard clickWatchdog == nil else { return }
+        clickWatchdog = NSEvent.addGlobalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown]) { [weak self] event in
+            let clickedAt = event.timestamp
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1) {
+                guard let self, let monitor = self.keyboardMonitor else { return }
+                let enabled = monitor.isTapEnabled
+                if enabled, monitor.usesHIDTap || monitor.lastMouseDownUptime >= clickedAt - 0.05 { return }
+                self.restartTap(reason: enabled ? "tap missed a click" : "tap disabled")
+            }
+        }
+    }
+
+    private func restartTap(reason: String, force: Bool = false) {
+        guard let monitor = keyboardMonitor else { return }
+        // A dead tap would retrigger the watchdog on every click.
+        let now = ProcessInfo.processInfo.systemUptime
+        guard force || now - lastTapRestartUptime >= 5 else { return }
+        lastTapRestartUptime = now
+        monitor.refreshInputTranslations()
+        guard monitor.restart(reason: reason) else {
+            SwitchFixLog.app.error("event tap could not be recreated (\(reason))")
+            return
+        }
+        // Key presses may have been missed while the tap was dead: drop the buffered word.
+        guard let pid = captureState?.snapshot().context.frontmostPID,
+              let epoch = publishUnknownFocus(for: pid) else {
+            return
+        }
+        focusCoordinator?.focusMayChange(pid: pid, epoch: epoch)
     }
 
     /// A layout was added or removed in System Settings: rebuild the key tables.
@@ -337,6 +422,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             secureFocus: current.secureFocus
         )
         inputEngine?.updateContext(context)
+    }
+
+    /// Key presses made while Secure Input was on never reached the tap, so the buffered
+    /// word no longer matches the screen: start over and re-resolve focus on either edge.
+    private func secureInputDidChange() {
+        guard let pid = captureState?.snapshot().context.frontmostPID,
+              let epoch = publishUnknownFocus(for: pid) else {
+            return
+        }
+        focusCoordinator?.focusMayChange(pid: pid, epoch: epoch)
     }
 
     private func publishUnknownFocus(for pid: pid_t) -> UInt64? {

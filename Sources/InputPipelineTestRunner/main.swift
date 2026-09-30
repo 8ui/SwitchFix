@@ -1432,6 +1432,18 @@ run("learning: revert of an automatic correction teaches neverCorrect") {
     check(!waitUntil(0.3) { harness.emitted.count > 1 }, "the reverted word is not corrected again")
 }
 
+run("automatic correction: a word ended by Enter is not corrected") {
+    var harness = LearningHarness()
+    harness.type("ghbdtn", boundary: "\n")
+    check(!waitUntil(0.3) { harness.emitted.count > 0 }, "Enter may have submitted the text: no delete, no retype")
+    harness.type("ghbdtn")
+    check(waitUntil { harness.emitted.count == 1 }, "the next word ended by a space is still corrected")
+    _ = waitUntil(0.3) { harness.emitted.count > 1 }
+    check(harness.emitted.count == 1, "exactly one correction, got \(harness.emitted.count)")
+    check(!harness.emitted.all.contains { $0.boundaryText.contains("\n") }, "Enter is never retyped")
+    check(harness.emitted.last?.boundaryText == " ", "only the space is retyped")
+}
+
 run("learning: forced hotkey conversion teaches alwaysCorrect") {
     var harness = LearningHarness()
     harness.type("rehk", boundary: nil)

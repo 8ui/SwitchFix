@@ -160,7 +160,7 @@ public final class TextCorrector {
               plan.deleteCount <= 128,
               let events = makeCorrectionEvents(plan: plan),
               plan.isEligible(using: latestCaptureState()) else {
-            logger.debug("apply rejected '\(plan.originalText)' (oversized/no events/state changed)")
+            logger.debug("apply rejected \(SwitchFixLog.text(plan.originalText), privacy: .public) (oversized/no events/state changed)")
             return false
         }
         post(events, targetPID: plan.targetPID)
@@ -174,7 +174,7 @@ public final class TextCorrector {
             }
         }
         logger.notice(
-            "correction APPLIED '\(plan.correctedText)' <- '\(plan.originalText)' deletes=\(plan.deleteCount) pid=\(plan.targetPID) layoutSwitch=\(plan.targetLayout?.rawValue ?? "none")"
+            "correction APPLIED \(SwitchFixLog.text(plan.correctedText), privacy: .public) <- \(SwitchFixLog.text(plan.originalText), privacy: .public) deletes=\(plan.deleteCount) pid=\(plan.targetPID) layoutSwitch=\(plan.targetLayout?.rawValue ?? "none")"
         )
         return true
     }
@@ -236,7 +236,7 @@ public final class TextCorrector {
             context: context,
             latest: latest
         ) else {
-            logger.info("undo skipped: state stale since correction '\(undo.plan.correctedText)'")
+            logger.info("undo skipped: state stale since correction \(SwitchFixLog.text(undo.plan.correctedText), privacy: .public)")
             undoState.withLock { $0 = nil }
             return nil
         }
@@ -264,7 +264,7 @@ public final class TextCorrector {
         post(events, targetPID: inverse.targetPID)
         undoState.withLock { $0 = nil }
         logger.notice(
-            "revert APPLIED '\(inverse.correctedText)' <- '\(inverse.originalText)' deletes=\(inverse.deleteCount) pid=\(inverse.targetPID)"
+            "revert APPLIED \(SwitchFixLog.text(inverse.correctedText), privacy: .public) <- \(SwitchFixLog.text(inverse.originalText), privacy: .public) deletes=\(inverse.deleteCount) pid=\(inverse.targetPID)"
         )
         if inverse.isEligible(using: latestCaptureState()) {
             let undoLayout = undo.plan.originalLayout
@@ -304,7 +304,7 @@ public final class TextCorrector {
             }
 
             logger.notice(
-                "selection paste '\(convertedText)' <- '\(selectedText)' pid=\(context.frontmostPID) layoutSwitch=\(shouldSwitchLayout ? targetLayout.rawValue : "none")"
+                "selection paste \(SwitchFixLog.text(convertedText), privacy: .public) <- \(SwitchFixLog.text(selectedText), privacy: .public) pid=\(context.frontmostPID) layoutSwitch=\(shouldSwitchLayout ? targetLayout.rawValue : "none")"
             )
             let pasteboard = NSPasteboard.general
             // Snapshot item data into fresh items: items read from a pasteboard are

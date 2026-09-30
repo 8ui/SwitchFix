@@ -3,18 +3,18 @@ id: 2026-09-30-typed-text-in-debug-log
 title: Typed words are written to the debug log as public values
 type: bug
 pipeline: minimal
-phase: triage
+phase: done
 created: 2026-09-30
 updated: 2026-09-30
 blocked_by: null
-steps_done: 0
-steps_total: 0
+steps_done: 4
+steps_total: 4
 step_current: null
 artifacts:
   spec: null
   plan: null
-  branch: null
-  pr: null
+  branch: claude/funny-ramanujan-sdgiso
+  pr: "https://github.com/8ui/SwitchFix/pull/8"
 ---
 
 ## Context
@@ -31,11 +31,24 @@ Debugging в CLAUDE.md, если поменяется поведение.
 
 ## Progress
 
-_Шаги не заданы. `rtp steps <id> --set "…"` или `--from-plan <файл>`._
+1. ✅ SwitchFixLog.text + флаг
+2. ✅ Все места логирования текста
+3. ✅ CLAUDE.md
+4. ✅ Ревью
 
 ## Log
 
 - 2026-09-30: triage — pipeline `minimal`, reason: исследование: gswitch #6 — debug-лог как кейлоггер; InputEngine/LayoutDetector пишут слова с public-приватностью
+- 2026-09-30: brainstorm: что — набранный текст в логах только длиной, флаг SwitchFix_logTypedText для отладки; зачем — public-логи читает любой локальный процесс, notice-уровень сохраняется; критерий — ни один вызов лога не интерполирует слово/буфер/keyCode символа напрямую, CI зелёный
+- 2026-09-30: шаг 1 ✅ SwitchFixLog.text + флаг
+- 2026-09-30: шаг 2 ✅ Все места логирования текста
+- 2026-09-30: шаг 3 ✅ CLAUDE.md
+- 2026-09-30: ревью (субагент): boundary-символы и keyCode границ теперь тоже скрыты, boundary в 'word flushed' через SwitchFixLog.text, CLAUDE.md уточнён; Option-клавиши (.navigation) логируют keyCode как и раньше — низкая ценность
+- 2026-09-30: шаг 4 ✅ Ревью
+- 2026-09-30: impl complete
+- 2026-09-30: verify: `CI зелёный: https://github.com/8ui/SwitchFix/actions/runs/36772505902 (9e5f0e8)` → exit 0 ✅
+- 2026-09-30: ревью учтено, CI зелёный (run 36772505902); ждёт мержа ветки
+- 2026-09-30: artifacts.branch = claude/funny-ramanujan-sdgiso; artifacts.pr = https://github.com/8ui/SwitchFix/pull/8
 
 ## Decisions
 
@@ -50,7 +63,11 @@ _Без `[ ]`/`[x]` пункт невидим для агрегатора и т�
 
 ## Verification
 
-_Доказательства, а не утверждения. Заполняется `rtp verify <id> --run "<команда>"`: команда, exit code, хвост вывода._
+- 2026-09-30 · `CI зелёный: https://github.com/8ui/SwitchFix/actions/runs/36772505902 (9e5f0e8)` · exit 0 ✅
+
+  ```
+  (без вывода)
+  ```
 
 ## Handoff
 

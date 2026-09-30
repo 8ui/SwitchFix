@@ -36,6 +36,16 @@ public class StatusBarController: NSObject, NSMenuDelegate {
             name: .preferencesDidChange,
             object: nil
         )
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(secureInputDidChange),
+            name: .secureInputDidChange,
+            object: nil
+        )
+    }
+
+    @objc private func secureInputDidChange() {
+        refreshWarnings()
     }
 
     private func setupIcon() {
@@ -221,6 +231,20 @@ public class StatusBarController: NSObject, NSMenuDelegate {
             ))
         }
 
+        let secureInputOn = SecureInput.isEnabled()
+        if secureInputOn {
+            let owner = SecureInput.ownerName()
+            let item = NSMenuItem(
+                title: owner.map { String(format: L10n.tr("Paused: secure input is on in %@"), $0) }
+                    ?? L10n.tr("Paused: secure input is on"),
+                action: nil,
+                keyEquivalent: ""
+            )
+            item.toolTip = L10n.tr("While an app keeps secure input on (password fields, password managers, Secure Keyboard Entry in Terminal), macOS hides keystrokes from SwitchFix. Close the password field or turn Secure Keyboard Entry off.")
+            item.image = NSImage(systemSymbolName: "lock.fill", accessibilityDescription: nil)
+            items.append(item)
+        }
+
         if !items.isEmpty {
             items.append(NSMenuItem.separator())
         }
@@ -231,6 +255,8 @@ public class StatusBarController: NSObject, NSMenuDelegate {
 
         if !accessibilityGranted || !inputMonitoringGranted {
             statusItem.button?.toolTip = L10n.tr("SwitchFix (missing permissions)")
+        } else if secureInputOn {
+            statusItem.button?.toolTip = L10n.tr("SwitchFix (paused: secure input is on)")
         } else if hasConflict {
             statusItem.button?.toolTip = L10n.tr("SwitchFix (CapsLock conflict detected)")
         } else {

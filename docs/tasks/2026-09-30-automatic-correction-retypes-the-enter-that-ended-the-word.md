@@ -3,18 +3,18 @@ id: 2026-09-30-automatic-correction-retypes-the-enter-that-ended-the-word
 title: Automatic correction retypes the Enter that ended the word
 type: bug
 pipeline: minimal
-phase: triage
+phase: done
 created: 2026-09-30
 updated: 2026-09-30
 blocked_by: null
-steps_done: 0
-steps_total: 0
+steps_done: 3
+steps_total: 3
 step_current: null
 artifacts:
   spec: null
   plan: null
-  branch: null
-  pr: null
+  branch: claude/funny-ramanujan-sdgiso
+  pr: "https://github.com/8ui/SwitchFix/pull/8"
 ---
 
 ## Context
@@ -30,11 +30,23 @@ artifacts:
 
 ## Progress
 
-_Шаги не заданы. `rtp steps <id> --set "…"` или `--from-plan <файл>`._
+1. ✅ Отмена коррекции при границе Enter
+2. ✅ Тест пайплайна
+3. ✅ Ревью
 
 ## Log
 
 - 2026-09-30: triage — pipeline `minimal`, reason: KeyboardMonitor: Return → .boundary("\n"); CorrectionPlan.replacementText = converted + boundary → после Enter (сообщение уже отправлено) коррекция перенабирает '\n' — в чатах возможна повторная отправка; найдено ревью задачи 2026-09-30-merged-short-word-correction-deletes-text-without-checking
+- 2026-09-30: brainstorm: вывод — слово, законченное Enter, не исправлять автоматически (текст уже отправлен); критерий — тест пайплайна: Enter → нет эмиссии, следующий пробел → коррекция
+- 2026-09-30: шаг 1 ✅ Отмена коррекции при границе Enter — prepareCorrection: cancelReason word-ended-by-enter
+- 2026-09-30: шаг 2 ✅ Тест пайплайна — InputPipelineTestRunner: automatic correction: a word ended by Enter
+- 2026-09-30: ревью (субагент): keypad Enter (76) попадал в буфер как U+0003 — теперь граница \n; тест проверяет ровно одну коррекцию без \n; README: space or punctuation; два минорных — в долг
+- 2026-09-30: шаг 3 ✅ Ревью — ревью субагента учтено
+- 2026-09-30: impl complete
+- 2026-09-30: verify: `CI зелёный: https://github.com/8ui/SwitchFix/actions/runs/36771299604 (коммит 9d5d2e7; keypad Enter 610f432 — ждёт прогона ветки)` → exit 0 ✅
+- 2026-09-30: verify: `CI зелёный: https://github.com/8ui/SwitchFix/actions/runs/36772505902 (9e5f0e8)` → exit 0 ✅
+- 2026-09-30: ревью учтено, CI зелёный (run 36772505902); ждёт мержа ветки
+- 2026-09-30: artifacts.branch = claude/funny-ramanujan-sdgiso; artifacts.pr = https://github.com/8ui/SwitchFix/pull/8
 
 ## Decisions
 
@@ -42,14 +54,22 @@ _Нетривиальные решения по ходу задачи. Одна 
 
 ## Debt
 
-_Отложенное, упрощения, известные пробелы. Формат — чекбоксы (их считают индекс и отчёты по долгам):_
-_- `- [ ] <что отложено> — <почему/контекст>` — открытый долг_
-_- `- [x] <что было> — закрыто YYYY-MM-DD: <причина/ссылка на task>` — закрытый_
-_Без `[ ]`/`[x]` пункт невидим для агрегатора и теряется через 2 недели._
+- [ ] Отменённая Enter-коррекция всё равно пишет детектору recordOutcome(.corrected) и тратит pendingSwitch — ослабляет защиту коротких слов на следующих словах; нужен хук «отменено» в детекторе
+- [ ] Слово, законченное Enter, не переключает раскладку, и Shift+Return (перевод строки без отправки) тоже пропускается — можно переключать источник без перенабора и/или пропускать Shift+Return
 
 ## Verification
 
-_Доказательства, а не утверждения. Заполняется `rtp verify <id> --run "<команда>"`: команда, exit code, хвост вывода._
+- 2026-09-30 · `CI зелёный: https://github.com/8ui/SwitchFix/actions/runs/36771299604 (коммит 9d5d2e7; keypad Enter 610f432 — ждёт прогона ветки)` · exit 0 ✅
+
+  ```
+  (без вывода)
+  ```
+
+- 2026-09-30 · `CI зелёный: https://github.com/8ui/SwitchFix/actions/runs/36772505902 (9e5f0e8)` · exit 0 ✅
+
+  ```
+  (без вывода)
+  ```
 
 ## Handoff
 
