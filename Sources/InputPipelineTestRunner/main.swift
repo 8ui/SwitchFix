@@ -102,7 +102,7 @@ run("ordered word") {
     }
     commands += machine.consume(input(sequence: 5, kind: .boundary(" "), context: current))
     let flushes = commands.compactMap { command -> String? in
-        if case .flush(let word, _, _, _) = command { return word }
+        if case .flush(let word, _, _, _, _) = command { return word }
         return nil
     }
     check(flushes == ["code"], "c-o-d-e must flush exactly once and in order")
@@ -117,7 +117,7 @@ run("navigation skips automatic correction of the word it lands in") {
         return machine.consume(input(sequence: sequence, kind: kind, context: current, keyCode: keyCode))
     }
     func flushed(_ commands: [InputStateCommand]) -> [String] {
-        commands.compactMap { if case .flush(let word, _, _, _) = $0 { return word } else { return nil } }
+        commands.compactMap { if case .flush(let word, _, _, _, _) = $0 { return word } else { return nil } }
     }
     let leftArrow: UInt16 = 123
     let backspace: UInt16 = 51
@@ -146,6 +146,32 @@ run("navigation skips automatic correction of the word it lands in") {
     check(flushed(afterSwitch) == ["ghbdtn"], "the first word in another app is corrected")
 }
 
+run("flush marks a word typed right after the previous flush") {
+    let current = context()
+    var machine = automaticMachine(current)
+    var sequence: UInt64 = 0
+    func send(_ kind: CapturedInput.Kind) -> [InputStateCommand] {
+        sequence += 1
+        return machine.consume(input(sequence: sequence, kind: kind, context: current))
+    }
+    func adjacency(after between: [CapturedInput.Kind], word: String = "ab") -> Bool? {
+        for kind in between { _ = send(kind) }
+        for character in word { _ = send(.character(String(character))) }
+        for command in send(.boundary(" ")) {
+            if case .flush(_, _, _, _, let continues) = command { return continues }
+        }
+        return nil
+    }
+    check(adjacency(after: []) == false, "the first word follows nothing")
+    check(adjacency(after: []) == true, "a word typed right after a flush continues it")
+    check(adjacency(after: [.character("x"), .delete]) == true, "deletes inside the word keep adjacency")
+    check(adjacency(after: [.boundary(" ")]) == false, "a second space breaks adjacency")
+    _ = adjacency(after: [])
+    check(adjacency(after: [.undo, .boundary(" ")]) == false, "undo breaks adjacency")
+    _ = adjacency(after: [])
+    check(adjacency(after: [.hotkey]) == false, "a hotkey breaks adjacency")
+}
+
 run("autorepeat preserved") {
     let current = context()
     var machine = automaticMachine(current)
@@ -153,7 +179,7 @@ run("autorepeat preserved") {
     _ = machine.consume(input(sequence: 2, kind: .character("c"), context: current, autorepeat: true))
     let commands = machine.consume(input(sequence: 3, kind: .boundary(" "), context: current))
     let word = commands.compactMap { command -> String? in
-        if case .flush(let word, _, _, _) = command { return word }
+        if case .flush(let word, _, _, _, _) = command { return word }
         return nil
     }.first
     check(word == "cc", "autorepeat characters must not be deduplicated")
@@ -188,7 +214,7 @@ run("manual hotkey resyncs buffer") {
     }
     let flushed = machine.consume(input(sequence: 12, kind: .boundary(" "), context: current))
         .compactMap { command -> String? in
-            if case .flush(let word, _, _, _) = command { return word }
+            if case .flush(let word, _, _, _, _) = command { return word }
             return nil
         }
     check(flushed == ["drug"], "stale pre-correction text must never be re-deleted at the next boundary")
@@ -776,7 +802,7 @@ run("Globe key without a layout change does not keep the word buffered") {
     _ = machine.consume(input(sequence: 4, kind: .character("x"), context: current))
     let commands = machine.consume(input(sequence: 5, kind: .boundary(" "), context: current))
     let flushed = commands.compactMap { command -> String? in
-        if case .flush(let word, _, _, _) = command { return word }
+        if case .flush(let word, _, _, _, _) = command { return word }
         return nil
     }
     // The Globe key may insert text (emoji picker), so the buffer must not glue across it.
@@ -1076,6 +1102,7 @@ private final class EmissionLog {
     func append(_ plan: CorrectionPlan) { lock.lock(); plans.append(plan); lock.unlock() }
     var last: CorrectionPlan? { lock.lock(); defer { lock.unlock() }; return plans.last }
     var count: Int { lock.lock(); defer { lock.unlock() }; return plans.count }
+    var all: [CorrectionPlan] { lock.lock(); defer { lock.unlock() }; return plans }
 }
 
 private func waitUntil(_ timeout: TimeInterval = 2, _ condition: () -> Bool) -> Bool {
@@ -1117,8 +1144,8 @@ private struct LearningHarness {
     let caret = CaretStub()
     var timestamp: UInt64 = 0
 
-    init(mode: InputCorrectionMode = .automatic, revertReturnsNothing: Bool = false) {
-        let current = context()
+    init(mode: InputCorrectionMode = .automatic, revertReturnsNothing: Bool = false, layout: Layout = .english) {
+        let current = context(layout: layout, sourceID: "com.test.\(layout.rawValue)")
         store = CaptureStateStore(context: current, hotkeys: HotkeyConfiguration(hotkeyModifiers: 0))
         lexicon = PersonalLexicon(storage: InMemoryLexiconStorage(), saveDelay: 0)
         let emitted = EmissionLog()
@@ -1242,6 +1269,48 @@ run("arrow keys skip automatic correction, the hotkey still converts from the bu
     harness.send(.hotkey)
     check(waitUntil { harness.emitted.count == 2 }, "the hotkey converts the buffered word without Accessibility")
     check(harness.emitted.last?.originalText == "ghbdtn", "got \(harness.emitted.last?.originalText ?? "nil")")
+}
+
+/// Strong Russian context, then the short 'ше' ('it' typed on the Russian layout), which the
+/// detector defers and merges with a confirming next word ('цщклы' = 'works').
+private func shortWordHarness() -> LearningHarness {
+    var harness = LearningHarness(layout: .russian)
+    harness.type("сейчас")
+    harness.type("на")
+    return harness
+}
+
+run("merged short word: typed right after it, one space between") {
+    var harness = shortWordHarness()
+    harness.type("ше")
+    harness.type("цщклы")
+    check(waitUntil { harness.emitted.count == 1 }, "the confirmed pair is corrected")
+    check(harness.emitted.last?.originalText == "ше цщклы", "one merged correction, got \(harness.emitted.last?.originalText ?? "nil")")
+    check(harness.emitted.last?.correctedText == "it works", "got \(harness.emitted.last?.correctedText ?? "nil")")
+}
+
+run("merged short word: never across unseen edits or a non-space boundary") {
+    let currentWord = "цщклы ".count
+    for (label, between) in [
+        ("double space", [CapturedInput.Kind.boundary(" "), .boundary(" ")]),
+        ("punctuation then space", [.boundary("!"), .boundary(" ")]),
+        ("undo", [.undo, .character("ч"), .boundary(" ")]),
+        ("arrow", [.navigation, .boundary(" ")]),
+    ] {
+        var harness = shortWordHarness()
+        harness.type("ше", boundary: nil)
+        if case .boundary = between.first {} else { harness.send(.boundary(" ")) }
+        for kind in between { harness.send(kind) }
+        harness.type("цщклы")
+        _ = waitUntil(0.5) { harness.emitted.count > 0 }
+        let tooLong = harness.emitted.all.filter { $0.deleteCount > currentWord }
+        check(tooLong.isEmpty, "\(label): a correction must not reach past the current word, got \(tooLong.map(\.originalText))")
+    }
+    var harness = shortWordHarness()
+    harness.type("ше", boundary: "\n")
+    harness.type("цщклы")
+    _ = waitUntil(0.5) { harness.emitted.count > 0 }
+    check(!harness.emitted.all.contains { $0.replacementText.contains("\n") }, "Enter is never retyped")
 }
 
 run("hotkey on a screen word never teaches the lexicon") {

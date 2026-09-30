@@ -33,7 +33,9 @@ public enum InputInvalidationReason: Equatable {
 
 public enum InputStateCommand: Equatable {
     case append(String)
-    case flush(word: String, boundary: String, sequence: UInt64, context: InputContextSnapshot)
+    /// `continuesPreviousWord`: the word was typed right after the previous flush (only its
+    /// characters and in-word deletes in between), so the screen still shows both words.
+    case flush(word: String, boundary: String, sequence: UInt64, context: InputContextSnapshot, continuesPreviousWord: Bool)
     case deleteLast
     case invalidate(InputInvalidationReason)
     /// `screenSuffix`: how the text before the caret must end (see `ScreenSuffix`); nil when
@@ -90,6 +92,9 @@ public struct InputStateMachine {
     /// context after every arrow key.
     public private(set) var skipsAutomaticFlushUntilBoundary = false
     public private(set) var layoutSwitchWord = ""
+    /// The previous event was a flush, and since then only the next word's characters (and
+    /// deletes inside it) were typed.
+    private var wordFollowsFlush = false
     private var screenSuffix = ScreenSuffix()
     public private(set) var context: InputContextSnapshot
     public private(set) var preferences: InputPreferencesSnapshot
@@ -106,6 +111,7 @@ public struct InputStateMachine {
         }
         self.context = context
         guard changed else { return [] }
+        wordFollowsFlush = false
         currentBuffer = ""
         isInvalidUntilBoundary = false
         layoutSwitchWord = ""
@@ -124,6 +130,7 @@ public struct InputStateMachine {
         let wasEnabled = self.preferences.isEnabled
         self.preferences = preferences
         guard wasEnabled && !preferences.isEnabled else { return [] }
+        wordFollowsFlush = false
         currentBuffer = ""
         isInvalidUntilBoundary = false
         layoutSwitchWord = ""
@@ -133,6 +140,9 @@ public struct InputStateMachine {
 
     public mutating func consume(_ input: CapturedInput) -> [InputStateCommand] {
         guard input.sourceUserData != switchFixEventMarker else { return [] }
+        // Any event other than typing the next word breaks the adjacency to the last flush.
+        let followsFlush = wordFollowsFlush
+        wordFollowsFlush = false
         // Cleared by any consumed input; text inserted without a captured event
         // (dictation, emoji picker) does not clear it — InputEngine bounds its age.
         layoutSwitchWord = ""
@@ -211,6 +221,7 @@ public struct InputStateMachine {
                 return [.invalidate(.navigation)]
             }
             currentBuffer.removeLast()
+            wordFollowsFlush = followsFlush
             return [.deleteLast]
         case .character(let text):
             guard canBuffer(input.context) else {
@@ -224,6 +235,7 @@ public struct InputStateMachine {
                 return [.invalidate(.bufferOverflow)]
             }
             currentBuffer += text
+            wordFollowsFlush = followsFlush
             return [.append(text)]
         case .boundary(let boundary):
             defer {
@@ -239,11 +251,13 @@ public struct InputStateMachine {
             guard !skipsAutomaticFlushUntilBoundary else { return [] }
             switch preferences.correctionMode {
             case .automatic:
+                wordFollowsFlush = true
                 return [.flush(
                     word: currentBuffer,
                     boundary: boundary,
                     sequence: input.sequence,
-                    context: input.context
+                    context: input.context,
+                    continuesPreviousWord: followsFlush
                 )]
             case .hotkey, .layoutSwitch:
                 return []
@@ -265,6 +279,7 @@ public struct InputStateMachine {
     }
 
     private mutating func invalidate(untilBoundary: Bool) {
+        wordFollowsFlush = false
         currentBuffer = ""
         isInvalidUntilBoundary = untilBoundary
     }

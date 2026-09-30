@@ -9,6 +9,8 @@ public struct DetectionRequest: Equatable {
     public let editGeneration: UInt64
     public let correctionEpoch: UInt64
     public let context: InputContextSnapshot
+    /// See `InputStateCommand.flush`; false for hotkey requests.
+    public let continuesPreviousWord: Bool
 
     public init(
         word: String,
@@ -16,7 +18,8 @@ public struct DetectionRequest: Equatable {
         sequence: UInt64,
         editGeneration: UInt64,
         correctionEpoch: UInt64,
-        context: InputContextSnapshot
+        context: InputContextSnapshot,
+        continuesPreviousWord: Bool = false
     ) {
         self.word = word
         self.boundary = boundary
@@ -24,6 +27,7 @@ public struct DetectionRequest: Equatable {
         self.editGeneration = editGeneration
         self.correctionEpoch = correctionEpoch
         self.context = context
+        self.continuesPreviousWord = continuesPreviousWord
     }
 }
 
@@ -319,7 +323,7 @@ public final class InputEngine {
         case .invalidate(let reason):
             resetDetectorState()
             logger.debug("buffer invalidated reason=\(String(describing: reason))")
-        case .flush(let word, let boundary, let sequence, let context):
+        case .flush(let word, let boundary, let sequence, let context, let continuesPreviousWord):
             logger.notice("word flushed '\(word)' boundary='\(boundary)' seq=\(sequence) layout=\(context.layout.rawValue)")
             let latest = captureState.snapshot()
             runDetection(DetectionRequest(
@@ -328,7 +332,8 @@ public final class InputEngine {
                 sequence: sequence,
                 editGeneration: latest.editGeneration,
                 correctionEpoch: correctionEpoch,
-                context: context
+                context: context,
+                continuesPreviousWord: continuesPreviousWord
             ))
         case .requestManualCorrection(let word, let screenSuffix, let sequence, let context):
             logger.notice("hotkey correction requested word='\(word ?? "nil")' seq=\(sequence)")
@@ -390,7 +395,8 @@ public final class InputEngine {
                 self.detector.discardBuffer()
                 self.detector.addCharacter(request.word)
                 result = self.detector.flushBuffer(
-                    boundaryCharacter: request.boundary.isEmpty ? nil : request.boundary
+                    boundaryCharacter: request.boundary.isEmpty ? nil : request.boundary,
+                    continuesPreviousWord: request.continuesPreviousWord
                 )
                 let detectorResult = result
                 // Manual hotkey = explicit user intent: convert even when the
