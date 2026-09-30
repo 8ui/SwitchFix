@@ -3,18 +3,18 @@ id: 2026-09-30-check-upstream-develop-edge-cases-against-the-n-gram
 title: Check upstream develop edge cases against the n-gram detector
 type: bug
 pipeline: no-spec
-phase: review
+phase: done
 created: 2026-09-30
 updated: 2026-09-30
 blocked_by: null
-steps_done: 3
+steps_done: 4
 steps_total: 4
-step_current: 4
+step_current: null
 artifacts:
   spec: null
   plan: docs/plans/upstream-develop-edge-cases-plan.md
-  branch: null
-  pr: null
+  branch: claude/upstream-develop-edge-cases
+  pr: "https://github.com/8ui/SwitchFix/pull/5"
 ---
 
 ## Context
@@ -37,7 +37,7 @@ artifacts:
 1. ✅ A: флаги не исправляются автоматически
 2. ✅ B: 3-буквенные в сильном контексте остаются
 3. ✅ C: после стрелок нет автоисправления слова
-4. ▶ Ревью
+4. ✅ Ревью
 
 ## Log
 
@@ -64,6 +64,11 @@ artifacts:
 - 2026-09-30: verify: `ревью кода: блокеров нет; should-fix (Option+Backspace/Cmd+V выключали исправление следующего слова) исправлен — флаг только для caret-клавиш, сброс при смене приложения, флаг раньше acronym-правила; новые проверки на старом коде FAIL 2, после — InputPipelineTestRunner 988/0, TestRunner 542/0, eval = после B` → exit 0 ✅
 - 2026-09-30: verify: `swift run -c release TestRunner` → exit 0 ✅
 - 2026-09-30: verify: `swift run -c release InputPipelineTestRunner` → exit 0 ✅
+- 2026-09-30: artifacts.branch = claude/upstream-develop-edge-cases; artifacts.pr = https://github.com/8ui/SwitchFix/pull/5
+- 2026-09-30: PR https://github.com/8ui/SwitchFix/pull/5 открыт, CI в процессе; done — после зелёного CI и merge
+- 2026-09-30: verify: `CI зелёный: https://github.com/8ui/SwitchFix/actions/runs/36752606163 (PR #5)` → exit 0 ✅
+- 2026-09-30: шаг 4 ✅ Ревью
+- 2026-09-30: PR https://github.com/8ui/SwitchFix/pull/5 влит (38b48fb), CI зелёный
 
 ## Decisions
 
@@ -71,7 +76,7 @@ _Нетривиальные решения по ходу задачи. Одна 
 
 ## Debt
 
-- [ ] 2-буквенный merge (pendingSuppressedShort) удаляет 'отложенное + bridge + текущее' без проверки экрана: двойной пробел, '!' перед пробелом, Cmd+Z (.undo не сбрасывает детектор), Enter как bridge (перенабор \n отправит сообщение/выполнит команду) — отдельная задача: adjacency-флаг от InputStateMachine + bridge только пробел
+- [x] 2-буквенный merge (pendingSuppressedShort) удаляет 'отложенное + bridge + текущее' без проверки экрана: двойной пробел, '!' перед пробелом, Cmd+Z (.undo не сбрасывает детектор), Enter как bridge (перенабор \n отправит сообщение/выполнит команду) — отдельная задача: adjacency-флаг от InputStateMachine + bridge только пробел — закрыто 2026-09-30: 2026-09-30-merged-short-word-correction-deletes-text-without-checking
 - [ ] C не покрывает клик мышью посреди слова (focusMayChange) — отключать исправление первого слова после клика слишком дорого
 - [x] .navigation включает Cmd/Ctrl/Option-сочетания (Cmd+V, Option-символы, Ctrl+C): слово сразу после них без пробела не исправляется автоматически — осознанная цена C — закрыто 2026-09-30: сужено до caret-клавиш по ревью
 - [ ] B теряет 3-буквенные английские слова внутри русской/украинской фразы (eval: 'у меня дфп в игре' → lag больше не восстанавливается)
@@ -162,6 +167,12 @@ _Нетривиальные решения по ходу задачи. Одна 
   
   Building for production...
   Build complete! (0,18 с)
+  ```
+
+- 2026-09-30 · `CI зелёный: https://github.com/8ui/SwitchFix/actions/runs/36752606163 (PR #5)` · exit 0 ✅
+
+  ```
+  (без вывода)
   ```
 
 ## Handoff
