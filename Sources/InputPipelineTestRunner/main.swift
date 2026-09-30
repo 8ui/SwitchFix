@@ -1136,15 +1136,32 @@ private final class CaretStub {
     }
 }
 
+private final class FieldTextStub {
+    private let lock = NSLock()
+    private var answered = 0
+    var reply: FieldTextSnapshot = .unavailable
+    var calls: Int { lock.lock(); defer { lock.unlock() }; return answered }
+    func answer(_ completion: @escaping (FieldTextSnapshot) -> Void) {
+        lock.lock(); answered += 1; let reply = self.reply; lock.unlock()
+        completion(reply)
+    }
+}
+
 private struct LearningHarness {
     let store: CaptureStateStore
     let engine: InputEngine
     let lexicon: PersonalLexicon
     let emitted: EmissionLog
     let caret = CaretStub()
+    let fieldText = FieldTextStub()
     var timestamp: UInt64 = 0
 
-    init(mode: InputCorrectionMode = .automatic, revertReturnsNothing: Bool = false, layout: Layout = .english) {
+    init(
+        mode: InputCorrectionMode = .automatic,
+        revertReturnsNothing: Bool = false,
+        layout: Layout = .english,
+        verifiesFieldText: Bool = false
+    ) {
         let current = context(layout: layout, sourceID: "com.test.\(layout.rawValue)")
         store = CaptureStateStore(context: current, hotkeys: HotkeyConfiguration(hotkeyModifiers: 0))
         lexicon = PersonalLexicon(storage: InMemoryLexiconStorage(), saveDelay: 0)
@@ -1158,6 +1175,9 @@ private struct LearningHarness {
             caretContextRequest: { [caret] _, _, wantsCaretText, completion in
                 caret.answer(wantsCaretText: wantsCaretText, completion)
             },
+            fieldTextRequest: verifiesFieldText ? { [fieldText] _, _, completion in
+                fieldText.answer(completion)
+            } as InputEngine.FieldTextRequest : nil,
             lexicon: lexicon,
             revertEmission: { _, _ in revertReturnsNothing ? nil : emitted.last }
         )
@@ -1439,6 +1459,7 @@ run("field text verdict") {
     check(verdict(.before("say ghbdtn ")) == .matches, "word and boundary on screen")
     check(verdict(.before("ghbdtn")) == .lagging, "boundary not processed yet")
     check(verdict(.before("say ghbdt")) == .lagging, "Chromium AX text lagging behind typing")
+    check(verdict(.before("say g")) == .mismatch("changed"), "one letter is too little to call it lagging")
     check(verdict(.before("Ghbdtn ")) == .matches, "autocapitalization keeps the count")
     check(verdict(.before("ghbdtn\u{201D}"), "ghbdtn", "\"") == .matches, "smart quote boundary keeps the count")
     check(verdict(.before("ghbdtnf ")) == .mismatch("changed"), "autocorrect changed the word")
@@ -1543,9 +1564,11 @@ run("field text verification: no answer proceeds after the deadline, a late answ
 run("field text verification: a key pressed while reading cancels") {
     let lock = NSLock()
     var plans: [CorrectionPlan] = []
+    let asked = DispatchSemaphore(value: 0)
     let release = DispatchSemaphore(value: 0)
     let (engine, store) = fieldTextEngine(
         request: { _, _, completion in
+            asked.signal()
             DispatchQueue.global().async {
                 _ = release.wait(timeout: .now() + 1)
                 completion(.before("ghbdtn "))
@@ -1554,12 +1577,47 @@ run("field text verification: a key pressed while reading cancels") {
         emitted: { plan in lock.lock(); plans.append(plan); lock.unlock() }
     )
     typeWord("ghbdtn", into: engine, store: store)
+    check(asked.wait(timeout: .now() + 1) == .success, "the field is read")
     engine.enqueue(store.capture(
         timestamp: 99, kind: .character("x"), keyCode: 0,
         flagsRawValue: 0, isAutorepeat: false, sourcePID: 1, sourceUserData: 0
     ))
     release.signal()
-    check(!waitUntil(0.3) { lock.lock(); defer { lock.unlock() }; return !plans.isEmpty }, "stale sequence still cancels")
+    check(!waitUntil(0.3) { lock.lock(); defer { lock.unlock() }; return !plans.isEmpty }, "a key typed while reading cancels")
+}
+
+run("field text verification: a lagging field is read again until the boundary shows") {
+    let lock = NSLock()
+    var plans: [CorrectionPlan] = []
+    var answers: [FieldTextSnapshot] = [.before("ghbdtn"), .before("ghbdtnf ")]
+    var calls = 0
+    let (engine, store) = fieldTextEngine(
+        request: { _, _, completion in
+            lock.lock()
+            calls += 1
+            let answer = answers.isEmpty ? FieldTextSnapshot.before("ghbdtnf ") : answers.removeFirst()
+            lock.unlock()
+            DispatchQueue.global().async { completion(answer) }
+        },
+        emitted: { plan in lock.lock(); plans.append(plan); lock.unlock() }
+    )
+    typeWord("ghbdtn", into: engine, store: store)
+    _ = waitUntil(0.3) { lock.lock(); defer { lock.unlock() }; return !plans.isEmpty }
+    lock.lock()
+    check(calls >= 2, "the lagging field is read again, got \(calls) read(s)")
+    check(plans.isEmpty, "autocorrect on the boundary is caught on the second read")
+    lock.unlock()
+}
+
+run("field text verification: a screen word from the hotkey is not read again") {
+    var harness = LearningHarness(verifiesFieldText: true)
+    harness.fieldText.reply = .before("changed ")
+    harness.caret.reply = .caret(textBefore: "rehk", startsAtTextStart: true, next: nil)
+    harness.selectAllAndDelete()
+    harness.type("rehk", boundary: nil)
+    harness.send(.hotkey)
+    check(waitUntil { harness.emitted.count == 1 }, "the screen word is converted")
+    check(harness.fieldText.calls == 0, "no second read, got \(harness.fieldText.calls)")
 }
 
 run("automatic correction: a word ended by Enter is not corrected") {

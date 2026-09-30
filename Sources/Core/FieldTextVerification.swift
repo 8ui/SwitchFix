@@ -40,9 +40,11 @@ public enum FieldTextVerification {
             if before.hasSuffix(typed) {
                 return shownBoundary.isEmpty ? .matches : .lagging
             }
-            // Chromium's AX text can lag behind typing: any non-empty prefix of the word.
+            // Chromium's AX text can lag behind typing: a prefix of the word, at least half of it
+            // (one letter alone matches too much).
+            let shortest = max(1, typed.count / 2)
             var prefix = typed
-            while prefix.count > 1 {
+            while prefix.count > shortest {
                 prefix.removeLast()
                 if before.hasSuffix(prefix) { return .lagging }
             }

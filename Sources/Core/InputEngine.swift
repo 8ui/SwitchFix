@@ -71,6 +71,8 @@ public final class InputEngine {
     private let fieldTextRequest: FieldTextRequest?
     /// How long a correction waits for the field text before proceeding unverified.
     static let fieldTextDeadline: TimeInterval = 0.04
+    /// Pause before reading a lagging field again.
+    static let fieldTextRetryInterval: TimeInterval = 0.008
     private let revertEmission: RevertEmission?
     private let lexicon: PersonalLexicon?
     private let detectionConfiguration = OSAllocatedUnfairLock(initialState: DetectionConfiguration())
@@ -545,18 +547,34 @@ public final class InputEngine {
 
     /// Reads the text before the caret and cancels the correction if the field changed what it
     /// is about to delete. Never delays input: at most `fieldTextDeadline`, then fail-open;
-    /// exactly one of the answer and the deadline decides (both land on `inputQueue`).
+    /// exactly one decision is made, on `inputQueue`. While the field has not shown the
+    /// boundary yet (lagging), it is read again: autocorrect happens on that boundary.
     private func verifyFieldText(plan: CorrectionPlan, word: String, boundary: String, request: FieldTextRequest) {
         final class Decision { var isMade = false }
         let decision = Decision()
         let startedAt = DispatchTime.now().uptimeNanoseconds
-        let decide: (FieldTextSnapshot?) -> Void = { [weak self] snapshot in
-            guard let self, !decision.isMade else { return }
-            decision.isMade = true
-            let milliseconds = Double(DispatchTime.now().uptimeNanoseconds &- startedAt) / 1_000_000.0
+        let deadline = startedAt &+ UInt64(Self.fieldTextDeadline * 1_000_000_000)
+        let window = FieldTextVerification.window(word: word, boundary: boundary)
+
+        func ask() {
+            request(plan.targetPID, window) { [inputQueue] snapshot in
+                inputQueue.async { decide(snapshot) }
+            }
+        }
+
+        func decide(_ snapshot: FieldTextSnapshot?) {
+            guard !decision.isMade else { return }
             let verdict = snapshot.map {
                 FieldTextVerification.verdict($0, word: word, boundary: boundary)
             } ?? .unknown
+            let now = DispatchTime.now().uptimeNanoseconds
+            if verdict == .lagging,
+               now &+ UInt64(Self.fieldTextRetryInterval * 1_000_000_000) < deadline {
+                inputQueue.asyncAfter(deadline: .now() + Self.fieldTextRetryInterval) { ask() }
+                return
+            }
+            decision.isMade = true
+            let milliseconds = Double(now &- startedAt) / 1_000_000.0
             if case .mismatch(let reason) = verdict {
                 SwitchFixLog.engine.notice(
                     "correction cancelled reason=field-text-\(reason) word=\(SwitchFixLog.text(word)) ms=\(milliseconds)"
@@ -566,11 +584,10 @@ public final class InputEngine {
             SwitchFixLog.engine.info(
                 "field text \(snapshot == nil ? "timeout" : String(describing: verdict)) ms=\(milliseconds)"
             )
-            self.emit(plan)
+            emit(plan)
         }
-        request(plan.targetPID, FieldTextVerification.window(word: word, boundary: boundary)) { [inputQueue] snapshot in
-            inputQueue.async { decide(snapshot) }
-        }
+
+        ask()
         inputQueue.asyncAfter(deadline: .now() + Self.fieldTextDeadline) { decide(nil) }
     }
 

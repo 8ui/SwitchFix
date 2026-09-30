@@ -643,7 +643,6 @@ public final class AccessibilityFocusCoordinator {
     }
 }
 
-/// What surrounds the caret in the focused text element.
 /// The text right before the caret, as a correction's verification reads it.
 public enum FieldTextSnapshot: Equatable, Sendable {
     /// Up to the requested UTF-16 length of text before the caret (shorter at the start of the text).
@@ -654,6 +653,7 @@ public enum FieldTextSnapshot: Equatable, Sendable {
     case unavailable
 }
 
+/// What surrounds the caret in the focused text element.
 public enum CaretContext: Equatable, Sendable {
     /// A non-empty selection.
     case selection(String)
