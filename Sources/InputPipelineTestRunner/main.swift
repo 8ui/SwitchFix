@@ -1541,7 +1541,9 @@ run("field text verification gates automatic corrections") {
         _ = waitUntil(0.3) { lock.lock(); defer { lock.unlock() }; return !plans.isEmpty }
         lock.lock()
         check(plans.count == expected, "\(label): expected \(expected) correction(s), got \(plans.count)")
-        check(windows == [7], "\(label): reads word + boundary, got \(windows)")
+        // A lagging field is read again until the deadline; every read covers word + boundary.
+        check(!windows.isEmpty && windows.allSatisfy { $0 == 7 }, "\(label): reads word + boundary, got \(windows)")
+        if label != "lagging" { check(windows.count == 1, "\(label): one read, got \(windows.count)") }
         lock.unlock()
     }
 }
