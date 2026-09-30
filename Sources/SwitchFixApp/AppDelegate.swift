@@ -13,6 +13,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var secureInputMonitor: SecureInputMonitor?
     private var clickWatchdog: Any?
     private var lastTapRestartUptime: TimeInterval = 0
+    private var pendingSessionRestart: DispatchWorkItem?
     private let inputSourceManager = InputSourceManager.shared
     private var observersRegistered = false
     private var readyLayouts: Set<Layout> = []
@@ -149,12 +150,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         monitor.onInput = { [weak engine] input in
             engine?.enqueue(input)
         }
-        keyboardMonitor = monitor
-
         guard monitor.start() else {
             SwitchFixLog.app.error("Monitoring failed to start (event tap creation failed)")
             return
         }
+        // Only a started monitor: restartTap must not bring up a tap without focus observation.
+        keyboardMonitor = monitor
         let context = state.snapshot().context
         focusCoordinator?.observeApplication(pid: context.frontmostPID, epoch: context.epoch)
         let secureInput = SecureInputMonitor { [weak self] _ in
@@ -227,31 +228,42 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     /// After sleep, a screen lock or a user switch the tap can stay "enabled" and still get
     /// nothing, without any tapDisabled event: recreate it.
+    /// Wake, screen wake and unlock arrive in a burst, possibly seconds apart (Touch ID):
+    /// restart once, a second after the last of them, whatever the watchdog did meanwhile.
     @objc private func sessionResumed(_ notification: Notification) {
-        restartTap(reason: notification.name.rawValue)
+        pendingSessionRestart?.cancel()
+        let reason = notification.name.rawValue
+        let restart = DispatchWorkItem { [weak self] in
+            self?.restartTap(reason: reason, force: true)
+        }
+        pendingSessionRestart = restart
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1, execute: restart)
     }
 
     /// A click another app received that the tap did not see means the tap is dead.
     /// Global monitors need no permission for mouse events, so this keeps working when the tap
-    /// does not; the 0.5 s slack covers clock skew between the two deliveries.
+    /// does not. The click's own time (seconds since boot, the clock the tap records with
+    /// `systemUptime`) is compared, so a stalled main thread cannot fake a miss: a healthy tap
+    /// receives the click after it happened.
+    /// Proves mouse delivery only: a tap that gets clicks but no keys passes.
     private func startTapWatchdog() {
         guard clickWatchdog == nil else { return }
-        clickWatchdog = NSEvent.addGlobalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown]) { [weak self] _ in
-            let seenAt = ProcessInfo.processInfo.systemUptime
+        clickWatchdog = NSEvent.addGlobalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown]) { [weak self] event in
+            let clickedAt = event.timestamp
             DispatchQueue.main.asyncAfter(deadline: .now() + 1) {
                 guard let self, let monitor = self.keyboardMonitor else { return }
-                if monitor.lastMouseDownUptime >= seenAt - 0.5, monitor.isTapEnabled { return }
-                self.restartTap(reason: monitor.isTapEnabled ? "tap missed a click" : "tap disabled")
+                let enabled = monitor.isTapEnabled
+                if enabled, monitor.usesHIDTap || monitor.lastMouseDownUptime >= clickedAt - 0.05 { return }
+                self.restartTap(reason: enabled ? "tap missed a click" : "tap disabled")
             }
         }
     }
 
-    private func restartTap(reason: String) {
+    private func restartTap(reason: String, force: Bool = false) {
         guard let monitor = keyboardMonitor else { return }
-        // Wake, screen wake and unlock arrive together; a dead tap would also retrigger on
-        // every click.
+        // A dead tap would retrigger the watchdog on every click.
         let now = ProcessInfo.processInfo.systemUptime
-        guard now - lastTapRestartUptime >= 5 else { return }
+        guard force || now - lastTapRestartUptime >= 5 else { return }
         lastTapRestartUptime = now
         monitor.refreshInputTranslations()
         guard monitor.restart(reason: reason) else {

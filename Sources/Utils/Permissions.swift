@@ -481,34 +481,55 @@ public final class AccessibilityFocusCoordinator {
     /// Left on, it switches VS Code into screen-reader mode, makes Chrome heavier and shows
     /// a screen-reader banner in Qt apps. So it is set only when focus is invisible without it,
     /// and switched back off a while after the last such query, unless it was on already.
-    /// Runs on the query queue, never on main: the first query after switching it on waits
-    /// up to 150 ms for the tree.
+    /// Runs on the query queue, never on main: a query that switches it on waits up to
+    /// 150 ms for the tree.
     private static func focusedElementRequestingTree(application: AXUIElement, pid: pid_t) -> AXUIElement? {
-        let alreadyOurs = withManualAccessibilityState { owned, _ in owned[pid] != nil }
-        if !alreadyOurs {
-            if let focused = focusedElement(application: application) {
-                return focused
+        var focusError: AXError = .success
+        if let focused = focusedElement(application: application, error: &focusError), exposesText(focused) {
+            // Keep ownership fresh while queries still need it on.
+            if withManualAccessibilityState({ owned, _ in owned[pid] != nil }) {
+                scheduleManualAccessibilityReset(pid: pid)
             }
-            var current: CFTypeRef?
-            if AXUIElementCopyAttributeValue(application, manualAccessibilityAttribute, &current) == .success,
-               (current as? Bool) == true {
-                // Someone else (a screen reader) turned it on: never touch it.
-                return nil
-            }
-            guard AXUIElementSetAttributeValue(application, manualAccessibilityAttribute, kCFBooleanTrue) == .success else {
-                return nil
-            }
-            SwitchFixLog.permissions.info("AXManualAccessibility on pid=\(pid)")
-            scheduleManualAccessibilityReset(pid: pid)
-            // The tree is built asynchronously: give it a moment on this first query only.
-            for _ in 0..<3 {
-                if let focused = focusedElement(application: application) { return focused }
-                Thread.sleep(forTimeInterval: 0.05)
-            }
+            return focused
+        }
+        // A busy app timing out says nothing about its tree; a running screen reader or
+        // enhanced UI means the tree is someone else's to switch off.
+        guard focusError != .cannotComplete,
+              !NSWorkspace.shared.isVoiceOverEnabled,
+              !attributeIsTrue(application, "AXEnhancedUserInterface" as CFString) else {
             return focusedElement(application: application)
         }
+        let alreadyOurs = withManualAccessibilityState { owned, _ in owned[pid] != nil }
+        if !alreadyOurs, attributeIsTrue(application, manualAccessibilityAttribute) {
+            // Someone else (an assistive tool) turned it on: never take it over.
+            return focusedElement(application: application)
+        }
+        // Also when already ours: the app or another tool may have switched it off meanwhile.
+        guard AXUIElementSetAttributeValue(application, manualAccessibilityAttribute, kCFBooleanTrue) == .success else {
+            return focusedElement(application: application)
+        }
+        if !alreadyOurs {
+            SwitchFixLog.permissions.info("AXManualAccessibility on pid=\(pid)")
+        }
         scheduleManualAccessibilityReset(pid: pid)
+        // The tree is built asynchronously: give it a moment.
+        for _ in 0..<3 {
+            if let focused = focusedElement(application: application), exposesText(focused) { return focused }
+            Thread.sleep(forTimeInterval: 0.05)
+        }
         return focusedElement(application: application)
+    }
+
+    /// Chromium and Electron may return a container (window, group, web area) while the tree
+    /// is off: only an element with a text selection range is a usable field.
+    private static func exposesText(_ element: AXUIElement) -> Bool {
+        var range: CFTypeRef?
+        return AXUIElementCopyAttributeValue(element, kAXSelectedTextRangeAttribute as CFString, &range) == .success
+    }
+
+    private static func attributeIsTrue(_ element: AXUIElement, _ attribute: CFString) -> Bool {
+        var value: CFTypeRef?
+        return AXUIElementCopyAttributeValue(element, attribute, &value) == .success && (value as? Bool) == true
     }
 
     private static func scheduleManualAccessibilityReset(pid: pid_t) {
@@ -544,12 +565,18 @@ public final class AccessibilityFocusCoordinator {
     }
 
     private static func focusedElement(application: AXUIElement) -> AXUIElement? {
+        var error: AXError = .success
+        return focusedElement(application: application, error: &error)
+    }
+
+    private static func focusedElement(application: AXUIElement, error: inout AXError) -> AXUIElement? {
         var focusedValue: CFTypeRef?
-        guard AXUIElementCopyAttributeValue(
+        error = AXUIElementCopyAttributeValue(
             application,
             kAXFocusedUIElementAttribute as CFString,
             &focusedValue
-        ) == .success,
+        )
+        guard error == .success,
         let focusedValue,
         CFGetTypeID(focusedValue) == AXUIElementGetTypeID() else {
             return nil

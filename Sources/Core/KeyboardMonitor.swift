@@ -183,6 +183,12 @@ public final class KeyboardMonitor {
         lastMouseDown.withLock { $0 }
     }
 
+    /// The HID fallback tap misses clicks posted at session level (Screen Sharing,
+    /// Universal Control), so a missed click proves nothing there.
+    public var usesHIDTap: Bool {
+        lifecycle.withLock { $0.isMonitoring && $0.prefersLayoutTranslation }
+    }
+
     public var isTapEnabled: Bool {
         guard let tap = lifecycle.withLock({ $0.tap }) else { return false }
         return CGEvent.tapIsEnabled(tap: tap)

@@ -3,13 +3,13 @@ id: 2026-09-30-ax-manual-accessibility-screen-reader-side-effects
 title: AXManualAccessibility stays on and switches apps into screen-reader mode
 type: bug
 pipeline: minimal
-phase: impl
+phase: review
 created: 2026-09-30
 updated: 2026-09-30
 blocked_by: null
-steps_done: 2
+steps_done: 3
 steps_total: 4
-step_current: 3
+step_current: 4
 artifacts:
   spec: null
   plan: null
@@ -34,8 +34,8 @@ Electron атрибут не поддерживается (electron #37465).
 
 1. ✅ Условное включение + отложенное выключение
 2. ✅ Документация
-3. ▶ Ревью
-4. ⬜ Ручная проверка VS Code/Slack/Chrome/Telegram (локально)
+3. ✅ Ревью
+4. ▶ Ручная проверка VS Code/Slack/Chrome/Telegram (локально)
 
 ## Log
 
@@ -43,6 +43,9 @@ Electron атрибут не поддерживается (electron #37465).
 - 2026-09-30: brainstorm: воспроизвести в облаке нельзя (нет macOS); делаем безопасную часть: атрибут только если без него фокус не виден, выключаем через 30 с после последнего запроса и при выходе, не трогаем, если его включил кто-то другой; критерий — CI + ручная проверка VS Code/Slack/Chrome/Telegram (локально)
 - 2026-09-30: шаг 1 ✅ Условное включение + отложенное выключение
 - 2026-09-30: шаг 2 ✅ Документация
+- 2026-09-30: ревью (субагент): атрибут включается и когда фокус есть, но без kAXSelectedTextRange (Chromium отдаёт контейнер); не трогаем при таймауте AX (.cannotComplete), VoiceOver, AXEnhancedUserInterface; уже наш — переустанавливаем true (могли выключить)
+- 2026-09-30: шаг 3 ✅ Ревью
+- 2026-09-30: impl complete; ручная проверка — шаг 4 (локально)
 
 ## Decisions
 
@@ -51,6 +54,7 @@ _Нетривиальные решения по ходу задачи. Одна 
 ## Debt
 
 - [ ] Первый запрос после включения ждёт дерево до 150 мс (3 × 50 мс на queryQueue); проверить локально на Electron, хватает ли — переформулировано 2026-09-30
+- [ ] После аварийного выхода атрибут остаётся включённым, и следующий запуск его не выключит (фокус виден — не наш); reset при выходе может разминуться с запросом между set и schedule; Electron может не отвечать на getter AXManualAccessibility — тогда включённый скринридером атрибут выглядит «не включённым»
 
 ## Verification
 
