@@ -116,14 +116,14 @@ artifacts:
 
 ## Handoff
 
-**Сгенерировано:** 2026-09-29 · `rtp handoff`
+**Сгенерировано:** 2026-09-30 · `rtp handoff`
 
 - **Задача:** `2026-09-29-ngram-only-learning-ui` — Удалить словари: n-gram единственный детектор, обучение на отменах, вкладка Слова, ползунок
 - **Фаза:** review (pipeline `full`, type `feature`)
 - **Прогресс:** 8/8 ▰▰▰▰▰▰▰▰
-- **Worktree:** `/home/user/SwitchFix`
-- **Ветка:** `claude/epic-galileo-zq47ec` — своих коммитов 30, отставание от origin/master 0
-- **Незакоммиченного:** 2 файл(ов)
+- **Worktree:** `/Users/andrejsokolov/Desktop/projects/SwitchFix`
+- **Ветка:** `claude/epic-galileo-zq47ec` — своих коммитов 46, отставание от origin/master 0
+- **Незакоммиченного:** 1 файл(ов)
 
 **Шаги плана**
 
@@ -138,37 +138,34 @@ artifacts:
 
 **Файлы в работе**
 
-- `ocs/tasks/2026-09-29-ngram-only-learning-ui.md`
-- `docs/tasks/index.md`
+- `gitignore`
 
 **git diff HEAD --stat**
 
 ```
-docs/tasks/2026-09-29-ngram-only-learning-ui.md | 11 ++++++++++-
- docs/tasks/index.md                             |  2 +-
- 2 files changed, 11 insertions(+), 2 deletions(-)
+.gitignore | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
 ```
 
 **Последние коммиты**
 
-- `f6e2220 docs(tasks): ngram-only-learning-ui in review`
-- `c307b45 fix(lexicon): address code review of learning and the Words tab`
-- `995568c docs(plan): app size after the Words tab`
+- `27b84cc docs(testing): manual test results, corrected D5 example, automation notes`
+- `b15ebf8 docs(tasks): Words tab findings from manual test E`
+- `6e14366 docs(tasks): layout-switch Globe key bug`
 
 **Последние записи лога**
 
-- 2026-09-29: шаг 8 ✅ документация и Definition of Done — CLAUDE.md, README, plan/005 DoD
-- 2026-09-29: impl complete: 8/8 шагов; code-review субагентом: 0 blocker, 3 major + 7 minor — все исправлены в c307b45
-- 2026-09-29: security-review (субагент): уязвимостей с уверенностью ≥8 нет; secure-focus guards покрывают все пути обучения
 - 2026-09-29: verify: `CI зелёный (после code-review, c307b45): https://github.com/8ui/SwitchFix/actions/runs/36560545031` → exit 0 ✅
 - 2026-09-29: остаётся в review: нужна живая проверка вкладки «Слова» и ползунка на macOS пользователем (в облаке только сборка); код, тесты и доказательства CI готовы
+- 2026-09-29: инструкция для ручной проверки на macOS: docs/testing/ngram-lexicon-manual-test.md
+- 2026-09-30: verify: `Ручная проверка на macOS 27 (RussianWin + Australian, ISO kbd), сценарии A–G, 2026-09-29/30` → exit 0 ✅
+- 2026-09-30: ручная проверка A–G пройдена; найденные баги вынесены в отдельные задачи; остаются debts (пороги по умолчанию, апостроф, аббревиатуры, выбор кириллицы) — закрыть в done по решению пользователя
 
-**Открытые долги (5)**
+**Открытые долги (4)**
 
 - LayoutMapper не знает клавишу украинского апострофа на macOS — слова с ' / ї / є частично недостижимы (п'ятницю, цієї); см. plan/benchmarks/detector_005_phase2.md
 - Короткие русские аббревиатуры (СМС, РФ, шт) дают 0.93% ложных при цели ≤0.5% — кандидаты для фильтра/PersonalLexicon
 - Все три раскладки без истории переключений: украинский уходит в русский (uk→en 73.65%) — нужна эвристика выбора кириллицы без истории
-- Проверить вкладку «Слова» и ползунок «Чувствительность» вживую на macOS (в облаке только сборка в CI): таблица, сортировка, форма, удаление, сброс, перевод
 - Базовые пороги: перебор по правилу §4.6.2 рекомендует ниже текущих (T4 3 вместо 8 и т. д., thresholds_005.md) — решение пользователя: оставить или сдвинуть «по умолчанию» к позиции 3; пересмотреть по логам 'model decision' (info)
 
 **Следующее действие**
@@ -182,6 +179,7 @@ docs/tasks/2026-09-29-ngram-only-learning-ui.md | 11 ++++++++++-
 - 2026-09-29: Корпуса: scripts/fetch-corpora.sh (Leipzig/OPUS/github-docs, сверка scripts/corpora.sha256); обучение детерминировано, ModelTrainer train перегенерирует и ShortWordTable+Generated.swift. Быстрая оценка без macOS: .build/release/ModelTrainer eval / score.
 - 2026-09-29: Удаление словарей затрагивает: Package.swift (Dictionary target), Core/LayoutDetector (словарный путь, WordValidator, import Dictionary), Core/DictionaryReadiness, AppDelegate.prepareDictionaries, build-app.sh (compile_dictionary, SFDICT2), scripts/compile_dictionary.swift, TestRunner (WordValidator/Bloom/Dictionary perf suites, enableTextFallbackForTesting), InputPipelineTestRunner ('missing dictionary seam' — AutomaticDictionaryReadiness), CLAUDE.md/README. Инварианты plan/003 (staleness guards в prepareCorrection/CorrectionPlan.isEligible) не трогать.
 - 2026-09-29: Linux-харнесс для детектора/лексикона/LayoutEval/sweep: scratchpad/harness (Sources/Core — симлинки LayoutDetector/LayoutMapper/NgramScoring/PersonalLexicon, Harness — симлинки тестов TestRunner и LayoutEval, заглушка Utils.SwitchFixLog); после swift build: ln -sfn H_LanguageModel.resources .build/release/SwitchFix_LanguageModel.bundle; запускать из корня репо (--threshold-sweep ~40 с). InputEngine/UI на Linux не собираются — только CI. В SwiftUI-файлах Layout конфликтует с SwiftUI.Layout — использовать KeyboardLayout. security-review скиллу нужен origin/HEAD: git remote set-head origin master.
+- 2026-09-30: 2026-09-30: ручная проверка A–G на macOS пройдена (rtp verify записан). Остаётся решение пользователя: перевести в done (найденные баги вынесены в задачи 2026-09-30-*) и что делать с порогами по умолчанию (debt). Инструкция docs/testing/ngram-lexicon-manual-test.md обновлена: D5, хоткеи, §5 про автоматизацию через osascript/AX. В .gitignore незакоммиченная случайная строка 'ghbdtn ' — не наша, не коммитить, сказать пользователю.
 <!-- /handoff-notes -->
 
 ## Blockers
