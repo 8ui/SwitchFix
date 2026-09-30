@@ -44,6 +44,8 @@ public final class KeyboardMonitor {
 
     private static let spaceKeyCode: UInt16 = 49
     private static let returnKeyCode: UInt16 = 36
+    /// Keypad Enter types U+0003, which would otherwise reach the word buffer as a letter.
+    private static let keypadEnterKeyCode: UInt16 = 76
     private static let tabKeyCode: UInt16 = 48
     private static let escapeKeyCode: UInt16 = 53
     private static let deleteKeyCode: UInt16 = 51
@@ -383,7 +385,7 @@ public final class KeyboardMonitor {
         if keyCode == KeyboardMonitor.spaceKeyCode {
             return .boundary(" ")
         }
-        if keyCode == KeyboardMonitor.returnKeyCode {
+        if keyCode == KeyboardMonitor.returnKeyCode || keyCode == KeyboardMonitor.keypadEnterKeyCode {
             return .boundary("\n")
         }
         if keyCode == KeyboardMonitor.deleteKeyCode {

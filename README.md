@@ -89,7 +89,7 @@ git pull upstream master
 
 ## Features
 
-- **Automatic correction** — detects wrong-layout words on space and corrects them instantly (a word ended by Enter is left alone: the text may already be sent).
+- **Automatic correction** — detects wrong-layout words on space or punctuation and corrects them instantly (a word ended by Enter is left alone: the text may already be sent).
 - **Hotkey mode** — correct only when you press Ctrl+Shift+Space (configurable).
 - **Selection correction** — select text and press the hotkey to convert it.
 - **Permissions indicator** — missing macOS permissions show up at the top of the menu and in Settings → General.
