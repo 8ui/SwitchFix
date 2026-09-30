@@ -1275,6 +1275,7 @@ run("arrow keys skip automatic correction, the hotkey still converts from the bu
 /// detector defers and merges with a confirming next word ('цщклы' = 'works').
 private func shortWordHarness() -> LearningHarness {
     var harness = LearningHarness(layout: .russian)
+    harness.caret.reply = .unavailable
     harness.type("сейчас")
     harness.type("на")
     return harness
@@ -1295,7 +1296,7 @@ run("merged short word: never across unseen edits or a non-space boundary") {
         ("double space", [CapturedInput.Kind.boundary(" "), .boundary(" ")]),
         ("punctuation then space", [.boundary("!"), .boundary(" ")]),
         ("undo", [.undo, .character("ч"), .boundary(" ")]),
-        ("arrow", [.navigation, .boundary(" ")]),
+        ("hotkey with nothing to convert", [.hotkey, .boundary(" ")]),
     ] {
         var harness = shortWordHarness()
         harness.type("ше", boundary: nil)

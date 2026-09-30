@@ -136,9 +136,10 @@ public class LayoutDetector {
     ///   continuous typing; `InputEngine` always passes what `InputStateMachine` saw.
     @discardableResult
     public func flushBuffer(boundaryCharacter: String? = nil, continuesPreviousWord: Bool = true) -> DetectionResult? {
-        if !continuesPreviousWord {
-            pendingSuppressedShort = nil
-        }
+        // Every flush consumes the deferred short word — used by this word or dropped — so it
+        // can never merge across a flush that stripped to nothing (symbols only).
+        let carriedShort = continuesPreviousWord ? consumePendingSuppressedShort() : nil
+        pendingSuppressedShort = nil
         guard !wordBuffer.isEmpty else {
             state = .idle
             isOutOfSync = false
@@ -160,7 +161,7 @@ public class LayoutDetector {
         pendingBoundaryCharacter = boundary.isEmpty ? nil : boundary
 
         // Check buffer at word boundaries (short words are handled by ShortWordTable)
-        let result = isOutOfSync ? nil : checkBuffer()
+        let result = isOutOfSync ? nil : checkBuffer(suppressedShort: carriedShort)
         if let result {
             delegate?.layoutDetector(self, didDetectWrongLayout: result, boundaryCharacter: pendingBoundaryCharacter)
         }
@@ -219,9 +220,8 @@ public class LayoutDetector {
 
     // MARK: - Detection Logic
 
-    private func checkBuffer() -> DetectionResult? {
+    private func checkBuffer(suppressedShort: SuppressedShort?) -> DetectionResult? {
         state = .detecting
-        let suppressedShort = consumePendingSuppressedShort()
 
         let word = wordBuffer
         let sourceLayout = resolvedSourceLayout(for: word)
