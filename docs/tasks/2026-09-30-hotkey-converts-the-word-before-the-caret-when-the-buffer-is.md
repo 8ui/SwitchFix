@@ -3,13 +3,13 @@ id: 2026-09-30-hotkey-converts-the-word-before-the-caret-when-the-buffer-is
 title: Hotkey converts the word before the caret when the buffer is suspended
 type: feature
 pipeline: minimal
-phase: review
+phase: done
 created: 2026-09-30
 updated: 2026-09-30
 blocked_by: null
-steps_done: 5
+steps_done: 6
 steps_total: 6
-step_current: 6
+step_current: null
 artifacts:
   spec: null
   plan: docs/plans/hotkey-word-before-caret-plan.md
@@ -28,7 +28,7 @@ _2-5 строк: что делаем и зачем. Задача этой сек
 3. ✅ `requestCaretContext` (Utils)
 4. ✅ InputEngine + AppDelegate
 5. ✅ Тесты пайплайна
-6. ▶ Сборка, тесты, ревью, проверка на Mac
+6. ✅ Сборка, тесты, ревью, проверка на Mac
 
 ## Log
 
@@ -53,6 +53,9 @@ _2-5 строк: что делаем и зачем. Задача этой сек
 - 2026-09-30: verify: `swift build -c release` → exit 0 ✅
 - 2026-09-30: verify: `swift run -c release TestRunner` → exit 0 ✅
 - 2026-09-30: verify: `swift run -c release InputPipelineTestRunner` → exit 0 ✅
+- 2026-09-30: verify: `CI зелёный: https://github.com/8ui/SwitchFix/actions/runs/36742447947` → exit 0 ✅
+- 2026-09-30: шаг 6 ✅ Сборка, тесты, ревью, проверка на Mac — ревью кода: 4 should-fix + повторное ревью (click-путь) учтены; Mac: TextEdit Cmd+A→Backspace→набор→Option
+- 2026-09-30: готово: хоткей конвертирует слово перед кареткой через AX при пустом буфере; проверено в TextEdit, CI зелёный; клик без набора — отдельный долг
 
 ## Decisions
 
@@ -171,6 +174,12 @@ _Нетривиальные решения по ходу задачи. Одна 
   
   Building for production...
   Build complete! (0,17 с)
+  ```
+
+- 2026-09-30 · `CI зелёный: https://github.com/8ui/SwitchFix/actions/runs/36742447947` · exit 0 ✅
+
+  ```
+  (без вывода)
   ```
 
 ## Handoff
