@@ -3,7 +3,7 @@ id: 2026-09-30-automatic-correction-retypes-the-enter-that-ended-the-word
 title: Automatic correction retypes the Enter that ended the word
 type: bug
 pipeline: minimal
-phase: review
+phase: done
 created: 2026-09-30
 updated: 2026-09-30
 blocked_by: null
@@ -44,6 +44,8 @@ artifacts:
 - 2026-09-30: шаг 3 ✅ Ревью — ревью субагента учтено
 - 2026-09-30: impl complete
 - 2026-09-30: verify: `CI зелёный: https://github.com/8ui/SwitchFix/actions/runs/36771299604 (коммит 9d5d2e7; keypad Enter 610f432 — ждёт прогона ветки)` → exit 0 ✅
+- 2026-09-30: verify: `CI зелёный: https://github.com/8ui/SwitchFix/actions/runs/36772505902 (9e5f0e8)` → exit 0 ✅
+- 2026-09-30: ревью учтено, CI зелёный (run 36772505902); ждёт мержа ветки
 
 ## Decisions
 
@@ -57,6 +59,12 @@ _Нетривиальные решения по ходу задачи. Одна 
 ## Verification
 
 - 2026-09-30 · `CI зелёный: https://github.com/8ui/SwitchFix/actions/runs/36771299604 (коммит 9d5d2e7; keypad Enter 610f432 — ждёт прогона ветки)` · exit 0 ✅
+
+  ```
+  (без вывода)
+  ```
+
+- 2026-09-30 · `CI зелёный: https://github.com/8ui/SwitchFix/actions/runs/36772505902 (9e5f0e8)` · exit 0 ✅
 
   ```
   (без вывода)

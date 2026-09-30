@@ -3,7 +3,7 @@ id: 2026-09-30-typed-text-in-debug-log
 title: Typed words are written to the debug log as public values
 type: bug
 pipeline: minimal
-phase: review
+phase: done
 created: 2026-09-30
 updated: 2026-09-30
 blocked_by: null
@@ -46,6 +46,8 @@ Debugging в CLAUDE.md, если поменяется поведение.
 - 2026-09-30: ревью (субагент): boundary-символы и keyCode границ теперь тоже скрыты, boundary в 'word flushed' через SwitchFixLog.text, CLAUDE.md уточнён; Option-клавиши (.navigation) логируют keyCode как и раньше — низкая ценность
 - 2026-09-30: шаг 4 ✅ Ревью
 - 2026-09-30: impl complete
+- 2026-09-30: verify: `CI зелёный: https://github.com/8ui/SwitchFix/actions/runs/36772505902 (9e5f0e8)` → exit 0 ✅
+- 2026-09-30: ревью учтено, CI зелёный (run 36772505902); ждёт мержа ветки
 
 ## Decisions
 
@@ -60,7 +62,11 @@ _Без `[ ]`/`[x]` пункт невидим для агрегатора и т�
 
 ## Verification
 
-_Доказательства, а не утверждения. Заполняется `rtp verify <id> --run "<команда>"`: команда, exit code, хвост вывода._
+- 2026-09-30 · `CI зелёный: https://github.com/8ui/SwitchFix/actions/runs/36772505902 (9e5f0e8)` · exit 0 ✅
+
+  ```
+  (без вывода)
+  ```
 
 ## Handoff
 
