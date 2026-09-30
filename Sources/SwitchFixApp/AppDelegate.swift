@@ -10,6 +10,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var inputEngine: InputEngine?
     private var captureState: CaptureStateStore?
     private var focusCoordinator: AccessibilityFocusCoordinator?
+    private var secureInputMonitor: SecureInputMonitor?
     private let inputSourceManager = InputSourceManager.shared
     private var observersRegistered = false
     private var readyLayouts: Set<Layout> = []
@@ -105,6 +106,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationWillTerminate(_ notification: Notification) {
         PersonalLexicon.shared.flush()
+        secureInputMonitor?.stop()
         focusCoordinator?.stop()
         keyboardMonitor?.stop()
     }
@@ -150,6 +152,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         let context = state.snapshot().context
         focusCoordinator?.observeApplication(pid: context.frontmostPID, epoch: context.epoch)
+        let secureInput = SecureInputMonitor { [weak self] _ in
+            self?.secureInputDidChange()
+        }
+        secureInput.start()
+        secureInputMonitor = secureInput
         SwitchFixLog.app.notice("monitoring started pid=\(context.frontmostPID) layout=\(context.layout.rawValue) appAllowed=\(context.appAllowed)")
     }
 
@@ -337,6 +344,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             secureFocus: current.secureFocus
         )
         inputEngine?.updateContext(context)
+    }
+
+    /// Key presses made while Secure Input was on never reached the tap, so the buffered
+    /// word no longer matches the screen: start over and re-resolve focus on either edge.
+    private func secureInputDidChange() {
+        guard let pid = captureState?.snapshot().context.frontmostPID,
+              let epoch = publishUnknownFocus(for: pid) else {
+            return
+        }
+        focusCoordinator?.focusMayChange(pid: pid, epoch: epoch)
     }
 
     private func publishUnknownFocus(for pid: pid_t) -> UInt64? {

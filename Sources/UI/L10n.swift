@@ -52,6 +52,10 @@ enum L10n {
             "Для работы SwitchFix нужен мониторинг ввода: так он видит нажатия клавиш.",
         "SwitchFix (missing permissions)": "SwitchFix (нет разрешений)",
         "SwitchFix (CapsLock conflict detected)": "SwitchFix (конфликт CapsLock)",
+        "Paused: secure input is on in %@": "Пауза: защищённый ввод включён в %@",
+        "Paused: secure input is on": "Пауза: включён защищённый ввод",
+        "While an app keeps secure input on (password fields, password managers, Secure Keyboard Entry in Terminal), macOS hides keystrokes from SwitchFix. Close the password field or turn Secure Keyboard Entry off.": "Пока приложение держит защищённый ввод (поля паролей, менеджеры паролей, «Защищённый ввод с клавиатуры» в Терминале), macOS скрывает нажатия от SwitchFix. Закройте поле пароля или выключите защищённый ввод.",
+        "SwitchFix (paused: secure input is on)": "SwitchFix (пауза: включён защищённый ввод)",
         "Fix CapsLock Conflict…": "Устранить конфликт CapsLock…",
         "CapsLock is configured both in SwitchFix (revert) and in macOS (input source switch).":
             "CapsLock назначен и в SwitchFix (отмена), и в macOS (смена источника ввода).",

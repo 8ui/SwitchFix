@@ -3,13 +3,13 @@ id: 2026-09-30-secure-input-invalidates-buffer-and-shows-owner
 title: Invalidate the buffer on Secure Input changes and show which app holds it
 type: feature
 pipeline: minimal
-phase: triage
+phase: impl
 created: 2026-09-30
 updated: 2026-09-30
 blocked_by: null
-steps_done: 0
-steps_total: 0
-step_current: null
+steps_done: 3
+steps_total: 5
+step_current: 4
 artifacts:
   spec: null
   plan: null
@@ -31,11 +31,19 @@ AX (Permissions.swift:283). Secure Input часто «залипает»: 1Passw
 
 ## Progress
 
-_Шаги не заданы. `rtp steps <id> --set "…"` или `--from-plan <файл>`._
+1. ✅ SecureInput + SecureInputMonitor (Utils)
+2. ✅ Инвалидация в AppDelegate
+3. ✅ Пункт меню + L10n + README
+4. ▶ Ревью
+5. ⬜ Ручная проверка: Terminal Secure Keyboard Entry, 1Password (локально)
 
 ## Log
 
 - 2026-09-30: triage — pipeline `minimal`, reason: исследование: Secure Input залипает (1Password, Terminal), SwitchFix молча глохнет, буфер рассинхронизируется
+- 2026-09-30: brainstorm: что — опрос IsSecureEventInputEnabled раз в 1 с, на переходе новый epoch + focusMayChange, пункт в меню с владельцем из CGSessionCopyCurrentDictionary (kCGSSessionSecureInputPID, без ioreg); уведомлений нет — фокус не крадём; критерий — CI зелёный, ручная проверка с Terminal Secure Keyboard Entry
+- 2026-09-30: шаг 1 ✅ SecureInput + SecureInputMonitor (Utils)
+- 2026-09-30: шаг 2 ✅ Инвалидация в AppDelegate
+- 2026-09-30: шаг 3 ✅ Пункт меню + L10n + README
 
 ## Decisions
 
