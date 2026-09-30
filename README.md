@@ -31,6 +31,13 @@ A macOS menu bar utility that automatically corrects keyboard layout mistakes. T
   добавление, правка, удаление, сброс выученного. Ваши собственные записи обучение не меняет.
 - **Слово, законченное Enter, автоматически не исправляется.** В чатах и терминале Enter уже отправил
   текст: исправление стёрло бы не то и отправило бы сообщение повторно.
+- **Сверка с текстом поля перед исправлением (пока в режиме наблюдения).** Автодополнение (адресная строка,
+  Spotlight), предиктивный ввод и автозамена меняют текст поля за спиной SwitchFix, и Backspace стирал не то
+  (`gпривет`). Перед удалением SwitchFix читает текст перед курсором через Accessibility: выделенная подсказка
+  или изменённое слово отменяют исправление, отставший текст перечитывается до 150 мс; где текст не читается,
+  всё как раньше. Смена регистра, «умные» кавычки и неразрывный пробел не мешают. По умолчанию вердикт только
+  пишется в лог (`shadow`); включить отмену — `defaults write com.switchfix.app SwitchFix_fieldTextCheck enforce`
+  (`off` — не читать поле), перезапуск. Терминалы не проверяются.
 - **Защищённый ввод виден в меню.** Пока какое-то приложение держит Secure Input (поле пароля, менеджер
   паролей, «Защищённый ввод с клавиатуры» в Терминале), macOS не показывает SwitchFix нажатия. В меню
   появляется «Пауза: защищённый ввод включён в <приложение>», а после выключения буфер слова сбрасывается,
@@ -175,6 +182,10 @@ defaults write com.switchfix.app SwitchFix_hotkeyModifiers -int $((262144+131072
 # Correction hotkey: lone Option tap (fork; 59 = lone Control tap)
 defaults write com.switchfix.app SwitchFix_hotkeyKeyCode -int 58
 defaults write com.switchfix.app SwitchFix_hotkeyModifiers -int 0
+
+# Check the field's text before a correction deletes (fork; read at launch)
+# values: off | shadow (default: log only) | enforce
+defaults write com.switchfix.app SwitchFix_fieldTextCheck enforce
 
 # Per-app event delivery for toolkits that drop Unicode events posted to the process (fork)
 # values: session | hid
