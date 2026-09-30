@@ -3,7 +3,7 @@ id: 2026-09-29-accessibility-grant-resets-on-every-reinstall-despite-stable
 title: Accessibility grant resets on every reinstall despite stable signing
 type: bug
 pipeline: minimal
-phase: review
+phase: done
 created: 2026-09-29
 updated: 2026-09-30
 blocked_by: null
@@ -40,6 +40,7 @@ _2-5 строк: что делаем и зачем. Задача этой сек
 - 2026-09-30: fix по ревью: детект подписи по установленному app, reset на любом walkthrough; ошибка -dv сбросила права в 19:27, исправлено на -dvv; ждём перевыдачи прав для финального yes|./install.sh
 - 2026-09-30: verify: `после перевыдачи прав: yes | ./install.sh с финальной версией (-dvv) → ветка stable certificate; 19:30:09 launched + monitoring started, без 'Accessibility not granted'` → exit 0 ✅
 - 2026-09-30: шаг 3 ✅ Ревью
+- 2026-09-30: verified: yes|./install.sh сохраняет права; закоммичено
 
 ## Decisions
 
