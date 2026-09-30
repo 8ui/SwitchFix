@@ -3,7 +3,7 @@ id: 2026-09-30-words-tab-live-match-counters-accessibility-labels-truncated
 title: "Words tab: live match counters, accessibility labels, truncated headers"
 type: bug
 pipeline: minimal
-phase: impl
+phase: done
 created: 2026-09-30
 updated: 2026-09-30
 blocked_by: null
@@ -42,6 +42,8 @@ _2-5 строк: что делаем и зачем. Задача этой сек
 - 2026-09-30: verify: `AX-проверка на Mac после ./install.sh (AXUIElement)` → exit 0 ✅
 - 2026-09-30: шаг 4 ✅ Сборка, тесты, ревью — ревью: 0 blocker; учтены тест повторного уведомления, Раскладка 88 pt, центрирование окна; меню — подпись на Image
 - 2026-09-30: шаг 5 ✅ Проверка на Mac через AX
+- 2026-09-30: verify: `CI зелёный: https://github.com/8ui/SwitchFix/actions/runs/36737689687` → exit 0 ✅
+- 2026-09-30: исправлено: живые счётчики, AX-подписи, вкладка 640 pt; AX и скриншот на Mac, CI зелёный; живой счётчик вживую не проверен (debt)
 
 ## Decisions
 
@@ -104,6 +106,12 @@ _Нетривиальные решения по ходу задачи. Одна 
 
   ```
   Окно «Слова» 640×497. + desc=Новое слово, − desc=Удалить, Изменить… desc=Изменить…, меню title=Другие действия (было More). Скриншот: заголовки Слово/Раскладка/Правило/Источник/Срабатываний полностью, ~19 pt запаса у Раскладка и Срабатываний. Живой счётчик на Mac не проверен: лексикон пуст, набор через System Events ненадёжен — покрыт TestRunner.
+  ```
+
+- 2026-09-30 · `CI зелёный: https://github.com/8ui/SwitchFix/actions/runs/36737689687` · exit 0 ✅
+
+  ```
+  (без вывода)
   ```
 
 ## Handoff
