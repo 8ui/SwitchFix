@@ -217,7 +217,7 @@ struct LearnedWordsView: View {
     }
 
     var body: some View {
-        SettingsTabContainer(language: settings.language) {
+        SettingsTabContainer(language: settings.language, width: SettingsTab.words.contentWidth) {
             VStack(alignment: .leading, spacing: 8) {
                 Text(L10n.tr("Learned Words")).font(.headline)
 
@@ -284,7 +284,7 @@ struct LearnedWordsView: View {
             TableColumn(L10n.tr("Layout"), value: \.layoutName) { row in
                 Text(row.layoutName).help(row.lastUsedText)
             }
-            .width(55)
+            .width(88)
             TableColumn(L10n.tr("Rule"), value: \.ruleName) { row in
                 Text(row.ruleName).help(row.lastUsedText)
             }
@@ -292,11 +292,11 @@ struct LearnedWordsView: View {
             TableColumn(L10n.tr("Source"), value: \.originName) { row in
                 Text(row.originName).help(row.lastUsedText)
             }
-            .width(75)
+            .width(80)
             TableColumn(L10n.tr("Uses"), value: \.matchCount) { row in
                 Text("\(row.matchCount)").help(row.lastUsedText)
             }
-            .width(45)
+            .width(105)
         }
         .contextMenu(forSelectionType: UUID.self) { ids in
             if ids.count == 1 {
@@ -321,6 +321,8 @@ struct LearnedWordsView: View {
                 Image(systemName: "plus").frame(width: 20, height: 20)
             }
             .buttonStyle(.borderless)
+            .help(L10n.tr("Add Word"))
+            .accessibilityLabel(L10n.tr("Add Word"))
 
             Divider().frame(height: 12)
 
@@ -328,6 +330,8 @@ struct LearnedWordsView: View {
                 Image(systemName: "minus").frame(width: 20, height: 20)
             }
             .buttonStyle(.borderless)
+            .help(L10n.tr("Delete"))
+            .accessibilityLabel(L10n.tr("Delete"))
             .disabled(model.selection.isEmpty)
 
             Divider().frame(height: 12)
@@ -335,6 +339,7 @@ struct LearnedWordsView: View {
             Button(L10n.tr("Edit…")) { draft = model.draft(for: model.selection.first) }
                 .buttonStyle(.borderless)
                 .padding(.horizontal, 6)
+                .accessibilityLabel(L10n.tr("Edit…"))
                 .disabled(model.selection.count != 1)
 
             Spacer()
@@ -343,11 +348,15 @@ struct LearnedWordsView: View {
                 Button(L10n.tr("Reset Learned Words…")) { pendingConfirmation = .resetLearned }
                 Button(L10n.tr("Delete All Words…")) { pendingConfirmation = .deleteAll }
             } label: {
-                Image(systemName: "ellipsis.circle").frame(width: 20, height: 20)
+                // On the image: the menu takes its AX title from the symbol name ("More").
+                Image(systemName: "ellipsis.circle")
+                    .accessibilityLabel(L10n.tr("More actions"))
+                    .frame(width: 20, height: 20)
             }
             .menuStyle(.borderlessButton)
             .menuIndicator(.hidden)
             .fixedSize()
+            .help(L10n.tr("More actions"))
         }
         .padding(4)
         .background(Color(nsColor: .controlBackgroundColor))

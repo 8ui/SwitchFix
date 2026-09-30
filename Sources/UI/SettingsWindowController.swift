@@ -8,8 +8,13 @@ public enum SettingsTab: Int, CaseIterable {
     case words
     case about
 
-    /// Width shared by all tabs, so switching tabs only changes the window height.
+    /// Width shared by most tabs, so switching between them only changes the window height.
     static let contentWidth: CGFloat = 520
+
+    /// The Words table needs room for full Russian column headers next to the word.
+    var contentWidth: CGFloat {
+        self == .words ? 640 : Self.contentWidth
+    }
 
     var title: String {
         switch self {
@@ -116,7 +121,7 @@ final class SettingsTabViewController: NSTabViewController {
               let contentView = window.contentView,
               let hosting = tabView.selectedTabViewItem?.viewController as? NSHostingController<AnyView> else { return }
 
-        let size = hosting.sizeThatFits(in: NSSize(width: SettingsTab.contentWidth, height: 10_000))
+        let size = hosting.sizeThatFits(in: NSSize(width: selectedTab.contentWidth, height: 10_000))
         guard size.width > 0, size.height > 0 else { return }
 
         // Title bar and toolbar sit outside the content view.
@@ -125,6 +130,8 @@ final class SettingsTabViewController: NSTabViewController {
         let newHeight = (size.height + chromeHeight).rounded()
         guard abs(frame.height - newHeight) > 0.5 || abs(frame.width - size.width) > 0.5 else { return }
         frame.origin.y += frame.height - newHeight
+        // Tabs differ in width too (Words is wider): grow and shrink around the centre.
+        frame.origin.x -= ((size.width - frame.width) / 2).rounded()
         frame.size = NSSize(width: size.width, height: newHeight)
         window.setFrame(frame, display: true, animate: animate && window.isVisible)
     }

@@ -153,6 +153,7 @@ enum L10n {
         "Save": "Сохранить",
         "Reset Learned Words…": "Сбросить выученные…",
         "Delete All Words…": "Удалить все слова…",
+        "More actions": "Другие действия",
         "Reset": "Сбросить",
         "Delete All": "Удалить все",
         "Reset learned words? Words you added yourself stay.": "Сбросить выученные слова? Добавленные вами останутся.",

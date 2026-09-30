@@ -281,6 +281,7 @@ struct SettingsNote: View {
 /// the height), rebuilt in full when the interface language changes.
 struct SettingsTabContainer<Content: View>: View {
     let language: AppLanguage
+    var width: CGFloat = SettingsTab.contentWidth
     @ViewBuilder let content: Content
 
     var body: some View {
@@ -288,7 +289,7 @@ struct SettingsTabContainer<Content: View>: View {
             content
         }
         .padding(20)
-        .frame(width: SettingsTab.contentWidth, alignment: .topLeading)
+        .frame(width: width, alignment: .topLeading)
         .fixedSize(horizontal: false, vertical: true)
         // Rebuild every section (including their own models) in the new language.
         .id(language)

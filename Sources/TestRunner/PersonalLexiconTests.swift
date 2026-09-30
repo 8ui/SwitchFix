@@ -148,6 +148,32 @@ func runPersonalLexiconSuites() {
         assertEqual(makeLexicon(storage).entries.first?.matchCount, 1)
     }
 
+    runSuite("PersonalLexicon: a counter update notifies observers without saving") {
+        let storage = InMemoryLexiconStorage()
+        let lexicon = makeLexicon(storage)
+        lexicon.recordRejected(word: "rehk", sourceLayout: .english)
+        // Let the save notification of the new rule go out first.
+        RunLoop.main.run(until: Date().addingTimeInterval(0.1))
+        var notifications = 0
+        let observer = NotificationCenter.default.addObserver(
+            forName: .personalLexiconDidChange,
+            object: lexicon,
+            queue: nil
+        ) { _ in notifications += 1 }
+        defer { NotificationCenter.default.removeObserver(observer) }
+        let saves = storage.saveCount
+        lexicon.noteMatch(word: "rehk", sourceLayout: .english)
+        lexicon.noteMatch(word: "rehk", sourceLayout: .english)
+        RunLoop.main.run(until: Date().addingTimeInterval(0.1))
+        assert(notifications >= 1, "the Words tab must see live counters")
+        assert(notifications <= 1, "a burst of matches is coalesced into one notification, got \(notifications)")
+        assertEqual(storage.saveCount, saves, "live counters still do not rewrite the lexicon")
+        assertEqual(lexicon.entries.first?.matchCount, 2)
+        lexicon.noteMatch(word: "rehk", sourceLayout: .english)
+        RunLoop.main.run(until: Date().addingTimeInterval(0.1))
+        assertEqual(notifications, 2, "a match after the delivered notification notifies again")
+    }
+
     runSuite("PersonalLexicon: a recently matched entry survives eviction") {
         var tick = 0.0
         let lexicon = makeLexicon(saveDelay: 3600, clock: { tick += 1; return Date(timeIntervalSince1970: tick) })

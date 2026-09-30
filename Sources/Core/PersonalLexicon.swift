@@ -146,6 +146,8 @@ public final class PersonalLexicon: @unchecked Sendable {
     private var index: [LexiconKey: Int] = [:]
     private var learnedCount = 0
     private var countersDirty = false
+    /// A counters notification is queued on the main queue; coalesces bursts of matches.
+    private var countersNotificationPending = false
     private let saveQueue = DispatchQueue(label: "com.switchfix.lexicon", qos: .utility)
     /// Accessed only on `saveQueue`.
     private var pendingSave: DispatchWorkItem?
@@ -286,14 +288,24 @@ public final class PersonalLexicon: @unchecked Sendable {
 
     /// A rule was applied; updates its counters. No-op for words without a rule.
     /// Counters are kept in memory and written with the next rule change or `flush()`,
-    /// so typing never triggers a full rewrite of the lexicon.
+    /// so typing never triggers a full rewrite of the lexicon; observers are still
+    /// notified, so the Words tab shows live values.
     public func noteMatch(word: String, sourceLayout: Layout) {
         let key = LexiconKey(word: word, sourceLayout: sourceLayout)
-        lock.locked {
-            guard let position = index[key] else { return }
+        let shouldNotify: Bool = lock.locked {
+            guard let position = index[key] else { return false }
             items[position].matchCount += 1
             items[position].lastMatchedAt = now()
             countersDirty = true
+            guard !countersNotificationPending else { return false }
+            countersNotificationPending = true
+            return true
+        }
+        guard shouldNotify else { return }
+        DispatchQueue.main.async { [weak self] in
+            guard let self else { return }
+            self.lock.locked { self.countersNotificationPending = false }
+            NotificationCenter.default.post(name: .personalLexiconDidChange, object: self)
         }
     }
 
