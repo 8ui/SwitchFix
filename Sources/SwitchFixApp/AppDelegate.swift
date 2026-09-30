@@ -21,6 +21,27 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var previousLayout: Layout = .english
     private var previousInputSourceID = "unknown"
 
+    /// `defaults write com.switchfix.app SwitchFix_fieldTextCheck off|shadow|enforce`, read at
+    /// launch. Shadow until the check is verified in real apps: it logs the verdict but corrects.
+    private static let screenCheckMode = UserDefaults.standard.string(forKey: "SwitchFix_fieldTextCheck")
+        .flatMap(ScreenCheckMode.init(rawValue:)) ?? .shadow
+
+    /// Terminals expose the whole scrollback with a caret that is not the shell's cursor.
+    private static let fieldTextHidingBundleIdentifiers: Set<String> = [
+        "com.apple.Terminal",
+        "com.googlecode.iterm2",
+        "dev.warp.Warp-Stable",
+        "net.kovidgoyal.kitty",
+        "org.alacritty",
+        "com.github.wez.wezterm",
+        "com.mitchellh.ghostty",
+    ]
+
+    private static func hidesFieldText(pid: pid_t) -> Bool {
+        guard let bundleIdentifier = NSRunningApplication(processIdentifier: pid)?.bundleIdentifier else { return false }
+        return fieldTextHidingBundleIdentifiers.contains(bundleIdentifier)
+    }
+
     func applicationDidFinishLaunching(_ notification: Notification) {
         SwitchFixLog.app.notice("launched, pid=\(ProcessInfo.processInfo.processIdentifier)")
         statusBarController = StatusBarController()
@@ -77,6 +98,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                     completion: completion
                 )
             },
+            screenTextRequest: { [weak self] pid, _, length, completion in
+                guard let coordinator = self?.focusCoordinator,
+                      !Self.hidesFieldText(pid: pid) else {
+                    return completion(.unavailable(transient: false))
+                }
+                coordinator.requestFieldText(pid: pid, length: length, completion: completion)
+            },
+            screenCheckMode: Self.screenCheckMode,
             lexicon: PersonalLexicon.shared
         )
         engine.onFocusMayChange = { [weak self] pid, epoch in

@@ -3,13 +3,13 @@ id: 2026-09-30-correction-verifies-field-text-before-deleting
 title: "Correction leaves stray letters when the field changed the text (inline autocomplete, predictions, autocorrect)"
 type: bug
 pipeline: no-spec
-phase: plan-review
+phase: impl
 created: 2026-09-30
 updated: 2026-09-30
 blocked_by: null
-steps_done: 0
-steps_total: 0
-step_current: null
+steps_done: 4
+steps_total: 6
+step_current: 5
 artifacts:
   spec: null
   plan: docs/plans/correction-verifies-field-text-before-deleting-plan.md
@@ -35,7 +35,12 @@ Staleness-guards (`CorrectionPlan.isEligible`) этого не видят: ко�
 
 ## Progress
 
-_Шаги не заданы. `rtp steps <id> --set "…"` или `--from-plan <файл>`._
+1. ✅ ScreenVerification (Core) + чистые тесты вердикта
+2. ✅ InputEngine — стадия сверки
+3. ✅ Coordinator + AppDelegate
+4. ✅ Тесты пайплайна
+5. ▶ Документация + ревью
+6. ⬜ Локальная матрица и включение enforce (macOS)
 
 ## Log
 
@@ -43,6 +48,11 @@ _Шаги не заданы. `rtp steps <id> --set "…"` или `--from-plan <�
 - 2026-09-30: brainstorm (агент, пользователь делегировал выбор): сверка AX-текста перед кареткой перед эмиссией; selection → отмена, несовпадение → повтор 6×20 мс → отмена, unavailable → fail-open; без AXManualAccessibility; NBSP=пробел; критерий — тесты пайплайна + CI, ручная проверка в приложениях локально
 - 2026-09-30: artifacts.plan = docs/plans/correction-verifies-field-text-before-deleting-plan.md; artifacts.branch = claude/beautiful-shannon-hg5k6h
 - 2026-09-30: plan drafted
+- 2026-09-30: plan-review (Plan, opus): принят; вердикт по эквивалентности той же длины (регистр, умные кавычки, NBSP), lagging vs mismatch, дедлайн 150 мс, FieldTextProbe с transient, без AXManualAccessibility, режим off/shadow/enforce (shadow по умолчанию до локальной матрицы), обход терминалов, пропуск для caretWord
+- 2026-09-30: шаг 1 ✅ ScreenVerification (Core) + чистые тесты вердикта — ScreenVerification + FieldTextProbe, чистые тесты (проверит CI)
+- 2026-09-30: шаг 2 ✅ InputEngine — стадия сверки — verifyScreen с дедлайном, emit, isCurrent, screenVerified
+- 2026-09-30: шаг 3 ✅ Coordinator + AppDelegate — requestFieldText без AXManualAccessibility, режим SwitchFix_fieldTextCheck (shadow), обход терминалов
+- 2026-09-30: шаг 4 ✅ Тесты пайплайна — ScreenStub + 7 сценариев пайплайна (проверит CI)
 
 ## Decisions
 

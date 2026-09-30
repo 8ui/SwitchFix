@@ -248,6 +248,19 @@ public final class AccessibilityFocusCoordinator {
         }
     }
 
+    /// The text before the caret of the focused field, to verify a correction before it
+    /// deletes. Never turns AXManualAccessibility on (it runs on every correction): a field
+    /// that is invisible without it reads as unavailable. The completion runs on the query queue.
+    public func requestFieldText(
+        pid: pid_t,
+        length: Int,
+        completion: @escaping (FieldTextProbe) -> Void
+    ) {
+        queryQueue.async {
+            completion(Self.fieldText(pid: pid, window: length))
+        }
+    }
+
     public func stop() {
         runOnMain { [weak self] in self?.stopObserving() }
         Self.resetManualAccessibility()
@@ -422,6 +435,64 @@ public final class AccessibilityFocusCoordinator {
         // check is never skipped.
         let next = text.length > beforeLength ? text.substring(from: beforeLength).first : nil
         return .caret(textBefore: before, startsAtTextStart: start == 0, next: next)
+    }
+
+    /// Above this size the whole `AXValue` is not fetched when verifying a correction.
+    private static let maxFieldCheckValueLength = 4_000
+
+    private static func fieldText(pid: pid_t, window: Int) -> FieldTextProbe {
+        let application = AXUIElementCreateApplication(pid)
+        AXUIElementSetMessagingTimeout(application, 0.05)
+        var focusError: AXError = .success
+        guard let focused = focusedElement(application: application, error: &focusError) else {
+            return .unavailable(transient: focusError == .cannotComplete)
+        }
+        AXUIElementSetMessagingTimeout(focused, 0.05)
+
+        // The range first: a container (Chromium without its tree) may report a document
+        // selection unrelated to the field, and some fields report a range but no selected text.
+        var rangeValue: CFTypeRef?
+        var range = CFRange()
+        let rangeError = AXUIElementCopyAttributeValue(focused, kAXSelectedTextRangeAttribute as CFString, &rangeValue)
+        guard rangeError == .success,
+              let rangeValue,
+              CFGetTypeID(rangeValue) == AXValueGetTypeID(),
+              AXValueGetValue(rangeValue as! AXValue, .cfRange, &range),
+              range.location >= 0 else {
+            return .unavailable(transient: rangeError == .cannotComplete)
+        }
+        if range.length > 0 { return .selection(length: range.length) }
+
+        let caret = range.location
+        let start = max(0, caret - window)
+        let total = intAttribute(kAXNumberOfCharactersAttribute, of: focused)
+        // The caret moved before the text was updated.
+        if let total, caret > total { return .unavailable(transient: true) }
+        if caret == start { return .text(before: "") }
+
+        var parameterRange = CFRange(location: start, length: caret - start)
+        var stringError = AXError.failure
+        if let parameter = AXValueCreate(.cfRange, &parameterRange) {
+            var value: CFTypeRef?
+            stringError = AXUIElementCopyParameterizedAttributeValue(
+                focused,
+                kAXStringForRangeParameterizedAttribute as CFString,
+                parameter,
+                &value
+            )
+            if stringError == .success, let string = value as? String {
+                // A different length: the text and the caret disagree for now.
+                return (string as NSString).length == caret - start
+                    ? .text(before: string)
+                    : .unavailable(transient: true)
+            }
+        }
+        if let total, total <= maxFieldCheckValueLength,
+           let value = stringAttribute(kAXValueAttribute, of: focused) as NSString? {
+            guard value.length == total else { return .unavailable(transient: true) }
+            return .text(before: value.substring(with: NSRange(location: start, length: caret - start)))
+        }
+        return .unavailable(transient: stringError == .cannotComplete)
     }
 
     /// `AXStringForRange`; nil unless the app returns exactly the requested length.
@@ -613,4 +684,15 @@ public enum CaretContext: Equatable, Sendable {
     case caret(textBefore: String, startsAtTextStart: Bool, next: Character?)
     /// No accessible text element, or an answer that cannot be trusted.
     case unavailable
+}
+
+/// The focused field's text before the caret, read to verify a correction before it deletes.
+public enum FieldTextProbe: Equatable, Sendable {
+    /// No selection: the text right before the caret (a window, possibly cut at its start).
+    case text(before: String)
+    /// A non-empty selection (e.g. an inline autocomplete suggestion): Backspace would delete it.
+    case selection(length: Int)
+    /// No readable text field. `transient`: a timeout or an inconsistent answer that a
+    /// retry may resolve; otherwise the app does not expose the text at all.
+    case unavailable(transient: Bool)
 }
