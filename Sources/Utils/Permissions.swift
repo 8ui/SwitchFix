@@ -481,8 +481,8 @@ public final class AccessibilityFocusCoordinator {
     /// Left on, it switches VS Code into screen-reader mode, makes Chrome heavier and shows
     /// a screen-reader banner in Qt apps. So it is set only when focus is invisible without it,
     /// and switched back off a while after the last such query, unless it was on already.
-    /// The tree may be built asynchronously: the first query can still miss, the next one
-    /// within the lifetime finds it.
+    /// Runs on the query queue, never on main: the first query after switching it on waits
+    /// up to 150 ms for the tree.
     private static func focusedElementRequestingTree(application: AXUIElement, pid: pid_t) -> AXUIElement? {
         let alreadyOurs = withManualAccessibilityState { owned, _ in owned[pid] != nil }
         if !alreadyOurs {
@@ -499,7 +499,19 @@ public final class AccessibilityFocusCoordinator {
                 return nil
             }
             SwitchFixLog.permissions.info("AXManualAccessibility on pid=\(pid)")
+            scheduleManualAccessibilityReset(pid: pid)
+            // The tree is built asynchronously: give it a moment on this first query only.
+            for _ in 0..<3 {
+                if let focused = focusedElement(application: application) { return focused }
+                Thread.sleep(forTimeInterval: 0.05)
+            }
+            return focusedElement(application: application)
         }
+        scheduleManualAccessibilityReset(pid: pid)
+        return focusedElement(application: application)
+    }
+
+    private static func scheduleManualAccessibilityReset(pid: pid_t) {
         let generation = withManualAccessibilityState { owned, generation -> UInt64 in
             generation &+= 1
             owned[pid] = generation
@@ -513,7 +525,6 @@ public final class AccessibilityFocusCoordinator {
             }
             if expired { switchOffManualAccessibility(pid: pid) }
         }
-        return focusedElement(application: application)
     }
 
     private static func switchOffManualAccessibility(pid: pid_t) {
