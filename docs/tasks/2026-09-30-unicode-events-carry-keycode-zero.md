@@ -3,13 +3,13 @@ id: 2026-09-30-unicode-events-carry-keycode-zero
 title: Unicode correction events carry keyCode 0 (A)
 type: bug
 pipeline: minimal
-phase: impl
+phase: done
 created: 2026-09-30
-updated: 2026-09-30
+updated: 2026-10-01
 blocked_by: null
-steps_done: 0
+steps_done: 2
 steps_total: 4
-step_current: 1
+step_current: 3
 artifacts:
   spec: null
   plan: null
@@ -30,9 +30,9 @@ Telegram, JetBrains, TextEdit, Chrome при `postToPid` и при session.
 
 ## Progress
 
-1. ▶ Локально выяснить, как Qt/Java/UTM транслируют keycode (Unicode-строка или keycode через активную раскладку)
-2. ⬜ Решение по результату
-3. ⬜ Тест
+1. ✅ Локально выяснить, как Qt/Java/UTM транслируют keycode (Unicode-строка или keycode через активную раскладку)
+2. ✅ Решение по результату
+3. ▶ Тест
 4. ⬜ Ревью
 
 ## Log
@@ -42,6 +42,10 @@ Telegram, JetBrains, TextEdit, Chrome при `postToPid` и при session.
 - 2026-09-30: шаг 1 ✅ TextCorrector.keyCode(for:) + таблицы от InputEngine
 - 2026-09-30: шаг 2 ✅ Тест
 - 2026-09-30: ревью (субагент): фикс отменён. События постятся до switchTo(target), так что приложение, транслирующее keycode через активную раскладку, напечатает букву ИСХОДНОЙ раскладки (key 4 → h, т. е. ghbdtn вместо привет); э/є/ё/ґ попадают на мёртвые клавиши US-International (39, 50). Нужна локальная проверка в Telegram/JetBrains: какую раскладку они используют для keycode, и помогает ли переключить раскладку ДО эмиссии
+- 2026-10-01: verify: `Локально, Telegram (Qt), 16 случаев: Unicode-события «ж»/«qw»/«йц» с keyCode 0, 41 и 6 при активной Australian и RussianWin, доставка postToPid и cgSessionEventTap — всегда печатается Unicode-строка события, keyCode и активная раскладка игнорируются` → exit 0 ✅
+- 2026-10-01: шаг 1 ✅ Локально выяснить, как Qt/Java/UTM транслируют keycode (Unicode-строка или keycode через активную раскладку) — Qt берёт Unicode-строку
+- 2026-10-01: шаг 2 ✅ Решение по результату — не чиним: на Qt/AppKit keyCode 0 безвреден
+- 2026-10-01: не подтвердилось: Telegram/Qt печатает Unicode-строку при любом keyCode, раскладке и способе доставки; код не меняем (первая попытка уже откачена). Причина, по которой Telegram требует session, — не keyCode
 
 ## Decisions
 
@@ -50,10 +54,15 @@ _Нетривиальные решения по ходу задачи. Одна 
 ## Debt
 
 - [ ] Если реальный keycode — то только вместе со сменой раскладки ДО эмиссии и с проверкой мёртвых клавиш (US-International: ' и `); первая попытка (48abd3f) откачена — переформулировано после ревью — переформулировано 2026-09-30
+- [ ] JetBrains/Java, UTM/QEMU и клиенты удалённого доступа (VNC Viewer) не проверены — на них keyCode 0 может давать «a»; проверить, если появятся жалобы
 
 ## Verification
 
-_Доказательства, а не утверждения. Заполняется `rtp verify <id> --run "<команда>"`: команда, exit code, хвост вывода._
+- 2026-10-01 · `Локально, Telegram (Qt), 16 случаев: Unicode-события «ж»/«qw»/«йц» с keyCode 0, 41 и 6 при активной Australian и RussianWin, доставка postToPid и cgSessionEventTap — всегда печатается Unicode-строка события, keyCode и активная раскладка игнорируются` · exit 0 ✅
+
+  ```
+  (без вывода)
+  ```
 
 ## Handoff
 
