@@ -50,6 +50,7 @@ discussion #11819, OpenKey #87, Keyboop #23 — «со временем авто
 - 2026-09-30: artifacts.branch = claude/funny-ramanujan-sdgiso; artifacts.pr = https://github.com/8ui/SwitchFix/pull/8
 - 2026-09-30: влито в master (https://github.com/8ui/SwitchFix/pull/8); осталась ручная проверка на macOS
 - 2026-10-01: verify: `Локально: переподпись работающего /Applications/SwitchFix.app той же identity (codesign --force) — тот же процесс продолжил получать нажатия, коррекция ghbdtn→привет прошла; сторож не понадобился. Сон и блокировка экрана не проверены (нужна разблокировка паролем) — за пользователем` → exit 0 ✅
+- 2026-10-01: verify: `Пользователь: блокировка экрана — 13:27:12 'recreating event tap (com.apple.screenIsUnlocked)', коррекции в Telegram сразу после разблокировки прошли` → exit 0 ✅
 
 ## Decisions
 
@@ -73,16 +74,22 @@ _Нетривиальные решения по ходу задачи. Одна 
   (без вывода)
   ```
 
+- 2026-10-01 · `Пользователь: блокировка экрана — 13:27:12 'recreating event tap (com.apple.screenIsUnlocked)', коррекции в Telegram сразу после разблокировки прошли` · exit 0 ✅
+
+  ```
+  (без вывода)
+  ```
+
 ## Handoff
 
-**Сгенерировано:** 2026-09-30 · `rtp handoff`
+**Сгенерировано:** 2026-10-01 · `rtp handoff`
 
 - **Задача:** `2026-09-30-event-tap-dies-after-sleep-without-disabled-event` — Event tap silently dies after sleep, lock or re-signing
 - **Фаза:** review (pipeline `minimal`, type `bug`)
 - **Прогресс:** 3/4 ▰▰▰▱
-- **Worktree:** `/home/user/SwitchFix`
-- **Ветка:** `claude/funny-ramanujan-sdgiso` — своих коммитов 75, отставание от origin/master 78
-- **Незакоммиченного:** 2 файл(ов)
+- **Worktree:** `/Users/andrejsokolov/Desktop/projects/SwitchFix`
+- **Ветка:** `master` — своих коммитов 0, отставание от origin/master 0
+- **Незакоммиченного:** 4 файл(ов)
 
 **Шаги плана**
 
@@ -93,30 +100,34 @@ _Нетривиальные решения по ходу задачи. Одна 
 
 **Файлы в работе**
 
-- `ocs/tasks/2026-09-30-event-tap-dies-after-sleep-without-disabled-event.md`
+- `ocs/tasks/2026-09-30-ax-manual-accessibility-screen-reader-side-effects.md`
+- `docs/tasks/2026-09-30-event-tap-dies-after-sleep-without-disabled-event.md`
+- `docs/tasks/2026-09-30-secure-input-invalidates-buffer-and-shows-owner.md`
 - `docs/tasks/index.md`
 
 **git diff HEAD --stat**
 
 ```
-...2026-09-30-event-tap-dies-after-sleep-without-disabled-event.md | 7 ++++++-
- docs/tasks/index.md                                                | 2 +-
- 2 files changed, 7 insertions(+), 2 deletions(-)
+...manual-accessibility-screen-reader-side-effects.md | 19 ++++++++++++++-----
+ ...ent-tap-dies-after-sleep-without-disabled-event.md |  7 +++++++
+ ...secure-input-invalidates-buffer-and-shows-owner.md | 17 +++++++++++++----
+ docs/tasks/index.md                                   |  8 +++-----
+ 4 files changed, 37 insertions(+), 14 deletions(-)
 ```
 
 **Последние коммиты**
 
-- `2bb721b docs(tasks): CI evidence, close Enter and log tasks`
-- `374657a fix(monitor,focus): review fixes for the tap watchdog and AXManualAccessibility`
-- `684a327 docs(tasks): Enter task to review with CI evidence`
+- `7d0b8b8 docs(tasks): local manual checks for the PR 8 tasks`
+- `3cfd637 docs(tasks): close tasks merged in PR 10`
+- `0b5bb5c Merge pull request #10 from 8ui/claude/beautiful-shannon-hg5k6h`
 
 **Последние записи лога**
 
-- 2026-09-30: шаг 2 ✅ Wake/unlock + сторож кликов в AppDelegate
-- 2026-09-30: ревью (субагент): сторож сравнивает время самого клика (NSEvent.timestamp) с приёмом в tap — зависание main не даёт ложных рестартов; HID-tap не проверяется (не видит session-клики); wake/unlock — один рестарт через 1 с после последнего уведомления, мимо лимита; keyboardMonitor присваивается только после успешного start
-- 2026-09-30: шаг 3 ✅ Ревью
-- 2026-09-30: impl complete; ручная проверка — шаг 4 (локально)
 - 2026-09-30: verify: `CI зелёный: https://github.com/8ui/SwitchFix/actions/runs/36772967020 (374657a)` → exit 0 ✅
+- 2026-09-30: artifacts.branch = claude/funny-ramanujan-sdgiso; artifacts.pr = https://github.com/8ui/SwitchFix/pull/8
+- 2026-09-30: влито в master (https://github.com/8ui/SwitchFix/pull/8); осталась ручная проверка на macOS
+- 2026-10-01: verify: `Локально: переподпись работающего /Applications/SwitchFix.app той же identity (codesign --force) — тот же процесс продолжил получать нажатия, коррекция ghbdtn→привет прошла; сторож не понадобился. Сон и блокировка экрана не проверены (нужна разблокировка паролем) — за пользователем` → exit 0 ✅
+- 2026-10-01: verify: `Пользователь: блокировка экрана — 13:27:12 'recreating event tap (com.apple.screenIsUnlocked)', коррекции в Telegram сразу после разблокировки прошли` → exit 0 ✅
 
 **Открытые долги (1)**
 
@@ -130,6 +141,7 @@ _Нетривиальные решения по ходу задачи. Одна 
 
 <!-- handoff-notes -->
 - 2026-09-30: Код в ветке claude/funny-ramanujan-sdgiso, CI зелёный; осталась только ручная проверка на macOS (последний шаг), после неё — done
+- 2026-10-01: Осталось только проверить сон (pmset sleepnow или закрыть крышку): в логе должно быть 'recreating event tap' по wake и рабочие коррекции после. Блокировка и переподпись проверены 2026-10-01.
 <!-- /handoff-notes -->
 
 ## Blockers

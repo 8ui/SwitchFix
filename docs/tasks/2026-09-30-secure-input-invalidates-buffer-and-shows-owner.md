@@ -3,13 +3,13 @@ id: 2026-09-30-secure-input-invalidates-buffer-and-shows-owner
 title: Invalidate the buffer on Secure Input changes and show which app holds it
 type: feature
 pipeline: minimal
-phase: review
+phase: done
 created: 2026-09-30
 updated: 2026-10-01
 blocked_by: null
-steps_done: 4
+steps_done: 5
 steps_total: 5
-step_current: 5
+step_current: null
 artifacts:
   spec: null
   plan: null
@@ -35,7 +35,7 @@ AX (Permissions.swift:283). Secure Input часто «залипает»: 1Passw
 2. ✅ Инвалидация в AppDelegate
 3. ✅ Пункт меню + L10n + README
 4. ✅ Ревью
-5. ▶ Ручная проверка: Terminal Secure Keyboard Entry, 1Password (локально)
+5. ✅ Ручная проверка: Terminal Secure Keyboard Entry, 1Password (локально)
 
 ## Log
 
@@ -52,6 +52,9 @@ AX (Permissions.swift:283). Secure Input часто «залипает»: 1Passw
 - 2026-09-30: artifacts.branch = claude/funny-ramanujan-sdgiso; artifacts.pr = https://github.com/8ui/SwitchFix/pull/8
 - 2026-09-30: влито в master (https://github.com/8ui/SwitchFix/pull/8); осталась ручная проверка на macOS
 - 2026-10-01: verify: `Локально: EnableSecureEventInput из своего процесса (IsSecureEventInputEnabled=true, owner pid 15117): подсказка значка «SwitchFix (пауза: включён защищённый ввод)», пункт меню «Пауза: защищённый ввод включён в Claude»; нажатия до SwitchFix не доходят; на переходе focusMayChange + buffer invalidated; после выключения пункт исчез, коррекция rfr→как работает. Terminal Secure Keyboard Entry и 1Password не проверены (меню Терминала недоступно computer use) — за пользователем` → exit 0 ✅
+- 2026-10-01: verify: `Пользователь: Terminal → Безопасный ввод с клавиатуры: 'secure input on owner=Терминал' 13:25:10, off/on при уходе/возврате фокуса, хоткеи под Secure Input без буфера ничего не делают, после off хоткей сработал 13:25:46` → exit 0 ✅
+- 2026-10-01: шаг 5 ✅ Ручная проверка: Terminal Secure Keyboard Entry, 1Password (локально) — Terminal ✓; 1Password не проверялся
+- 2026-10-01: ручная проверка на macOS пройдена (Terminal Secure Keyboard Entry + свой EnableSecureEventInput)
 
 ## Decisions
 
@@ -79,6 +82,12 @@ _Без `[ ]`/`[x]` пункт невидим для агрегатора и т�
   ```
 
 - 2026-10-01 · `Локально: EnableSecureEventInput из своего процесса (IsSecureEventInputEnabled=true, owner pid 15117): подсказка значка «SwitchFix (пауза: включён защищённый ввод)», пункт меню «Пауза: защищённый ввод включён в Claude»; нажатия до SwitchFix не доходят; на переходе focusMayChange + buffer invalidated; после выключения пункт исчез, коррекция rfr→как работает. Terminal Secure Keyboard Entry и 1Password не проверены (меню Терминала недоступно computer use) — за пользователем` · exit 0 ✅
+
+  ```
+  (без вывода)
+  ```
+
+- 2026-10-01 · `Пользователь: Terminal → Безопасный ввод с клавиатуры: 'secure input on owner=Терминал' 13:25:10, off/on при уходе/возврате фокуса, хоткеи под Secure Input без буфера ничего не делают, после off хоткей сработал 13:25:46` · exit 0 ✅
 
   ```
   (без вывода)
