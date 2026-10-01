@@ -7,9 +7,9 @@ phase: review
 created: 2026-10-01
 updated: 2026-10-01
 blocked_by: null
-steps_done: 2
+steps_done: 3
 steps_total: 3
-step_current: 3
+step_current: null
 artifacts:
   spec: null
   plan: null
@@ -25,7 +25,7 @@ _2-5 строк: что делаем и зачем. Задача этой сек
 
 1. ✅ Тест на замену на дедлайне
 2. ✅ Исправление + unknown после замены
-3. ▶ Ревью и CI
+3. ✅ Ревью и CI
 
 ## Log
 
@@ -35,6 +35,8 @@ _2-5 строк: что делаем и зачем. Задача этой сек
 - 2026-10-01: замена на дедлайне получает одно подтверждающее чтение; unknown после увиденной замены отменяет
 - 2026-10-01: verify: `CI зелёный: https://github.com/8ui/SwitchFix/actions/runs/36874278871 (728a7be)` → exit 0 ✅
 - 2026-10-01: ревью субагентом: замена забывалась на пути retry (AX-таймаут между чтениями) → флаг sawReplacement переживает retry; отдельная причина в логе; негативные тесты ждут второго чтения. 1111/0 ×3
+- 2026-10-01: verify: `CI зелёный: https://github.com/8ui/SwitchFix/actions/runs/36874858640 (b3b5045)` → exit 0 ✅
+- 2026-10-01: шаг 3 ✅ Ревью и CI — ревью учтено, CI зелёный
 
 ## Decisions
 
@@ -50,6 +52,12 @@ _Без `[ ]`/`[x]` пункт невидим для агрегатора и т�
 ## Verification
 
 - 2026-10-01 · `CI зелёный: https://github.com/8ui/SwitchFix/actions/runs/36874278871 (728a7be)` · exit 0 ✅
+
+  ```
+  (без вывода)
+  ```
+
+- 2026-10-01 · `CI зелёный: https://github.com/8ui/SwitchFix/actions/runs/36874858640 (b3b5045)` · exit 0 ✅
 
   ```
   (без вывода)
