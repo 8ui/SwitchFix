@@ -1638,6 +1638,8 @@ run("key characters: a stale layout in the event yields to the current one") {
           "the HID tap always uses the table")
     check(KeyboardMonitor.typedCharacters(event: nil, translated: "р", preferTranslation: true) == "р",
           "including when the event has no text")
+    check(KeyboardMonitor.typedCharacters(event: "h", translated: "р", preferTranslation: false, canOverrideEvent: false) == "h",
+          "a posted event (text expander, auto-type) keeps its own text")
 }
 
 run("screen verification: verdict") {

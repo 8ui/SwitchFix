@@ -120,6 +120,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             },
             selectionFailed: { [weak self] in
                 self?.generatedLayoutSelectionFailed()
+            },
+            // The input-source notification comes later; keys typed meanwhile need the new
+            // layout's texts (the events may still carry the old one).
+            didSelect: { [weak self] in
+                self?.keyboardMonitor?.refreshInputTranslations()
             }
         )
 

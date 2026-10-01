@@ -428,10 +428,15 @@ public final class KeyboardMonitor {
         let translated = translations.withLock {
             $0[TranslationKey(keyCode: keyCode, shifted: flags.contains(.maskShift))]
         }
+        // Only physical keys: text expanders and auto-type post their text with any keyCode.
+        // ISO keys 10 and 50 depend on a keyboard type an agent app may not know.
+        let physical = event.getIntegerValueField(.eventSourceStateID)
+            == Int64(CGEventSourceStateID.hidSystemState.rawValue)
         guard let text = KeyboardMonitor.typedCharacters(
             event: KeyboardMonitor.eventCharacterString(from: event),
             translated: translated,
-            preferTranslation: prefersTranslation
+            preferTranslation: prefersTranslation,
+            canOverrideEvent: physical && keyCode != 10 && keyCode != 50
         ) else {
             return .navigation
         }
@@ -458,10 +463,16 @@ public final class KeyboardMonitor {
     /// level, right after SwitchFix switches the layout, macOS may still attach the previous
     /// layout's text to key events while the app (Safari, Notes) types with the new one; when
     /// the two disagree on Cyrillic, the current layout wins. Case (Caps Lock) and differences
-    /// within one script keep the event's text.
-    public static func typedCharacters(event: String?, translated: String?, preferTranslation: Bool) -> String? {
+    /// within one script (Russian vs Ukrainian, punctuation vs punctuation) keep the event's text.
+    /// - Parameter canOverrideEvent: false for posted (non-hardware) events and ISO-dependent keys.
+    public static func typedCharacters(
+        event: String?,
+        translated: String?,
+        preferTranslation: Bool,
+        canOverrideEvent: Bool = true
+    ) -> String? {
         if preferTranslation { return translated ?? event }
-        guard let event, let translated else { return event }
+        guard canOverrideEvent, let event, let translated else { return event }
         return isCyrillic(event) == isCyrillic(translated) ? event : translated
     }
 
