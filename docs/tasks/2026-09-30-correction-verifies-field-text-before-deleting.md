@@ -5,7 +5,7 @@ type: bug
 pipeline: no-spec
 phase: review
 created: 2026-09-30
-updated: 2026-09-30
+updated: 2026-10-01
 blocked_by: null
 steps_done: 5
 steps_total: 6
@@ -58,6 +58,9 @@ Staleness-guards (`CorrectionPlan.isEligible`) этого не видят: ко�
 - 2026-09-30: verify: `CI зелёный: https://github.com/8ui/SwitchFix/actions/runs/36778002647 (99d374a) — InputPipelineTestRunner 1063/0, 8 новых сьютов screen check/verification` → exit 0 ✅
 - 2026-09-30: шаг 5 ✅ Документация + ревью — ревью субагентом, CI зелёный
 - 2026-09-30: impl complete; остался шаг 6 — локальная матрица в shadow и решение о enforce по умолчанию (macOS)
+- 2026-10-01: verify: `Локальная матрица (macOS 27, сборка 3169092, enforce, синтетические HID-события с keyCode + computer use): TextEdit 9×match; Notes 11×match, 2×mismatch = настоящая автозамена руддщ→«Руда» (без сверки стёрла бы перевод строки); Telegram 3×match; хоткей (одиночный Option) match; Chrome омнибокс 2×unknown(unavailable) → fail-open. Ложных отмен на обычном наборе нет; остальные 5 mismatch — артефакт постера (второе слово того же процесса после переключения раскладки, буфер vbh / поле «мир»).` → exit 0 ✅
+- 2026-10-01: шаг 6 ▶ Локальная матрица и включение enforce (macOS)
+- 2026-10-01: шаг 6: матрица TextEdit/Notes/Telegram/хоткей в enforce — ложных отмен нет; Chrome-омнибокс unavailable; Safari/Chrome textarea не проверены (браузеры только на чтение). Локально SwitchFix_fieldTextCheck=enforce; решение о default ждёт пользователя
 
 ## Decisions
 
@@ -65,10 +68,11 @@ _Нетривиальные решения по ходу задачи. Одна 
 
 ## Debt
 
-- [ ] Chrome/Electron без AX-дерева: фокус — контейнер → unavailable → fail-open; омнибокс Chrome может остаться непокрытым — проверить локально, альтернатива — выделение Shift+← (OpenKey), отдельная задача
+- [ ] Chrome-омнибокс подтверждён локально 2026-10-01: probe=unavailable (не transient) → fail-open, сверка gпривет там не ловит; альтернатива — выделение Shift+← (OpenKey), отдельная задача — переформулировано 2026-10-01
 - [ ] undo/revert (TextCorrector.undo) удаляет correctedText+boundary без сверки поля — тот же класс бага
 - [ ] hotkey/layoutSwitch при выделенной inline-подсказке идут в ветку .selection и конвертируют подсказку вместо слова
 - [ ] путь layoutSwitch со сверкой не покрыт тестом (layoutSwitchPlans строит свой движок без screenTextRequest); layoutSwitch читает AX дважды (выделение + сверка)
+- [ ] Автозамена до коррекции (Notes: руддщ→«Руда»): сверка отменяет коррекцию, текст не портится, но в поле остаётся автозаменённое слово — можно стирать то, что показывает поле (длина слова из AX), и вставлять конверсию
 
 ## Verification
 
@@ -82,6 +86,12 @@ _Нетривиальные решения по ходу задачи. Одна 
 
   ```
   (без вывода)
+  ```
+
+- 2026-10-01 · `Локальная матрица (macOS 27, сборка 3169092, enforce, синтетические HID-события с keyCode + computer use): TextEdit 9×match; Notes 11×match, 2×mismatch = настоящая автозамена руддщ→«Руда» (без сверки стёрла бы перевод строки); Telegram 3×match; хоткей (одиночный Option) match; Chrome омнибокс 2×unknown(unavailable) → fail-open. Ложных отмен на обычном наборе нет; остальные 5 mismatch — артефакт постера (второе слово того же процесса после переключения раскладки, буфер vbh / поле «мир»).` · exit 0 ✅
+
+  ```
+  verdict counts: TextEdit match 8 (att1 5, att2 3) · Notes match 11, mismatch 6 (2 autocorrect, 4 артефакт) · Telegram match 3 · Chrome unknown 2. Safari, textarea в Chrome, Slack, VS Code (в списке исключений) — не проверены: браузеры выданы computer use только на чтение.
   ```
 
 ## Handoff
