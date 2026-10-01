@@ -1765,11 +1765,19 @@ run("screen check: an autocorrected word is replaced as the field shows it") {
     harness = screenChecked(.text(before: "ok ghbdth "), .text(before: "ok ghbdtnn "), emits: false) { harness in
         harness.screen?.beforeFirstReply = { Thread.sleep(forTimeInterval: 0.2) }
     }
-    check(harness.emitted.count == 0, "a confirming read past the deadline that disagrees: nothing is deleted")
+    check(waitUntil { (harness.screen?.queries ?? 0) >= 2 }, "the confirming read happens")
+    check(!waitUntil(0.3) { harness.emitted.count > 0 }, "a confirming read past the deadline that disagrees: nothing is deleted")
     check(harness.screen?.queries == 2, "no further reads, got \(harness.screen?.queries ?? -1)")
 
     harness = screenChecked(.text(before: "ok ghbdth "), .unavailable(transient: false), emits: false)
-    check(harness.emitted.count == 0, "a replacement seen, then an unreadable field: the typed length is not deleted")
+    check(waitUntil { (harness.screen?.queries ?? 0) >= 2 }, "the field is read again")
+    check(!waitUntil(0.3) { harness.emitted.count > 0 },
+          "a replacement seen, then an unreadable field: the typed length is not deleted")
+
+    harness = screenChecked(.text(before: "ok ghbdth "), .unavailable(transient: true), emits: false)
+    check(waitUntil { (harness.screen?.queries ?? 0) >= 3 }, "timeouts are read again")
+    check(!waitUntil(0.4) { harness.emitted.count > 0 },
+          "a replacement seen, then timeouts until the deadline: the typed length is not deleted")
 
     harness = screenChecked(.text(before: "ok ghbdth "), emits: true, mode: .shadow)
     check(harness.emitted.last?.deleteCount == "ghbdtn ".count, "shadow corrects as before")

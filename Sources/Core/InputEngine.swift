@@ -572,7 +572,8 @@ public final class InputEngine {
         query: @escaping ScreenTextRequest,
         startedAt: UInt64,
         attempt: Int,
-        replacedBefore: Int? = nil
+        replacedBefore: Int? = nil,
+        sawReplacement: Bool = false
     ) {
         guard isCurrent(request) else {
             SwitchFixLog.engine.notice("correction cancelled reason=stale-during-screen-check attempts=\(attempt - 1) provenance=\(String(describing: plan.provenance))")
@@ -608,18 +609,22 @@ public final class InputEngine {
                     if case .replaced(let deleteCount) = verdict, deleteCount != replacedBefore {
                         unconfirmed = deleteCount
                     }
-                    // Once a replacement was seen, an unreadable field is no reason to delete
-                    // the typed length.
-                    if unconfirmed != nil && final && replacedBefore != nil
-                        || verdict == .unknown && replacedBefore != nil, !shadow {
+                    if unconfirmed != nil, final, sawReplacement, !shadow {
                         SwitchFixLog.engine.notice("correction cancelled reason=screen-replacement-unconfirmed attempts=\(attempt)")
+                        return
+                    }
+                    // Once a replacement was seen (even before a retry), an unreadable field
+                    // is no reason to delete the typed length.
+                    if verdict == .unknown, sawReplacement, !shadow {
+                        SwitchFixLog.engine.notice("correction cancelled reason=screen-unreadable-after-replacement attempts=\(attempt)")
                         return
                     }
                     if verdict == .retry || unconfirmed != nil, !shadow {
                         self.inputQueue.asyncAfter(deadline: .now() + Self.screenCheckRetryInterval) { [weak self] in
                             self?.verifyScreen(
                                 plan, request: request, query: query, startedAt: startedAt,
-                                attempt: attempt + 1, replacedBefore: unconfirmed
+                                attempt: attempt + 1, replacedBefore: unconfirmed,
+                                sawReplacement: sawReplacement || unconfirmed != nil
                             )
                         }
                         return
