@@ -3,13 +3,13 @@ id: 2026-10-01-after-switchfix-switches-the-layout-safari-types-in-the-new
 title: "After SwitchFix switches the layout, Safari types in the new layout while key events still carry the old one"
 type: bug
 pipeline: no-spec
-phase: impl
+phase: review
 created: 2026-10-01
 updated: 2026-10-01
 blocked_by: null
-steps_done: 2
+steps_done: 3
 steps_total: 3
-step_current: 3
+step_current: null
 artifacts:
   spec: null
   plan: null
@@ -33,7 +33,7 @@ artifacts:
 
 1. ✅ Сверка символа события с таблицей текущей раскладки
 2. ✅ Тест чистой функции
-3. ▶ Сборка, установка, проверка, CI
+3. ✅ Сборка, установка, проверка, CI
 
 ## Log
 
@@ -43,6 +43,9 @@ artifacts:
 - 2026-10-01: шаг 2 ✅ Тест чистой функции — InputPipelineTestRunner 1101/0
 - 2026-10-01: verify: `Локально: InputPipelineTestRunner 1101/0; сценарий пользователя (RU-раскладка: hello ghbdtn hello world test одним потоком событий со старой раскладкой) → TextEdit «hello привет hello world test», Telegram то же, Заметки «привет мир как дела» — раньше слова после self-switch отменялись/не исправлялись` → exit 0 ✅
 - 2026-10-01: verify: `CI зелёный: https://github.com/8ui/SwitchFix/actions/runs/36827574792 (4848b68)` → exit 0 ✅
+- 2026-10-01: verify: `CI зелёный: https://github.com/8ui/SwitchFix/actions/runs/36828950525 (b2797b8, правки ревью)` → exit 0 ✅
+- 2026-10-01: шаг 3 ✅ Сборка, установка, проверка, CI — ждёт повтор пользователя в Safari
+- 2026-10-01: impl + ревью субагентом учтено (физические клавиши, ISO 10/50, refresh на didSelect); CI зелёный; ждёт ручной проверки в Safari
 
 ## Decisions
 
@@ -63,6 +66,12 @@ _Нетривиальные решения по ходу задачи. Одна 
   ```
 
 - 2026-10-01 · `CI зелёный: https://github.com/8ui/SwitchFix/actions/runs/36827574792 (4848b68)` · exit 0 ✅
+
+  ```
+  (без вывода)
+  ```
+
+- 2026-10-01 · `CI зелёный: https://github.com/8ui/SwitchFix/actions/runs/36828950525 (b2797b8, правки ревью)` · exit 0 ✅
 
   ```
   (без вывода)
