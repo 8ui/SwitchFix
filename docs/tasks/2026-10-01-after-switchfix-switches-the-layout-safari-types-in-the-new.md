@@ -3,7 +3,7 @@ id: 2026-10-01-after-switchfix-switches-the-layout-safari-types-in-the-new
 title: "After SwitchFix switches the layout, Safari types in the new layout while key events still carry the old one"
 type: bug
 pipeline: no-spec
-phase: review
+phase: done
 created: 2026-10-01
 updated: 2026-10-01
 blocked_by: null
@@ -48,6 +48,7 @@ artifacts:
 - 2026-10-01: impl + ревью субагентом учтено (физические клавиши, ISO 10/50, refresh на didSelect); CI зелёный; ждёт ручной проверки в Safari
 - 2026-10-01: verify: `Пользователь в Safari: «hello привет hello world test»` → exit 0 ✅
 - 2026-10-01: artifacts.branch = claude/beautiful-shannon-hg5k6h; artifacts.pr = https://github.com/8ui/SwitchFix/pull/10
+- 2026-10-01: PR 8ui/SwitchFix#10 влит в master (0b5bb5c)
 
 ## Decisions
 

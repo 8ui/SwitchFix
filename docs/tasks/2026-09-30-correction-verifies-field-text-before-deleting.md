@@ -3,7 +3,7 @@ id: 2026-09-30-correction-verifies-field-text-before-deleting
 title: "Correction leaves stray letters when the field changed the text (inline autocomplete, predictions, autocorrect)"
 type: bug
 pipeline: no-spec
-phase: review
+phase: done
 created: 2026-09-30
 updated: 2026-10-01
 blocked_by: null
@@ -72,6 +72,7 @@ Staleness-guards (`CorrectionPlan.isEligible`) этого не видят: ко�
 - 2026-10-01: шаг 6 ✅ Локальная матрица и включение enforce (macOS) — enforce по умолчанию; матрица TextEdit/Notes/Telegram + Safari/Chrome руками
 - 2026-10-01: Слияние с master: параллельная реализация из PR #9 (FieldTextVerification) убрана по решению пользователя, оставлена ScreenVerification; SwitchFix_verifyFieldText=NO → off
 - 2026-10-01: artifacts.branch = claude/beautiful-shannon-hg5k6h; artifacts.pr = https://github.com/8ui/SwitchFix/pull/10
+- 2026-10-01: PR 8ui/SwitchFix#10 влит в master (0b5bb5c)
 
 ## Decisions
 
