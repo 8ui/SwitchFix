@@ -3,13 +3,13 @@ id: 2026-09-30-event-tap-dies-after-sleep-without-disabled-event
 title: "Event tap silently dies after sleep, lock or re-signing"
 type: bug
 pipeline: minimal
-phase: review
+phase: done
 created: 2026-09-30
 updated: 2026-10-01
 blocked_by: null
-steps_done: 3
+steps_done: 4
 steps_total: 4
-step_current: 4
+step_current: null
 artifacts:
   spec: null
   plan: null
@@ -35,7 +35,7 @@ discussion #11819, OpenKey #87, Keyboop #23 — «со временем авто
 1. ✅ restart/isTapEnabled/lastMouseDownUptime в KeyboardMonitor
 2. ✅ Wake/unlock + сторож кликов в AppDelegate
 3. ✅ Ревью
-4. ▶ Ручная проверка sleep/lock/переподпись (локально)
+4. ✅ Ручная проверка sleep/lock/переподпись (локально)
 
 ## Log
 
@@ -51,6 +51,8 @@ discussion #11819, OpenKey #87, Keyboop #23 — «со временем авто
 - 2026-09-30: влито в master (https://github.com/8ui/SwitchFix/pull/8); осталась ручная проверка на macOS
 - 2026-10-01: verify: `Локально: переподпись работающего /Applications/SwitchFix.app той же identity (codesign --force) — тот же процесс продолжил получать нажатия, коррекция ghbdtn→привет прошла; сторож не понадобился. Сон и блокировка экрана не проверены (нужна разблокировка паролем) — за пользователем` → exit 0 ✅
 - 2026-10-01: verify: `Пользователь: блокировка экрана — 13:27:12 'recreating event tap (com.apple.screenIsUnlocked)', коррекции в Telegram сразу после разблокировки прошли` → exit 0 ✅
+- 2026-10-01: шаг 4 ✅ Ручная проверка sleep/lock/переподпись (локально) — lock ✓, переподпись ✓, сон пропущен
+- 2026-10-01: ручная проверка: блокировка и переподпись пройдены, сон пропущен по решению пользователя
 
 ## Decisions
 
@@ -59,6 +61,7 @@ _Нетривиальные решения по ходу задачи. Одна 
 ## Debt
 
 - [ ] Сторож доказывает только доставку мыши: tap, получающий клики без клавиш (переподпись со старым Input Monitoring), не ловится; состояние модификатор-хоткея (controlTapArmed, lastAlphaShiftState) переживает рестарт
+- [ ] Сон/пробуждение не проверены вручную — пропущено по решению пользователя 2026-10-01; блокировка и переподпись проверены
 
 ## Verification
 
