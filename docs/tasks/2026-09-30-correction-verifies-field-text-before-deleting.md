@@ -14,7 +14,7 @@ artifacts:
   spec: null
   plan: docs/plans/correction-verifies-field-text-before-deleting-plan.md
   branch: claude/beautiful-shannon-hg5k6h
-  pr: null
+  pr: "https://github.com/8ui/SwitchFix/pull/10"
 ---
 
 ## Context
@@ -71,6 +71,7 @@ Staleness-guards (`CorrectionPlan.isEligible`) этого не видят: ко�
 - 2026-10-01: verify: `Пользователь в Safari: «hello привет hello world test» — автозамена и раскладка исправлены; локально после слияния с master: InputPipelineTestRunner 1102/0, TestRunner 603/0` → exit 0 ✅
 - 2026-10-01: шаг 6 ✅ Локальная матрица и включение enforce (macOS) — enforce по умолчанию; матрица TextEdit/Notes/Telegram + Safari/Chrome руками
 - 2026-10-01: Слияние с master: параллельная реализация из PR #9 (FieldTextVerification) убрана по решению пользователя, оставлена ScreenVerification; SwitchFix_verifyFieldText=NO → off
+- 2026-10-01: artifacts.branch = claude/beautiful-shannon-hg5k6h; artifacts.pr = https://github.com/8ui/SwitchFix/pull/10
 
 ## Decisions
 
