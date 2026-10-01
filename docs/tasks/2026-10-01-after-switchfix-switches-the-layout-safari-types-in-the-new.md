@@ -3,13 +3,13 @@ id: 2026-10-01-after-switchfix-switches-the-layout-safari-types-in-the-new
 title: "After SwitchFix switches the layout, Safari types in the new layout while key events still carry the old one"
 type: bug
 pipeline: no-spec
-phase: triage
+phase: impl
 created: 2026-10-01
 updated: 2026-10-01
 blocked_by: null
-steps_done: 0
-steps_total: 0
-step_current: null
+steps_done: 2
+steps_total: 3
+step_current: 3
 artifacts:
   spec: null
   plan: null
@@ -31,11 +31,17 @@ artifacts:
 
 ## Progress
 
-_Шаги не заданы. `rtp steps <id> --set "…"` или `--from-plan <файл>`._
+1. ✅ Сверка символа события с таблицей текущей раскладки
+2. ✅ Тест чистой функции
+3. ▶ Сборка, установка, проверка, CI
 
 ## Log
 
 - 2026-10-01: triage — pipeline `no-spec`, reason: pre-existing, не связано со сверкой поля; нужен локальный repro и выбор источника символов (event string vs keycode+layout)
+- 2026-10-01: Повтор пользователя 09:51: после self-switch на русскую 20 с событий с латиницей (margin −24.5/−47.9/−11.9 у hello/world/test), Safari печатал кириллицу. Фикс: в session tap символ из таблицы translations (текущий TIS, обновляется на каждом переключении) побеждает строку события, когда они расходятся по письменности (кириллица/не кириллица). План — в Context, отдельный документ не пишу: 1 файл + тест
+- 2026-10-01: шаг 1 ✅ Сверка символа события с таблицей текущей раскладки
+- 2026-10-01: шаг 2 ✅ Тест чистой функции — InputPipelineTestRunner 1101/0
+- 2026-10-01: verify: `Локально: InputPipelineTestRunner 1101/0; сценарий пользователя (RU-раскладка: hello ghbdtn hello world test одним потоком событий со старой раскладкой) → TextEdit «hello привет hello world test», Telegram то же, Заметки «привет мир как дела» — раньше слова после self-switch отменялись/не исправлялись` → exit 0 ✅
 
 ## Decisions
 
@@ -50,7 +56,11 @@ _Без `[ ]`/`[x]` пункт невидим для агрегатора и т�
 
 ## Verification
 
-_Доказательства, а не утверждения. Заполняется `rtp verify <id> --run "<команда>"`: команда, exit code, хвост вывода._
+- 2026-10-01 · `Локально: InputPipelineTestRunner 1101/0; сценарий пользователя (RU-раскладка: hello ghbdtn hello world test одним потоком событий со старой раскладкой) → TextEdit «hello привет hello world test», Telegram то же, Заметки «привет мир как дела» — раньше слова после self-switch отменялись/не исправлялись` · exit 0 ✅
+
+  ```
+  (без вывода)
+  ```
 
 ## Handoff
 

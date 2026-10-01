@@ -1621,6 +1621,25 @@ run("learning: merged multi-word corrections are not learned") {
     )), "selection replacements do not teach")
 }
 
+run("key characters: a stale layout in the event yields to the current one") {
+    func typed(_ event: String?, _ table: String?) -> String? {
+        KeyboardMonitor.typedCharacters(event: event, translated: table, preferTranslation: false)
+    }
+    check(typed("h", "р") == "р", "the event still carries the previous layout (Safari after a switch)")
+    check(typed("р", "h") == "h", "and back")
+    check(typed(",", "б") == "б", "a letter on a punctuation key")
+    check(typed("б", ",") == ",", "and back")
+    check(typed("H", "h") == "H", "Caps Lock: same key, the event's case is kept")
+    check(typed("Р", "р") == "Р", "Caps Lock in Cyrillic")
+    check(typed("і", "ы") == "і", "Russian and Ukrainian are not told apart this way")
+    check(typed("h", nil) == "h", "no table: the event")
+    check(typed(nil, "р") == nil, "a dead key stays without text")
+    check(KeyboardMonitor.typedCharacters(event: "h", translated: "р", preferTranslation: true) == "р",
+          "the HID tap always uses the table")
+    check(KeyboardMonitor.typedCharacters(event: nil, translated: "р", preferTranslation: true) == "р",
+          "including when the event has no text")
+}
+
 run("screen verification: verdict") {
     func verdict(_ word: String, _ probe: FieldTextProbe, boundary: String = " ", final: Bool = false) -> ScreenVerdict {
         ScreenVerification.verdict(word: word, boundary: boundary, probe: probe, final: final)

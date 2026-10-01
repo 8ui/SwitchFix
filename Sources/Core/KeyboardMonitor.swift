@@ -203,7 +203,8 @@ public final class KeyboardMonitor {
         return start()
     }
 
-    /// Precompute HID fallback translations away from the event-tap callback.
+    /// Precompute the current layout's key texts away from the event-tap callback (the HID
+    /// tap's only source of text; at session level, a check of the event's own text).
     public func refreshInputTranslations() {
         let sources = [
             TISCopyCurrentKeyboardInputSource()?.takeRetainedValue(),
@@ -424,10 +425,14 @@ public final class KeyboardMonitor {
         }
 
         let prefersTranslation = lifecycle.withLock { $0.prefersLayoutTranslation }
-        let translated = prefersTranslation ? translations.withLock {
+        let translated = translations.withLock {
             $0[TranslationKey(keyCode: keyCode, shifted: flags.contains(.maskShift))]
-        } : nil
-        guard let text = translated ?? KeyboardMonitor.eventCharacterString(from: event) else {
+        }
+        guard let text = KeyboardMonitor.typedCharacters(
+            event: KeyboardMonitor.eventCharacterString(from: event),
+            translated: translated,
+            preferTranslation: prefersTranslation
+        ) else {
             return .navigation
         }
         if WordBoundary.isPunctuationBoundary(text) {
@@ -445,6 +450,23 @@ public final class KeyboardMonitor {
         guard keyCode == configuredKeyCode else { return false }
         let relevantMask: CGEventFlags = [.maskCommand, .maskControl, .maskAlternate, .maskShift]
         return flags.intersection(relevantMask) == CGEventFlags(rawValue: configuredModifiers).intersection(relevantMask)
+    }
+
+    /// The text a key typed: the event's own text, or the current layout's (`translated`).
+    ///
+    /// The HID tap sees events before they get text, so it always translates. At session
+    /// level, right after SwitchFix switches the layout, macOS may still attach the previous
+    /// layout's text to key events while the app (Safari, Notes) types with the new one; when
+    /// the two disagree on Cyrillic, the current layout wins. Case (Caps Lock) and differences
+    /// within one script keep the event's text.
+    public static func typedCharacters(event: String?, translated: String?, preferTranslation: Bool) -> String? {
+        if preferTranslation { return translated ?? event }
+        guard let event, let translated else { return event }
+        return isCyrillic(event) == isCyrillic(translated) ? event : translated
+    }
+
+    private static func isCyrillic(_ text: String) -> Bool {
+        text.unicodeScalars.contains { (0x400...0x4FF).contains($0.value) }
     }
 
     private static func eventCharacterString(from event: CGEvent) -> String? {
