@@ -22,9 +22,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var previousInputSourceID = "unknown"
 
     /// `defaults write com.switchfix.app SwitchFix_fieldTextCheck off|shadow|enforce`, read at
-    /// launch. Shadow until the check is verified in real apps: it logs the verdict but corrects.
+    /// launch. Enforce by default (verified in TextEdit, Notes, Telegram, Safari, Chrome);
+    /// shadow only logs the verdict and corrects as before.
     private static let screenCheckMode = UserDefaults.standard.string(forKey: "SwitchFix_fieldTextCheck")
-        .flatMap(ScreenCheckMode.init(rawValue:)) ?? .shadow
+        .flatMap(ScreenCheckMode.init(rawValue:)) ?? .enforce
 
     /// Terminals expose the whole scrollback with a caret that is not the shell's cursor.
     private static let fieldTextHidingBundleIdentifiers: Set<String> = [
