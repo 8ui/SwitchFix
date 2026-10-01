@@ -65,6 +65,8 @@ public struct CorrectionPlan: Equatable {
     }
 
     /// The same correction deleting `count` characters (the field changed what was typed).
+    /// Undo still retypes `originalText` + boundary; a field may autocorrect it again, which
+    /// gives back what it showed before the correction.
     public func deleting(_ count: Int) -> CorrectionPlan {
         CorrectionPlan(
             boundarySequence: boundarySequence,

@@ -3,13 +3,13 @@ id: 2026-09-30-correction-verifies-field-text-before-deleting
 title: "Correction leaves stray letters when the field changed the text (inline autocomplete, predictions, autocorrect)"
 type: bug
 pipeline: no-spec
-phase: review
+phase: impl
 created: 2026-09-30
 updated: 2026-10-01
 blocked_by: null
 steps_done: 5
-steps_total: 6
-step_current: 6
+steps_total: 7
+step_current: 7
 artifacts:
   spec: null
   plan: docs/plans/correction-verifies-field-text-before-deleting-plan.md
@@ -40,7 +40,8 @@ Staleness-guards (`CorrectionPlan.isEligible`) этого не видят: ко�
 3. ✅ Coordinator + AppDelegate
 4. ✅ Тесты пайплайна
 5. ✅ Документация + ревью
-6. ▶ Локальная матрица и включение enforce (macOS)
+6. ⬜ Локальная матрица и включение enforce (macOS)
+7. ▶ Автозамена: стирать слово, которое показывает поле (вердикт replaced)
 
 ## Log
 
@@ -61,6 +62,8 @@ Staleness-guards (`CorrectionPlan.isEligible`) этого не видят: ко�
 - 2026-10-01: verify: `Локальная матрица (macOS 27, сборка 3169092, enforce, синтетические HID-события с keyCode + computer use): TextEdit 9×match; Notes 11×match, 2×mismatch = настоящая автозамена руддщ→«Руда» (без сверки стёрла бы перевод строки); Telegram 3×match; хоткей (одиночный Option) match; Chrome омнибокс 2×unknown(unavailable) → fail-open. Ложных отмен на обычном наборе нет; остальные 5 mismatch — артефакт постера (второе слово того же процесса после переключения раскладки, буфер vbh / поле «мир»).` → exit 0 ✅
 - 2026-10-01: шаг 6 ▶ Локальная матрица и включение enforce (macOS)
 - 2026-10-01: шаг 6: матрица TextEdit/Notes/Telegram/хоткей в enforce — ложных отмен нет; Chrome-омнибокс unavailable; Safari/Chrome textarea не проверены (браузеры только на чтение). Локально SwitchFix_fieldTextCheck=enforce; решение о default ждёт пользователя
+- 2026-10-01: Safari и Notes: автозамена (руддщ→«руда») до чтения поля → enforce отменяет, слово остаётся автозаменённым. Делаю вердикт replaced: стирать слово, которое показывает поле
+- 2026-10-01: шаг 7 ▶ Автозамена: стирать слово, которое показывает поле (вердикт replaced)
 
 ## Decisions
 

@@ -69,9 +69,10 @@ public enum ScreenVerification {
     /// How many characters to delete when the field shows an autocorrection of `word`
     /// followed by the boundary, or nil when the change is not one.
     ///
-    /// An autocorrection replaces one whole word with a close one in the same script; only
-    /// such a word, bounded by a separator the field shows, is deleted. Anything else
-    /// (a prediction, a pasted or reformatted text) stays a mismatch.
+    /// An autocorrection replaces one whole word with a close one in the same script that
+    /// keeps its first letter; only such a word, bounded by a separator the field shows, is
+    /// deleted. Anything else (a prediction, a pasted or reformatted text, a word with a
+    /// soft-boundary letter such as `j,sxyj`) stays a mismatch.
     static func autocorrected(word: String, boundary: String, field: [String], atTextStart: Bool) -> Int? {
         let typed = folded(word)
         let tail = folded(boundary)
@@ -81,7 +82,7 @@ public enum ScreenVerification {
         let beforeBoundary = field.dropLast(tail.count)
         let shown = Array(beforeBoundary.reversed().prefix { !isSeparator($0) }.reversed())
         let separated = shown.count < beforeBoundary.count || atTextStart
-        guard separated, !shown.isEmpty, shown != typed,
+        guard separated, !shown.isEmpty, shown != typed, shown.first == typed.first,
               script(of: shown) == typedScript,
               abs(shown.count - typed.count) <= maximumAutocorrectionDistance,
               editDistance(typed, shown) <= maximumAutocorrectionDistance else { return nil }
@@ -112,8 +113,10 @@ public enum ScreenVerification {
         return result
     }
 
+    /// Whitespace or punctuation that ends a typed word; apostrophes, hyphens and the letters
+    /// on punctuation keys stay inside it, as in `WordBoundary`.
     private static func isSeparator(_ character: String) -> Bool {
-        character.allSatisfy { $0.isWhitespace || $0.isNewline } || character.allSatisfy(\.isPunctuation)
+        character.allSatisfy { $0.isWhitespace || $0.isNewline } || WordBoundary.isPunctuationBoundary(character)
     }
 
     private static func editDistance(_ a: [String], _ b: [String]) -> Int {

@@ -1643,10 +1643,16 @@ run("screen verification: verdict") {
     check(verdict("руддщ", .text(before: "Руда ")) == .mismatch, "a word cut by the window is not deleted")
     check(verdict("руддщ", .text(before: "x\nруда ")) == .replaced(deleteCount: 5), "after a newline")
     check(verdict("ghbdtn", .text(before: "a ghbdth ")) == .replaced(deleteCount: 7), "a one-letter fix")
-    check(verdict("ghbdtn", .text(before: "a привет ")) == .mismatch, "another script is not an autocorrection")
+    check(verdict("ghbdtn", .text(before: "a ghbdтn ")) == .mismatch, "a letter of another script is not an autocorrection")
     check(verdict("ghbdtn", .text(before: "a ghost ")) == .mismatch, "too different")
     check(verdict("ghbdtn", .text(before: "a xxghbdth ")) == .mismatch, "three edits are not an autocorrection")
-    check(verdict("ghbdtn", .text(before: "a ghb-dt ")) == .mismatch, "only letters")
+    check(verdict("ghbdtn", .text(before: "a ghbdt3 ")) == .mismatch, "only letters")
+    check(verdict("ghbdtn", .text(before: "a fhbdtn ")) == .mismatch, "an autocorrection keeps the first letter")
+    check(verdict("руддщ", .text(before: "x (руда ")) == .replaced(deleteCount: 5), "punctuation right before the word")
+    check(verdict("руддщ", .text(before: "дело\u{00A0}руда ")) == .replaced(deleteCount: 5), "an NBSP before the word")
+    check(verdict("пятниця", .text(before: "x п'ятниця ")) == .mismatch,
+          "an apostrophe is inside the word: the whole word is not seen as one")
+    check(verdict("руддщ", .text(before: "дело, руда "), final: true) == .replaced(deleteCount: 5), "also at the deadline")
     check(verdict("ghbdtn", .text(before: "a ghbdth")) == .mismatch, "the boundary must still be there")
     check(verdict("ghbdtn", .text(before: "a ghbdth"), boundary: "") == .mismatch, "the hotkey has no boundary to anchor on")
     check(verdict("ie ww", .text(before: "a ie wx ")) == .mismatch, "a merged pair is never re-cut")
@@ -1713,6 +1719,20 @@ run("screen check: an autocorrected word is replaced as the field shows it") {
     check(harness.emitted.last?.originalText == "ghbdtn", "the typed word is kept for undo and learning")
     check((harness.screen?.windows.first ?? 0) >= "ghbdtn ".utf16.count + 3,
           "the window reaches the separator before a longer field word, got \(harness.screen?.windows ?? [])")
+
+    check(harness.screen?.queries == 2, "only after a second read agrees, got \(harness.screen?.queries ?? -1)")
+
+    harness = screenChecked(.text(before: "ok ghbdt"), .text(before: "ok ghbdth "), emits: true)
+    check(harness.emitted.last?.deleteCount == "ghbdth ".count, "a field that lags, then autocorrects")
+
+    harness = screenChecked(.text(before: "ok ghbdth "), .text(before: "ok ghbdtn "), emits: true)
+    check(harness.emitted.last?.deleteCount == "ghbdtn ".count,
+          "a stale read that looked autocorrected is not trusted once the field shows the word")
+
+    let flickering = (0..<40).map { $0 % 2 == 0 ? FieldTextProbe.text(before: "ok ghbdth ") : .text(before: "ok ghbdtnn ") }
+    harness = LearningHarness(screen: ScreenStub(replies: flickering), screenCheckMode: .enforce)
+    harness.type("ghbdtn")
+    check(!waitUntil(0.6) { harness.emitted.count > 0 }, "reads that never agree on the replacement: nothing is deleted")
 
     harness = screenChecked(.text(before: "ok ghbdth "), emits: true, mode: .shadow)
     check(harness.emitted.last?.deleteCount == "ghbdtn ".count, "shadow corrects as before")

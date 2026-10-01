@@ -571,15 +571,16 @@ public final class InputEngine {
         request: DetectionRequest,
         query: @escaping ScreenTextRequest,
         startedAt: UInt64,
-        attempt: Int
+        attempt: Int,
+        replacedBefore: Int? = nil
     ) {
         guard isCurrent(request) else {
             SwitchFixLog.engine.notice("correction cancelled reason=stale-during-screen-check attempts=\(attempt - 1) provenance=\(String(describing: plan.provenance))")
             return
         }
-        // AX ranges are UTF-16; the margin covers a decomposed accent in the field, and an
-        // autocorrected word up to two characters longer plus the separator before it. Only
-        // the suffix is compared, so a character cut at the window's start does not matter.
+        // AX ranges are UTF-16. The margin: 2 for a decomposed accent in the field, 2 for an
+        // autocorrected word that is longer, 1 for the separator before it, 1 spare. Only the
+        // suffix is compared, so a character cut at the window's start does not matter.
         let window = (plan.originalText + plan.boundaryText).utf16.count + 6
         selectionQueue.async {
             query(request.context.frontmostPID, request.context.epoch, window) { [weak self] probe in
@@ -590,18 +591,32 @@ public final class InputEngine {
                         return
                     }
                     let elapsed = DispatchTime.now().uptimeNanoseconds &- startedAt
+                    let final = elapsed >= Self.screenCheckDeadlineNanoseconds
                     let verdict = ScreenVerification.verdict(
                         word: plan.originalText,
                         boundary: plan.boundaryText,
                         probe: probe,
-                        final: elapsed >= Self.screenCheckDeadlineNanoseconds
+                        final: final
                     )
                     // Shadow reads once and corrects as before: waiting for a lagging field
                     // would delay corrections and lose them to the next keystroke.
                     let shadow = self.screenCheckMode == .shadow
-                    if verdict == .retry, !shadow {
+                    // A field a whole word behind can look autocorrected (its previous word):
+                    // a replacement is deleted only when a second read agrees.
+                    var unconfirmed: Int?
+                    if case .replaced(let deleteCount) = verdict, deleteCount != replacedBefore {
+                        unconfirmed = deleteCount
+                    }
+                    if unconfirmed != nil, final, !shadow {
+                        SwitchFixLog.engine.notice("correction cancelled reason=screen-replacement-unconfirmed attempts=\(attempt)")
+                        return
+                    }
+                    if verdict == .retry || unconfirmed != nil, !shadow {
                         self.inputQueue.asyncAfter(deadline: .now() + Self.screenCheckRetryInterval) { [weak self] in
-                            self?.verifyScreen(plan, request: request, query: query, startedAt: startedAt, attempt: attempt + 1)
+                            self?.verifyScreen(
+                                plan, request: request, query: query, startedAt: startedAt,
+                                attempt: attempt + 1, replacedBefore: unconfirmed
+                            )
                         }
                         return
                     }
