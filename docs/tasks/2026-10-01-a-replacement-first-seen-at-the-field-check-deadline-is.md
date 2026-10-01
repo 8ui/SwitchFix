@@ -3,7 +3,7 @@ id: 2026-10-01-a-replacement-first-seen-at-the-field-check-deadline-is
 title: A replacement first seen at the field-check deadline is cancelled instead of confirmed (flaky CI)
 type: bug
 pipeline: minimal
-phase: review
+phase: done
 created: 2026-10-01
 updated: 2026-10-01
 blocked_by: null
@@ -13,8 +13,8 @@ step_current: null
 artifacts:
   spec: null
   plan: null
-  branch: null
-  pr: null
+  branch: claude/replaced-confirm-after-deadline
+  pr: "https://github.com/8ui/SwitchFix/pull/11"
 ---
 
 ## Context
@@ -37,6 +37,8 @@ _2-5 строк: что делаем и зачем. Задача этой сек
 - 2026-10-01: ревью субагентом: замена забывалась на пути retry (AX-таймаут между чтениями) → флаг sawReplacement переживает retry; отдельная причина в логе; негативные тесты ждут второго чтения. 1111/0 ×3
 - 2026-10-01: verify: `CI зелёный: https://github.com/8ui/SwitchFix/actions/runs/36874858640 (b3b5045)` → exit 0 ✅
 - 2026-10-01: шаг 3 ✅ Ревью и CI — ревью учтено, CI зелёный
+- 2026-10-01: artifacts.branch = claude/replaced-confirm-after-deadline; artifacts.pr = https://github.com/8ui/SwitchFix/pull/11
+- 2026-10-01: PR 8ui/SwitchFix#11 влит; релиз v0.0.14
 
 ## Decisions
 
