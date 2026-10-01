@@ -1136,13 +1136,34 @@ private final class CaretStub {
     }
 }
 
-private final class FieldTextStub {
+/// What the fake field-text check answers before a correction deletes: the replies in
+/// order, the last one repeated.
+private final class ScreenStub {
     private let lock = NSLock()
-    private var answered = 0
-    var reply: FieldTextSnapshot = .unavailable
-    var calls: Int { lock.lock(); defer { lock.unlock() }; return answered }
-    func answer(_ completion: @escaping (FieldTextSnapshot) -> Void) {
-        lock.lock(); answered += 1; let reply = self.reply; lock.unlock()
+    private var replies: [FieldTextProbe]
+    private var _windows: [Int] = []
+    /// Runs on the query queue before the first reply (e.g. to type while AX is answering).
+    var beforeFirstReply: (() -> Void)?
+
+    init(replies: [FieldTextProbe]) {
+        self.replies = replies.isEmpty ? [.unavailable(transient: false)] : replies
+    }
+
+    convenience init(_ replies: FieldTextProbe...) {
+        self.init(replies: replies)
+    }
+
+    /// The window length of every query, in order.
+    var windows: [Int] { lock.lock(); defer { lock.unlock() }; return _windows }
+    var queries: Int { windows.count }
+
+    func answer(window: Int, _ completion: @escaping (FieldTextProbe) -> Void) {
+        lock.lock()
+        _windows.append(window)
+        let first = _windows.count == 1
+        let reply = replies.count > 1 ? replies.removeFirst() : replies[0]
+        lock.unlock()
+        if first { beforeFirstReply?() }
         completion(reply)
     }
 }
@@ -1153,15 +1174,17 @@ private struct LearningHarness {
     let lexicon: PersonalLexicon
     let emitted: EmissionLog
     let caret = CaretStub()
-    let fieldText = FieldTextStub()
+    let screen: ScreenStub?
     var timestamp: UInt64 = 0
 
     init(
         mode: InputCorrectionMode = .automatic,
         revertReturnsNothing: Bool = false,
         layout: Layout = .english,
-        verifiesFieldText: Bool = false
+        screen: ScreenStub? = nil,
+        screenCheckMode: ScreenCheckMode = .enforce
     ) {
+        self.screen = screen
         let current = context(layout: layout, sourceID: "com.test.\(layout.rawValue)")
         store = CaptureStateStore(context: current, hotkeys: HotkeyConfiguration(hotkeyModifiers: 0))
         lexicon = PersonalLexicon(storage: InMemoryLexiconStorage(), saveDelay: 0)
@@ -1175,9 +1198,10 @@ private struct LearningHarness {
             caretContextRequest: { [caret] _, _, wantsCaretText, completion in
                 caret.answer(wantsCaretText: wantsCaretText, completion)
             },
-            fieldTextRequest: verifiesFieldText ? { [fieldText] _, _, completion in
-                fieldText.answer(completion)
-            } as InputEngine.FieldTextRequest : nil,
+            screenTextRequest: screen.map { screen in
+                { _, _, window, completion in screen.answer(window: window, completion) }
+            },
+            screenCheckMode: screenCheckMode,
             lexicon: lexicon,
             revertEmission: { _, _ in revertReturnsNothing ? nil : emitted.last }
         )
@@ -1293,8 +1317,8 @@ run("arrow keys skip automatic correction, the hotkey still converts from the bu
 
 /// Strong Russian context, then the short 'ше' ('it' typed on the Russian layout), which the
 /// detector defers and merges with a confirming next word ('цщклы' = 'works').
-private func shortWordHarness() -> LearningHarness {
-    var harness = LearningHarness(layout: .russian)
+private func shortWordHarness(screen: ScreenStub? = nil) -> LearningHarness {
+    var harness = LearningHarness(layout: .russian, screen: screen)
     harness.caret.reply = .unavailable
     harness.type("сейчас")
     harness.type("на")
@@ -1452,176 +1476,6 @@ run("learning: revert of an automatic correction teaches neverCorrect") {
     check(!waitUntil(0.3) { harness.emitted.count > 1 }, "the reverted word is not corrected again")
 }
 
-run("field text verdict") {
-    func verdict(_ snapshot: FieldTextSnapshot, _ word: String = "ghbdtn", _ boundary: String = " ") -> FieldTextVerdict {
-        FieldTextVerification.verdict(snapshot, word: word, boundary: boundary)
-    }
-    check(verdict(.before("say ghbdtn ")) == .matches, "word and boundary on screen")
-    check(verdict(.before("ghbdtn")) == .lagging, "boundary not processed yet")
-    check(verdict(.before("say ghbdt")) == .lagging, "Chromium AX text lagging behind typing")
-    check(verdict(.before("say g")) == .mismatch("changed"), "one letter is too little to call it lagging")
-    check(verdict(.before("Ghbdtn ")) == .matches, "autocapitalization keeps the count")
-    check(verdict(.before("ghbdtn\u{201D}"), "ghbdtn", "\"") == .matches, "smart quote boundary keeps the count")
-    check(verdict(.before("ghbdtnf ")) == .mismatch("changed"), "autocorrect changed the word")
-    check(verdict(.before("hello ")) == .mismatch("changed"), "replacement text")
-    check(verdict(.before("ghbdtn\u{00A0}!"), "ghbdtn", "!") == .mismatch("changed"), "NBSP inserted before punctuation")
-    check(verdict(.before("ghbdtn,")) == .mismatch("changed"), "a different boundary is not a match")
-    check(verdict(.before("ghbdtn,"), "ghbdtn", ",") == .matches, "comma boundary")
-    check(verdict(.before("b ghbdtn "), "b ghbdtn") == .matches, "merged short word")
-    check(verdict(.before("B ghbdtn "), "i ghbdtn") == .mismatch("changed"), "merged short word changed by autocorrect")
-    check(verdict(.before("ghbdtn"), "ghbdtn", "") == .matches, "empty boundary (hotkey, layout switch)")
-    check(verdict(.selection) == .mismatch("selection"), "inline suggestion selected after the caret")
-    check(verdict(.unavailable) == .unknown, "no AX answer")
-    check(FieldTextVerification.window(word: "ok😀", boundary: " ") == 5, "window is in UTF-16")
-}
-
-private func fieldTextEngine(
-    request: @escaping InputEngine.FieldTextRequest,
-    emitted: @escaping (CorrectionPlan) -> Void
-) -> (InputEngine, CaptureStateStore) {
-    let current = context()
-    let store = CaptureStateStore(context: current, hotkeys: HotkeyConfiguration(hotkeyModifiers: 0))
-    let engine = InputEngine(
-        captureState: store,
-        initialContext: current,
-        preferences: InputPreferencesSnapshot(isEnabled: true, correctionMode: .automatic),
-        exactDetection: { request in
-            DetectionResult(
-                sourceLayout: .english,
-                targetLayout: .russian,
-                convertedWord: "привет",
-                originalWord: request.word,
-                shouldSwitchLayout: false
-            )
-        },
-        correctionEmission: { plan in
-            emitted(plan)
-            return true
-        },
-        fieldTextRequest: request
-    )
-    return (engine, store)
-}
-
-private func typeWord(_ word: String, into engine: InputEngine, store: CaptureStateStore, boundary: String = " ") {
-    var timestamp: UInt64 = 1
-    for character in word {
-        engine.enqueue(store.capture(
-            timestamp: timestamp, kind: .character(String(character)), keyCode: 0,
-            flagsRawValue: 0, isAutorepeat: false, sourcePID: 1, sourceUserData: 0
-        ))
-        timestamp += 1
-    }
-    engine.enqueue(store.capture(
-        timestamp: timestamp, kind: .boundary(boundary), keyCode: 0,
-        flagsRawValue: 0, isAutorepeat: false, sourcePID: 1, sourceUserData: 0
-    ))
-}
-
-run("field text verification gates automatic corrections") {
-    let cases: [(String, FieldTextSnapshot, Int)] = [
-        ("matches", .before("ghbdtn "), 1),
-        ("lagging", .before("ghbdt"), 1),
-        ("unavailable", .unavailable, 1),
-        ("changed", .before("ghbdtnf "), 0),
-        ("selection", .selection, 0),
-    ]
-    for (label, answer, expected) in cases {
-        let lock = NSLock()
-        var plans: [CorrectionPlan] = []
-        var windows: [Int] = []
-        let (engine, store) = fieldTextEngine(
-            request: { _, window, completion in
-                lock.lock(); windows.append(window); lock.unlock()
-                DispatchQueue.global().async { completion(answer) }
-            },
-            emitted: { plan in lock.lock(); plans.append(plan); lock.unlock() }
-        )
-        typeWord("ghbdtn", into: engine, store: store)
-        _ = waitUntil(0.3) { lock.lock(); defer { lock.unlock() }; return !plans.isEmpty }
-        lock.lock()
-        check(plans.count == expected, "\(label): expected \(expected) correction(s), got \(plans.count)")
-        // A lagging field is read again until the deadline; every read covers word + boundary.
-        check(!windows.isEmpty && windows.allSatisfy { $0 == 7 }, "\(label): reads word + boundary, got \(windows)")
-        if label != "lagging" { check(windows.count == 1, "\(label): one read, got \(windows.count)") }
-        lock.unlock()
-    }
-}
-
-run("field text verification: no answer proceeds after the deadline, a late answer is ignored") {
-    let lock = NSLock()
-    var plans: [CorrectionPlan] = []
-    var pending: ((FieldTextSnapshot) -> Void)?
-    let (engine, store) = fieldTextEngine(
-        request: { _, _, completion in lock.lock(); pending = completion; lock.unlock() },
-        emitted: { plan in lock.lock(); plans.append(plan); lock.unlock() }
-    )
-    typeWord("ghbdtn", into: engine, store: store)
-    check(waitUntil(1) { lock.lock(); defer { lock.unlock() }; return plans.count == 1 }, "fail-open after the deadline")
-    lock.lock(); let late = pending; lock.unlock()
-    late?(.before("ghbdtnf "))
-    check(!waitUntil(0.2) { lock.lock(); defer { lock.unlock() }; return plans.count > 1 }, "the late answer changes nothing")
-}
-
-run("field text verification: a key pressed while reading cancels") {
-    let lock = NSLock()
-    var plans: [CorrectionPlan] = []
-    let asked = DispatchSemaphore(value: 0)
-    let release = DispatchSemaphore(value: 0)
-    let (engine, store) = fieldTextEngine(
-        request: { _, _, completion in
-            asked.signal()
-            DispatchQueue.global().async {
-                _ = release.wait(timeout: .now() + 1)
-                completion(.before("ghbdtn "))
-            }
-        },
-        emitted: { plan in lock.lock(); plans.append(plan); lock.unlock() }
-    )
-    typeWord("ghbdtn", into: engine, store: store)
-    check(asked.wait(timeout: .now() + 1) == .success, "the field is read")
-    engine.enqueue(store.capture(
-        timestamp: 99, kind: .character("x"), keyCode: 0,
-        flagsRawValue: 0, isAutorepeat: false, sourcePID: 1, sourceUserData: 0
-    ))
-    release.signal()
-    check(!waitUntil(0.3) { lock.lock(); defer { lock.unlock() }; return !plans.isEmpty }, "a key typed while reading cancels")
-}
-
-run("field text verification: a lagging field is read again until the boundary shows") {
-    let lock = NSLock()
-    var plans: [CorrectionPlan] = []
-    var answers: [FieldTextSnapshot] = [.before("ghbdtn"), .before("ghbdtnf ")]
-    var calls = 0
-    let (engine, store) = fieldTextEngine(
-        request: { _, _, completion in
-            lock.lock()
-            calls += 1
-            let answer = answers.isEmpty ? FieldTextSnapshot.before("ghbdtnf ") : answers.removeFirst()
-            lock.unlock()
-            DispatchQueue.global().async { completion(answer) }
-        },
-        emitted: { plan in lock.lock(); plans.append(plan); lock.unlock() }
-    )
-    typeWord("ghbdtn", into: engine, store: store)
-    _ = waitUntil(0.3) { lock.lock(); defer { lock.unlock() }; return !plans.isEmpty }
-    lock.lock()
-    check(calls >= 2, "the lagging field is read again, got \(calls) read(s)")
-    check(plans.isEmpty, "autocorrect on the boundary is caught on the second read")
-    lock.unlock()
-}
-
-run("field text verification: a screen word from the hotkey is not read again") {
-    var harness = LearningHarness(verifiesFieldText: true)
-    harness.fieldText.reply = .before("changed ")
-    harness.caret.reply = .caret(textBefore: "rehk", startsAtTextStart: true, next: nil)
-    harness.selectAllAndDelete()
-    harness.type("rehk", boundary: nil)
-    harness.send(.hotkey)
-    check(waitUntil { harness.emitted.count == 1 }, "the screen word is converted")
-    check(harness.fieldText.calls == 0, "no second read, got \(harness.fieldText.calls)")
-}
-
 run("automatic correction: a word ended by Enter is not corrected") {
     var harness = LearningHarness()
     harness.type("ghbdtn", boundary: "\n")
@@ -1765,6 +1619,230 @@ run("learning: merged multi-word corrections are not learned") {
         deleteCount: 5, replacementText: "hello", originalText: "руддщ", correctedText: "hello",
         boundaryText: "", originalLayout: .russian, targetLayout: .english, provenance: .selection
     )), "selection replacements do not teach")
+}
+
+run("key characters: a stale layout in the event yields to the current one") {
+    func typed(_ event: String?, _ table: String?) -> String? {
+        KeyboardMonitor.typedCharacters(event: event, translated: table, preferTranslation: false)
+    }
+    check(typed("h", "р") == "р", "the event still carries the previous layout (Safari after a switch)")
+    check(typed("р", "h") == "h", "and back")
+    check(typed(",", "б") == "б", "a letter on a punctuation key")
+    check(typed("б", ",") == ",", "and back")
+    check(typed("H", "h") == "H", "Caps Lock: same key, the event's case is kept")
+    check(typed("Р", "р") == "Р", "Caps Lock in Cyrillic")
+    check(typed("і", "ы") == "і", "Russian and Ukrainian are not told apart this way")
+    check(typed("h", nil) == "h", "no table: the event")
+    check(typed(nil, "р") == nil, "a dead key stays without text")
+    check(KeyboardMonitor.typedCharacters(event: "h", translated: "р", preferTranslation: true) == "р",
+          "the HID tap always uses the table")
+    check(KeyboardMonitor.typedCharacters(event: nil, translated: "р", preferTranslation: true) == "р",
+          "including when the event has no text")
+    check(KeyboardMonitor.typedCharacters(event: "h", translated: "р", preferTranslation: false, canOverrideEvent: false) == "h",
+          "a posted event (text expander, auto-type) keeps its own text")
+}
+
+run("screen verification: verdict") {
+    func verdict(_ word: String, _ probe: FieldTextProbe, boundary: String = " ", final: Bool = false) -> ScreenVerdict {
+        ScreenVerification.verdict(word: word, boundary: boundary, probe: probe, final: final)
+    }
+    check(verdict("ghbdtn", .text(before: "старое ghbdtn ")) == .match, "the field ends with the typed word")
+    check(verdict("ghbdtn", .text(before: "Ghbdtn ")) == .match, "automatic capitalization keeps the length")
+    check(verdict("'nj", .text(before: "\u{2018}nj ")) == .match, "a smart single quote is still one character")
+    check(verdict("\"nj", .text(before: "\u{00AB}nj ")) == .match, "a smart double quote is still one character")
+    check(verdict("ghbdtn", .text(before: "ghbdtn\u{00A0}")) == .match, "contenteditable keeps a trailing space as NBSP")
+    check(verdict("ie ww", .text(before: "ie\u{00A0}ww ")) == .match, "an NBSP inside a merged pair")
+    check(verdict("caf\u{00E9}", .text(before: "cafe\u{0301} ")) == .match, "a decomposed accent is one character")
+    check(verdict("ghbdtn", .text(before: "\u{1F600}ghbdtn ")) == .match, "an emoji before the word")
+    check(verdict("ghbdtn", .text(before: "ghbdtn"), boundary: "") == .match, "the hotkey has no boundary")
+    check(verdict("ghbdtn", .selection(length: 7)) == .mismatch, "an inline suggestion is selected")
+    check(verdict("teh", .text(before: "the ")) == .mismatch, "a short word is not matched by similarity")
+    check(verdict("руддщ", .text(before: "дело, руда ")) == .replaced(deleteCount: 5),
+          "autocorrect replaced the word: delete what the field shows")
+    check(verdict("руддщ", .text(before: "Руда ", atTextStart: true)) == .replaced(deleteCount: 5),
+          "at the start of the field, capitalized")
+    check(verdict("руддщ", .text(before: "Руда ")) == .mismatch, "a word cut by the window is not deleted")
+    check(verdict("руддщ", .text(before: "x\nруда ")) == .replaced(deleteCount: 5), "after a newline")
+    check(verdict("ghbdtn", .text(before: "a ghbdth ")) == .replaced(deleteCount: 7), "a one-letter fix")
+    check(verdict("ghbdtn", .text(before: "a ghbdтn ")) == .mismatch, "a letter of another script is not an autocorrection")
+    check(verdict("ghbdtn", .text(before: "a ghost ")) == .mismatch, "too different")
+    check(verdict("ghbdtn", .text(before: "a xxghbdth ")) == .mismatch, "three edits are not an autocorrection")
+    check(verdict("ghbdtn", .text(before: "a ghbdt3 ")) == .mismatch, "only letters")
+    check(verdict("ghbdtn", .text(before: "a fhbdtn ")) == .mismatch, "an autocorrection keeps the first letter")
+    check(verdict("руддщ", .text(before: "x (руда ")) == .replaced(deleteCount: 5), "punctuation right before the word")
+    check(verdict("руддщ", .text(before: "дело\u{00A0}руда ")) == .replaced(deleteCount: 5), "an NBSP before the word")
+    check(verdict("пятниця", .text(before: "x п'ятниця ")) == .mismatch,
+          "an apostrophe is inside the word: the whole word is not seen as one")
+    check(verdict("руддщ", .text(before: "дело, руда "), final: true) == .replaced(deleteCount: 5), "also at the deadline")
+    check(verdict("ghbdtn", .text(before: "a ghbdth")) == .mismatch, "the boundary must still be there")
+    check(verdict("ghbdtn", .text(before: "a ghbdth"), boundary: "") == .mismatch, "the hotkey has no boundary to anchor on")
+    check(verdict("ie ww", .text(before: "a ie wx ")) == .mismatch, "a merged pair is never re-cut")
+    check(verdict("helo", .text(before: "hello ")) == .mismatch, "a short word is not matched by similarity")
+    check(verdict("ghbdtn", .text(before: "xghbdtn ")) == .match, "only the deleted tail matters")
+    check(verdict("ghbdtn", .text(before: "x ")) == .mismatch, "unrelated text")
+    check(verdict("ghbdtn", .text(before: "ghbdtn")) == .retry, "the app has not handled the space yet")
+    check(verdict("ghbdtn", .text(before: "ghb")) == .retry, "accessibility text lags behind typing")
+    check(verdict("ghbdtn", .text(before: "ghbdtn"), final: true) == .match,
+          "at the deadline an unchanged word without its space is deleted: the editor hides trailing spaces")
+    check(verdict("ghbdtn", .text(before: "ghb"), final: true) == .mismatch, "at the deadline a lagging word is not")
+    check(verdict("ghbdtn", .text(before: "ghb"), boundary: "", final: true) == .mismatch, "nor without a boundary")
+    check(verdict("ghbdtn", .unavailable(transient: true)) == .retry, "a timeout is asked again")
+    check(verdict("ghbdtn", .unavailable(transient: true), final: true) == .unknown, "until the deadline")
+    check(verdict("ghbdtn", .unavailable(transient: false)) == .unknown, "no text field: correct as before")
+    check(verdict("ghbdtn", .text(before: "")) == .retry, "nothing of the word shown yet")
+    check(verdict("ghbdtn", .text(before: ""), final: true) == .unknown, "an empty field at the deadline is unreadable, not changed")
+}
+
+/// Types `ghbdtn ` with the field answering `replies`; returns the harness after the
+/// correction was emitted or given up.
+/// `emits`: whether a correction is expected (waited for up to 2 s; otherwise 0.4 s).
+private func screenChecked(
+    _ replies: FieldTextProbe...,
+    emits: Bool,
+    mode: ScreenCheckMode = .enforce,
+    configure: (inout LearningHarness) -> Void = { _ in }
+) -> LearningHarness {
+    var harness = LearningHarness(screen: ScreenStub(replies: replies), screenCheckMode: mode)
+    configure(&harness)
+    harness.type("ghbdtn")
+    _ = waitUntil(emits ? 2 : 0.4) { harness.emitted.count > 0 }
+    return harness
+}
+
+run("screen check: corrects only what the field still shows") {
+    var harness = screenChecked(.text(before: "old ghbdtn "), emits: true)
+    check(harness.emitted.count == 1, "a matching field is corrected")
+    check(harness.screen?.queries == 1, "one query, got \(harness.screen?.queries ?? -1)")
+    check((harness.screen?.windows.first ?? 0) >= "ghbdtn ".utf16.count,
+          "the window covers what is deleted, got \(harness.screen?.windows ?? [])")
+
+    harness = screenChecked(.text(before: "Ghbdtn "), emits: true)
+    check(harness.emitted.count == 1, "automatic capitalization keeps the length: corrected")
+
+    harness = screenChecked(.selection(length: 5), emits: false)
+    check(harness.emitted.count == 0, "an inline suggestion is selected: Backspace would delete it")
+    check(harness.screen?.queries == 1, "a selection is decided at once, got \(harness.screen?.queries ?? -1)")
+
+    harness = screenChecked(.text(before: "привет "), emits: false)
+    check(harness.emitted.count == 0, "the field replaced the word (autocorrect, prediction)")
+    check(harness.screen?.queries == 1, "a changed word is decided at once, got \(harness.screen?.queries ?? -1)")
+
+    harness = screenChecked(.unavailable(transient: false), emits: true)
+    check(harness.emitted.count == 1, "no readable field: corrected as before")
+    check(harness.screen?.queries == 1, "without retries")
+}
+
+run("screen check: an autocorrected word is replaced as the field shows it") {
+    var harness = screenChecked(.text(before: "ok ghbdth "), emits: true)
+    check(harness.emitted.count == 1, "corrected")
+    check(harness.emitted.last?.deleteCount == "ghbdth ".count, "deletes the field's word, got \(harness.emitted.last?.deleteCount ?? -1)")
+    check(harness.emitted.last?.replacementText == "привет ", "got \(harness.emitted.last?.replacementText ?? "nil")")
+    check(harness.emitted.last?.originalText == "ghbdtn", "the typed word is kept for undo and learning")
+    check((harness.screen?.windows.first ?? 0) >= "ghbdtn ".utf16.count + 3,
+          "the window reaches the separator before a longer field word, got \(harness.screen?.windows ?? [])")
+
+    check(harness.screen?.queries == 2, "only after a second read agrees, got \(harness.screen?.queries ?? -1)")
+
+    harness = screenChecked(.text(before: "ok ghbdt"), .text(before: "ok ghbdth "), emits: true)
+    check(harness.emitted.last?.deleteCount == "ghbdth ".count, "a field that lags, then autocorrects")
+
+    harness = screenChecked(.text(before: "ok ghbdth "), .text(before: "ok ghbdtn "), emits: true)
+    check(harness.emitted.last?.deleteCount == "ghbdtn ".count,
+          "a stale read that looked autocorrected is not trusted once the field shows the word")
+
+    let flickering = (0..<40).map { $0 % 2 == 0 ? FieldTextProbe.text(before: "ok ghbdth ") : .text(before: "ok ghbdtnn ") }
+    harness = LearningHarness(screen: ScreenStub(replies: flickering), screenCheckMode: .enforce)
+    harness.type("ghbdtn")
+    check(!waitUntil(0.6) { harness.emitted.count > 0 }, "reads that never agree on the replacement: nothing is deleted")
+
+    harness = screenChecked(.text(before: "ok ghbdth "), emits: true, mode: .shadow)
+    check(harness.emitted.last?.deleteCount == "ghbdtn ".count, "shadow corrects as before")
+}
+
+run("screen check: waits for a field that lags behind") {
+    var harness = screenChecked(.text(before: "ghbdtn"), .text(before: "ghbdtn "), emits: true)
+    check(harness.emitted.count == 1, "the space arrived on the second read")
+    check(harness.screen?.queries == 2, "got \(harness.screen?.queries ?? -1)")
+
+    harness = screenChecked(.unavailable(transient: true), .text(before: "ghbdtn "), emits: true)
+    check(harness.emitted.count == 1, "a timeout is asked again")
+
+    harness = screenChecked(.text(before: "ghbd"), emits: false)
+    check(harness.emitted.count == 0, "a field that never catches up is not touched")
+    check((harness.screen?.queries ?? 0) >= 2, "it was asked again before giving up")
+
+    harness = screenChecked(.text(before: "ghbdtn"), emits: true)
+    check(harness.emitted.count == 1, "the word without its space at the deadline: the editor hides trailing spaces")
+
+    harness = screenChecked(.unavailable(transient: true), emits: true)
+    check(harness.emitted.count == 1, "timeouts until the deadline: corrected as before")
+}
+
+run("screen check: typing during the check cancels it") {
+    let harness = screenChecked(.text(before: "ghbdtn"), emits: false) { harness in
+        let store = harness.store, engine = harness.engine
+        harness.screen?.beforeFirstReply = {
+            engine.enqueue(store.capture(
+                timestamp: 99, kind: .character("x"), keyCode: 0, flagsRawValue: 0,
+                isAutorepeat: false, sourcePID: 1, sourceUserData: 0
+            ))
+            let drained = DispatchSemaphore(value: 0)
+            engine.drain { drained.signal() }
+            _ = drained.wait(timeout: .now() + 1)
+        }
+    }
+    check(harness.emitted.count == 0, "the next key makes the correction stale")
+    check((harness.screen?.queries ?? 0) <= 1, "and stops the retries, got \(harness.screen?.queries ?? -1)")
+}
+
+run("screen check: shadow mode logs but corrects") {
+    let harness = screenChecked(.selection(length: 5), emits: true, mode: .shadow)
+    check(harness.emitted.count == 1, "shadow never cancels")
+    check(harness.screen?.queries == 1, "but still reads the field")
+    let off = screenChecked(.selection(length: 5), emits: true, mode: .off)
+    check(off.emitted.count == 1 && off.screen?.queries == 0, "off does not read the field")
+}
+
+run("screen check: not asked when an earlier guard cancels") {
+    var harness = LearningHarness(screen: ScreenStub(.text(before: "ghbdtn\n")))
+    harness.type("ghbdtn", boundary: "\n")
+    check(!waitUntil(0.3) { harness.emitted.count > 0 }, "Enter is never corrected")
+    check(harness.screen?.queries == 0, "so the field is not read")
+}
+
+run("screen check: a merged short word is checked as a whole") {
+    var harness = shortWordHarness(screen: ScreenStub(.text(before: "сейчас на ше\u{00A0}цщклы ")))
+    harness.type("ше")
+    harness.type("цщклы")
+    check(waitUntil { harness.emitted.count == 1 }, "the pair is corrected")
+    check((harness.screen?.windows.last ?? 0) >= "ше цщклы ".utf16.count,
+          "the window covers both words, got \(harness.screen?.windows ?? [])")
+
+    var changed = shortWordHarness(screen: ScreenStub(.text(before: "сейчас на ше цщклы! ")))
+    changed.type("ше")
+    changed.type("цщклы")
+    check(!waitUntil(0.4) { changed.emitted.count > 0 }, "text inserted without a key event is not deleted")
+}
+
+run("screen check: the hotkey") {
+    var harness = LearningHarness(screen: ScreenStub(.text(before: "ujnjdj")))
+    harness.type("ujnjdj", boundary: nil)
+    harness.send(.hotkey)
+    check(waitUntil { harness.emitted.count == 1 }, "a buffered word the field shows is converted")
+    check(harness.screen?.queries == 1, "after one check, got \(harness.screen?.queries ?? -1)")
+
+    var cancelled = LearningHarness(screen: ScreenStub(.selection(length: 3)))
+    cancelled.type("ujnjdj", boundary: nil)
+    cancelled.send(.hotkey)
+    check(!waitUntil(0.3) { cancelled.emitted.count > 0 }, "a selection after the caret cancels the hotkey too")
+
+    var fromScreen = LearningHarness(screen: ScreenStub(.selection(length: 3)))
+    fromScreen.caret.reply = .caret(textBefore: "ujnjdjk", startsAtTextStart: true, next: nil)
+    fromScreen.selectAllAndDelete()
+    fromScreen.type("ujnjdjk", boundary: nil)
+    fromScreen.send(.hotkey)
+    check(waitUntil { fromScreen.emitted.count == 1 }, "a word just read from the screen is converted")
+    check(fromScreen.screen?.queries == 0, "without a second read")
 }
 
 if CommandLine.arguments.contains("--integration-smoke") {

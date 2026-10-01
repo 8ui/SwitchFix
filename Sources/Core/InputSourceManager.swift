@@ -33,6 +33,7 @@ public final class InputSourceManager {
     private struct SelectionCallbacks {
         var willSelect: ((Layout, String) -> Void)?
         var selectionFailed: (() -> Void)?
+        var didSelect: (() -> Void)?
     }
 
     private let state = OSAllocatedUnfairLock(initialState: State())
@@ -135,11 +136,13 @@ public final class InputSourceManager {
 
     public func setSelectionCallbacks(
         willSelect: ((Layout, String) -> Void)?,
-        selectionFailed: (() -> Void)?
+        selectionFailed: (() -> Void)?,
+        didSelect: (() -> Void)? = nil
     ) {
         selectionCallbacks.withLock { value in
             value.willSelect = willSelect
             value.selectionFailed = selectionFailed
+            value.didSelect = didSelect
         }
     }
 
@@ -205,6 +208,7 @@ public final class InputSourceManager {
             SwitchFixLog.source.error("switchTo(\(layout.rawValue)): TISSelectInputSource failed (\(status))")
         } else {
             SwitchFixLog.source.notice("layout switched to \(layout.rawValue) (\(target.1))")
+            callbacks.didSelect?()
         }
         return status == noErr
     }

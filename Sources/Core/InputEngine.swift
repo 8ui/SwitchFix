@@ -11,8 +11,8 @@ public struct DetectionRequest: Equatable {
     public let context: InputContextSnapshot
     /// See `InputStateCommand.flush`; false for hotkey requests.
     public let continuesPreviousWord: Bool
-    /// Read the field before deleting; false for a word the hotkey just read from the screen.
-    public let verifiesFieldText: Bool
+    /// The word was just read from the screen before the caret: no second field-text check.
+    public let screenVerified: Bool
 
     public init(
         word: String,
@@ -22,7 +22,7 @@ public struct DetectionRequest: Equatable {
         correctionEpoch: UInt64,
         context: InputContextSnapshot,
         continuesPreviousWord: Bool = false,
-        verifiesFieldText: Bool = true
+        screenVerified: Bool = false
     ) {
         self.word = word
         self.boundary = boundary
@@ -31,7 +31,7 @@ public struct DetectionRequest: Equatable {
         self.correctionEpoch = correctionEpoch
         self.context = context
         self.continuesPreviousWord = continuesPreviousWord
-        self.verifiesFieldText = verifiesFieldText
+        self.screenVerified = screenVerified
     }
 }
 
@@ -42,9 +42,9 @@ public final class InputEngine {
     /// Selection or, when `wantsCaretText`, text around the caret (Accessibility); used by
     /// the manual hotkey. Without `wantsCaretText` only the selection is read.
     public typealias CaretContextRequest = (pid_t, UInt64, Bool, @escaping (CaretContext) -> Void) -> Void
-    /// The text before the caret of the app with this PID, up to a UTF-16 length; read before
-    /// a correction deletes. May answer on any queue, late or never.
-    public typealias FieldTextRequest = (pid_t, Int, @escaping (FieldTextSnapshot) -> Void) -> Void
+    /// The focused field's text before the caret (pid, epoch, window in UTF-16 units), read
+    /// before a correction deletes; the completion may run on any queue.
+    public typealias ScreenTextRequest = (pid_t, UInt64, Int, @escaping (FieldTextProbe) -> Void) -> Void
     /// Reverts the last correction; returns the reverted plan (tests replace `TextCorrector.undo`).
     public typealias RevertEmission = (UInt64, InputContextSnapshot) -> CorrectionPlan?
 
@@ -68,11 +68,8 @@ public final class InputEngine {
     private let customEmission: CorrectionEmission?
     private let selectedTextRequest: SelectedTextRequest?
     private let caretContextRequest: CaretContextRequest?
-    private let fieldTextRequest: FieldTextRequest?
-    /// How long a correction waits for the field text before proceeding unverified.
-    static let fieldTextDeadline: TimeInterval = 0.04
-    /// Pause before reading a lagging field again.
-    static let fieldTextRetryInterval: TimeInterval = 0.008
+    private let screenTextRequest: ScreenTextRequest?
+    private let screenCheckMode: ScreenCheckMode
     private let revertEmission: RevertEmission?
     private let lexicon: PersonalLexicon?
     private let detectionConfiguration = OSAllocatedUnfairLock(initialState: DetectionConfiguration())
@@ -83,6 +80,10 @@ public final class InputEngine {
     /// A switch notification later than this is not the Globe press's: Globe may
     /// have started dictation and the layout changed by an uncaptured path.
     static let layoutSwitchWordLifetimeNanoseconds: UInt64 = 500_000_000
+    /// How long a correction waits for the field to show the typed text before deciding.
+    /// Soft: checked when an answer arrives, and one read of a busy app can take ~250 ms.
+    static let screenCheckDeadlineNanoseconds: UInt64 = 150_000_000
+    static let screenCheckRetryInterval: DispatchTimeInterval = .milliseconds(20)
     private var maximumQueueDepth = 0
     private let logger = Logger(subsystem: "com.switchfix", category: "input-engine")
 
@@ -96,7 +97,8 @@ public final class InputEngine {
         correctionEmission: CorrectionEmission? = nil,
         selectedTextRequest: SelectedTextRequest? = nil,
         caretContextRequest: CaretContextRequest? = nil,
-        fieldTextRequest: FieldTextRequest? = nil,
+        screenTextRequest: ScreenTextRequest? = nil,
+        screenCheckMode: ScreenCheckMode = .enforce,
         lexicon: PersonalLexicon? = nil,
         revertEmission: RevertEmission? = nil
     ) {
@@ -108,7 +110,8 @@ public final class InputEngine {
         self.customEmission = correctionEmission
         self.selectedTextRequest = selectedTextRequest
         self.caretContextRequest = caretContextRequest
-        self.fieldTextRequest = fieldTextRequest
+        self.screenTextRequest = screenCheckMode == .off ? nil : screenTextRequest
+        self.screenCheckMode = screenCheckMode
         self.lexicon = lexicon
         self.revertEmission = revertEmission
         detector.lexicon = lexicon
@@ -538,57 +541,110 @@ public final class InputEngine {
             provenance: provenance
         )
 
-        guard request.verifiesFieldText, let fieldTextRequest else {
+        if let screenTextRequest, !request.screenVerified {
+            verifyScreen(
+                plan,
+                request: request,
+                query: screenTextRequest,
+                startedAt: DispatchTime.now().uptimeNanoseconds,
+                attempt: 1
+            )
+        } else {
             emit(plan)
-            return
         }
-        verifyFieldText(plan: plan, word: result.originalWord, boundary: boundary, request: fieldTextRequest)
     }
 
-    /// Reads the text before the caret and cancels the correction if the field changed what it
-    /// is about to delete. Never delays input: at most `fieldTextDeadline`, then fail-open;
-    /// exactly one decision is made, on `inputQueue`. While the field has not shown the
-    /// boundary yet (lagging), it is read again: autocorrect happens on that boundary.
-    private func verifyFieldText(plan: CorrectionPlan, word: String, boundary: String, request: @escaping FieldTextRequest) {
-        final class Decision { var isMade = false }
-        let decision = Decision()
-        let startedAt = DispatchTime.now().uptimeNanoseconds
-        let deadline = startedAt &+ UInt64(Self.fieldTextDeadline * 1_000_000_000)
-        let window = FieldTextVerification.window(word: word, boundary: boundary)
+    /// Whether nothing changed since `request` was captured (runs on the input queue).
+    private func isCurrent(_ request: DetectionRequest) -> Bool {
+        let latest = captureState.snapshot()
+        return latest.latestPhysicalSequence == request.sequence
+            && latest.editGeneration == request.editGeneration
+            && latest.correctionEpoch == request.correctionEpoch
+            && latest.context == request.context
+    }
 
-        func ask() {
-            request(plan.targetPID, window) { [inputQueue] snapshot in
-                inputQueue.async { decide(snapshot) }
+    /// Reads the text before the caret and emits `plan` only if the field still ends with
+    /// what it deletes (inline autocomplete, predictions and autocorrect change the field
+    /// behind the buffer). Runs on the input queue; retries while the field lags behind.
+    private func verifyScreen(
+        _ plan: CorrectionPlan,
+        request: DetectionRequest,
+        query: @escaping ScreenTextRequest,
+        startedAt: UInt64,
+        attempt: Int,
+        replacedBefore: Int? = nil
+    ) {
+        guard isCurrent(request) else {
+            SwitchFixLog.engine.notice("correction cancelled reason=stale-during-screen-check attempts=\(attempt - 1) provenance=\(String(describing: plan.provenance))")
+            return
+        }
+        // AX ranges are UTF-16. The margin: 2 for a decomposed accent in the field, 2 for an
+        // autocorrected word that is longer, 1 for the separator before it, 1 spare. Only the
+        // suffix is compared, so a character cut at the window's start does not matter.
+        let window = (plan.originalText + plan.boundaryText).utf16.count + 6
+        selectionQueue.async {
+            query(request.context.frontmostPID, request.context.epoch, window) { [weak self] probe in
+                self?.inputQueue.async {
+                    guard let self else { return }
+                    guard self.isCurrent(request) else {
+                        SwitchFixLog.engine.notice("correction cancelled reason=stale-during-screen-check attempts=\(attempt) provenance=\(String(describing: plan.provenance))")
+                        return
+                    }
+                    let elapsed = DispatchTime.now().uptimeNanoseconds &- startedAt
+                    let final = elapsed >= Self.screenCheckDeadlineNanoseconds
+                    let verdict = ScreenVerification.verdict(
+                        word: plan.originalText,
+                        boundary: plan.boundaryText,
+                        probe: probe,
+                        final: final
+                    )
+                    // Shadow reads once and corrects as before: waiting for a lagging field
+                    // would delay corrections and lose them to the next keystroke.
+                    let shadow = self.screenCheckMode == .shadow
+                    // A field a whole word behind can look autocorrected (its previous word):
+                    // a replacement is deleted only when a second read agrees.
+                    var unconfirmed: Int?
+                    if case .replaced(let deleteCount) = verdict, deleteCount != replacedBefore {
+                        unconfirmed = deleteCount
+                    }
+                    if unconfirmed != nil, final, !shadow {
+                        SwitchFixLog.engine.notice("correction cancelled reason=screen-replacement-unconfirmed attempts=\(attempt)")
+                        return
+                    }
+                    if verdict == .retry || unconfirmed != nil, !shadow {
+                        self.inputQueue.asyncAfter(deadline: .now() + Self.screenCheckRetryInterval) { [weak self] in
+                            self?.verifyScreen(
+                                plan, request: request, query: query, startedAt: startedAt,
+                                attempt: attempt + 1, replacedBefore: unconfirmed
+                            )
+                        }
+                        return
+                    }
+                    SwitchFixLog.engine.notice(
+                        "screen check verdict=\(String(describing: verdict)) probe=\(Self.logDescription(probe)) attempts=\(attempt) ms=\(Double(elapsed) / 1_000_000.0) mode=\(self.screenCheckMode.rawValue) provenance=\(String(describing: plan.provenance)) pid=\(request.context.frontmostPID)"
+                    )
+                    if verdict == .mismatch, !shadow {
+                        SwitchFixLog.engine.notice("correction cancelled reason=screen-mismatch")
+                        return
+                    }
+                    if case .replaced(let deleteCount) = verdict, !shadow {
+                        self.emit(plan.deleting(deleteCount))
+                        return
+                    }
+                    self.emit(plan)
+                }
             }
         }
+    }
 
-        func decide(_ snapshot: FieldTextSnapshot?) {
-            guard !decision.isMade else { return }
-            let verdict = snapshot.map {
-                FieldTextVerification.verdict($0, word: word, boundary: boundary)
-            } ?? .unknown
-            let now = DispatchTime.now().uptimeNanoseconds
-            if verdict == .lagging,
-               now &+ UInt64(Self.fieldTextRetryInterval * 1_000_000_000) < deadline {
-                inputQueue.asyncAfter(deadline: .now() + Self.fieldTextRetryInterval) { ask() }
-                return
-            }
-            decision.isMade = true
-            let milliseconds = Double(now &- startedAt) / 1_000_000.0
-            if case .mismatch(let reason) = verdict {
-                SwitchFixLog.engine.notice(
-                    "correction cancelled reason=field-text-\(reason) word=\(SwitchFixLog.text(word)) ms=\(milliseconds)"
-                )
-                return
-            }
-            SwitchFixLog.engine.info(
-                "field text \(snapshot == nil ? "timeout" : String(describing: verdict)) ms=\(milliseconds)"
-            )
-            emit(plan)
+    /// The probe without its text: only lengths are logged.
+    private static func logDescription(_ probe: FieldTextProbe) -> String {
+        switch probe {
+        case .text(let before, let atTextStart):
+            return "text(\(SwitchFixLog.text(before))\(atTextStart ? ", start" : ""))"
+        case .selection(let length): return "selection(\(length))"
+        case .unavailable(let transient): return transient ? "unavailable(transient)" : "unavailable"
         }
-
-        ask()
-        inputQueue.asyncAfter(deadline: .now() + Self.fieldTextDeadline) { decide(nil) }
     }
 
     private func emit(_ plan: CorrectionPlan) {
@@ -765,7 +821,8 @@ public final class InputEngine {
                     )
                 } else if let target = word ?? caretWord {
                     // A word read from the screen may have been pasted or typed long ago:
-                    // weak evidence of intent, so it never teaches the lexicon.
+                    // weak evidence of intent, so it never teaches the lexicon. It was just
+                    // checked against the screen, so the correction does not read it again.
                     self.runDetection(DetectionRequest(
                         word: target,
                         boundary: "",
@@ -773,7 +830,7 @@ public final class InputEngine {
                         editGeneration: generation,
                         correctionEpoch: requestCorrectionEpoch,
                         context: context,
-                        verifiesFieldText: word != nil
+                        screenVerified: word == nil
                     ), forceConversion: true, teaches: teaches && word != nil)
                 }
                 }

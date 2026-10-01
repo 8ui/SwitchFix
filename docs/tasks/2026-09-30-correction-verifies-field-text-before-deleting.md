@@ -7,14 +7,14 @@ phase: review
 created: 2026-09-30
 updated: 2026-10-01
 blocked_by: null
-steps_done: 6
+steps_done: 7
 steps_total: 7
-step_current: 7
+step_current: null
 artifacts:
   spec: null
-  plan: docs/plans/correction-verifies-field-text-plan.md
-  branch: claude/funny-ramanujan-sdgiso
-  pr: "https://github.com/8ui/SwitchFix/pull/9"
+  plan: docs/plans/correction-verifies-field-text-before-deleting-plan.md
+  branch: claude/beautiful-shannon-hg5k6h
+  pr: "https://github.com/8ui/SwitchFix/pull/10"
 ---
 
 ## Context
@@ -35,33 +35,43 @@ Staleness-guards (`CorrectionPlan.isEligible`) этого не видят: ко�
 
 ## Progress
 
-1. ✅ Вердикт FieldTextVerification + тесты
-2. ✅ AX-чтение requestFieldText (verifyQueue)
-3. ✅ InputEngine: проверка с дедлайном в prepareCorrection
-4. ✅ Проводка AppDelegate + документация
-5. ✅ Тесты движка
-6. ✅ Ревью
-7. ▶ Ручная проверка: омнибокс, Spotlight, TextEdit с автокоррекцией, VS Code (локально)
+1. ✅ ScreenVerification (Core) + чистые тесты вердикта
+2. ✅ InputEngine — стадия сверки
+3. ✅ Coordinator + AppDelegate
+4. ✅ Тесты пайплайна
+5. ✅ Документация + ревью
+6. ✅ Локальная матрица и включение enforce (macOS)
+7. ✅ Автозамена: стирать слово, которое показывает поле (вердикт replaced)
 
 ## Log
 
 - 2026-09-30: triage — pipeline `no-spec`, reason: исследование аналогов: самая частая жалоба (gпривет) — автодополнение/inline predictions/автозамена меняют поле, буфер ≠ текст; нужна AX-сверка перед эмиссией
-- 2026-09-30: brainstorm: пользователь выбрал fail-open при недоступном AX и не включать AXManualAccessibility для проверки; критерий — тесты вердикта и движка + CI, ручная проверка в омнибоксе/Spotlight/TextEdit с автокоррекцией
-- 2026-09-30: artifacts.plan = docs/plans/correction-verifies-field-text-plan.md
+- 2026-09-30: brainstorm (агент, пользователь делегировал выбор): сверка AX-текста перед кареткой перед эмиссией; selection → отмена, несовпадение → повтор 6×20 мс → отмена, unavailable → fail-open; без AXManualAccessibility; NBSP=пробел; критерий — тесты пайплайна + CI, ручная проверка в приложениях локально
+- 2026-09-30: artifacts.plan = docs/plans/correction-verifies-field-text-before-deleting-plan.md; artifacts.branch = claude/beautiful-shannon-hg5k6h
 - 2026-09-30: plan drafted
-- 2026-09-30: plan-review (Plan-агент): правило отставания AX-текста (префикс), выделение без текста = mismatch, дедлайн 40 мс, отдельная verifyQueue, нормализация регистра/кавычек, окно UTF-16, пропуск для слова с экрана
-- 2026-09-30: шаг 1 ✅ Вердикт FieldTextVerification + тесты
-- 2026-09-30: шаг 2 ✅ AX-чтение requestFieldText (verifyQueue)
-- 2026-09-30: шаг 3 ✅ InputEngine: проверка с дедлайном в prepareCorrection
-- 2026-09-30: шаг 4 ✅ Проводка AppDelegate + документация
-- 2026-09-30: шаг 5 ✅ Тесты движка
-- 2026-09-30: ревью (субагент): lagging перечитывается каждые 8 мс до появления границы (иначе автокоррекция на том же пробеле проскакивала); префикс ≥ половины слова; тест «клавиша во время чтения» теперь реально идёт через чтение; тест: слово с экрана не перечитывается; док-комментарий CaretContext на место
-- 2026-09-30: verify: `CI красный: https://github.com/8ui/SwitchFix/actions/runs/36776051345 (94e91b3) — request в verifyFieldText не @escaping, захват в локальных func ask/decide` → exit 1 ❌
-- 2026-09-30: verify: `CI красный: https://github.com/8ui/SwitchFix/actions/runs/36776973579 (1713d71) — 1041/1042: тест ждал одно чтение, lagging теперь перечитывается (задумано)` → exit 1 ❌
-- 2026-09-30: verify: `CI зелёный: https://github.com/8ui/SwitchFix/actions/runs/36777646863 (7f6506d)` → exit 0 ✅
-- 2026-09-30: шаг 6 ✅ Ревью — ревью субагента учтено, CI зелёный
-- 2026-09-30: impl complete, CI зелёный; осталась ручная проверка (шаг 7, локально)
-- 2026-10-01: artifacts.branch = claude/funny-ramanujan-sdgiso; artifacts.pr = https://github.com/8ui/SwitchFix/pull/9
+- 2026-09-30: plan-review (Plan, opus): принят; вердикт по эквивалентности той же длины (регистр, умные кавычки, NBSP), lagging vs mismatch, дедлайн 150 мс, FieldTextProbe с transient, без AXManualAccessibility, режим off/shadow/enforce (shadow по умолчанию до локальной матрицы), обход терминалов, пропуск для caretWord
+- 2026-09-30: шаг 1 ✅ ScreenVerification (Core) + чистые тесты вердикта — ScreenVerification + FieldTextProbe, чистые тесты (проверит CI)
+- 2026-09-30: шаг 2 ✅ InputEngine — стадия сверки — verifyScreen с дедлайном, emit, isCurrent, screenVerified
+- 2026-09-30: шаг 3 ✅ Coordinator + AppDelegate — requestFieldText без AXManualAccessibility, режим SwitchFix_fieldTextCheck (shadow), обход терминалов
+- 2026-09-30: шаг 4 ✅ Тесты пайплайна — ScreenStub + 7 сценариев пайплайна (проверит CI)
+- 2026-09-30: code-review (субагент, opus): blocker — порядок аргументов в тестовом verdict() не компилировался; should-fix — shadow задерживал коррекцию ретраями (теперь одно чтение и эмиссия), пустое поле давало mismatch (теперь retry/unknown), тайминг тестов 0.4 с для позитивных (теперь 2 с); нит nonisolated в AppDelegate не взят — тот же паттерн, что у существующих замыканий
+- 2026-09-30: verify: `CI красный: https://github.com/8ui/SwitchFix/actions/runs/36777848431 (eba69c1) — EmissionLog.isEmpty не существует в тестах; исправлено в 99d374a` → exit 1 ❌
+- 2026-09-30: verify: `CI зелёный: https://github.com/8ui/SwitchFix/actions/runs/36778002647 (99d374a) — InputPipelineTestRunner 1063/0, 8 новых сьютов screen check/verification` → exit 0 ✅
+- 2026-09-30: шаг 5 ✅ Документация + ревью — ревью субагентом, CI зелёный
+- 2026-09-30: impl complete; остался шаг 6 — локальная матрица в shadow и решение о enforce по умолчанию (macOS)
+- 2026-10-01: verify: `Локальная матрица (macOS 27, сборка 3169092, enforce, синтетические HID-события с keyCode + computer use): TextEdit 9×match; Notes 11×match, 2×mismatch = настоящая автозамена руддщ→«Руда» (без сверки стёрла бы перевод строки); Telegram 3×match; хоткей (одиночный Option) match; Chrome омнибокс 2×unknown(unavailable) → fail-open. Ложных отмен на обычном наборе нет; остальные 5 mismatch — артефакт постера (второе слово того же процесса после переключения раскладки, буфер vbh / поле «мир»).` → exit 0 ✅
+- 2026-10-01: шаг 6 ▶ Локальная матрица и включение enforce (macOS)
+- 2026-10-01: шаг 6: матрица TextEdit/Notes/Telegram/хоткей в enforce — ложных отмен нет; Chrome-омнибокс unavailable; Safari/Chrome textarea не проверены (браузеры только на чтение). Локально SwitchFix_fieldTextCheck=enforce; решение о default ждёт пользователя
+- 2026-10-01: Safari и Notes: автозамена (руддщ→«руда») до чтения поля → enforce отменяет, слово остаётся автозаменённым. Делаю вердикт replaced: стирать слово, которое показывает поле
+- 2026-10-01: шаг 7 ▶ Автозамена: стирать слово, которое показывает поле (вердикт replaced)
+- 2026-10-01: verify: `Локально: InputPipelineTestRunner 1090/0, TestRunner 603/0 (2ca5243)` → exit 0 ✅
+- 2026-10-01: шаг 7 ✅ Автозамена: стирать слово, которое показывает поле (вердикт replaced) — ревью субагентом учтено; ждёт CI 36826731829 и повтор пользователя в Safari
+- 2026-10-01: verify: `CI зелёный: https://github.com/8ui/SwitchFix/actions/runs/36826731829 (2ca5243)` → exit 0 ✅
+- 2026-10-01: verify: `Живая автозамена в Заметках: руддщ→«Руда», verdict=replaced(5) attempts=3 → «Hello» (сборка с 2ca5243)` → exit 0 ✅
+- 2026-10-01: verify: `Пользователь в Safari: «hello привет hello world test» — автозамена и раскладка исправлены; локально после слияния с master: InputPipelineTestRunner 1102/0, TestRunner 603/0` → exit 0 ✅
+- 2026-10-01: шаг 6 ✅ Локальная матрица и включение enforce (macOS) — enforce по умолчанию; матрица TextEdit/Notes/Telegram + Safari/Chrome руками
+- 2026-10-01: Слияние с master: параллельная реализация из PR #9 (FieldTextVerification) убрана по решению пользователя, оставлена ScreenVerification; SwitchFix_verifyFieldText=NO → off
+- 2026-10-01: artifacts.branch = claude/beautiful-shannon-hg5k6h; artifacts.pr = https://github.com/8ui/SwitchFix/pull/10
 
 ## Decisions
 
@@ -69,25 +79,52 @@ _Нетривиальные решения по ходу задачи. Одна 
 
 ## Debt
 
-- [ ] Ghost text (inline predictions macOS 14+, zsh-autosuggest) не в AXValue — не ловится; next после каретки в вердикте не используется
-- [ ] Режим layoutSwitch: handleLayoutChange конвертирует любое выделение — может быть inline-подсказкой омнибокса; отдельная задача
-- [ ] Если граница так и не появилась за 40 мс (занятое приложение или поле её съело), коррекция идёт fail-open и может стереть на символ больше/попасть до автокоррекции — принято ради отстающего AX Chromium — переформулировано 2026-09-30
+- [ ] Chrome-омнибокс подтверждён локально 2026-10-01: probe=unavailable (не transient) → fail-open, сверка gпривет там не ловит; альтернатива — выделение Shift+← (OpenKey), отдельная задача — переформулировано 2026-10-01
+- [ ] undo/revert (TextCorrector.undo) удаляет correctedText+boundary без сверки поля — тот же класс бага
+- [ ] hotkey/layoutSwitch при выделенной inline-подсказке идут в ветку .selection и конвертируют подсказку вместо слова
+- [ ] путь layoutSwitch со сверкой не покрыт тестом (layoutSwitchPlans строит свой движок без screenTextRequest); layoutSwitch читает AX дважды (выделение + сверка)
+- [x] Автозамена до коррекции (Notes: руддщ→«Руда»): сверка отменяет коррекцию, текст не портится, но в поле остаётся автозаменённое слово — можно стирать то, что показывает поле (длина слова из AX), и вставлять конверсию — закрыто 2026-10-01: d8fad9b+2ca5243: вердикт replaced
+- [ ] Заметки, быстрый непрерывный набор (120 мс/символ): изредка пропадает пробел между исправленными словами (приветhello) при verdict=match у всех трёх коррекций — поле меняется между чтением и Backspace (TOCTOU); в начале нового абзаца probe=unavailable → fail-open и однажды съеден перевод строки
 
 ## Verification
 
-- 2026-09-30 · `CI красный: https://github.com/8ui/SwitchFix/actions/runs/36776051345 (94e91b3) — request в verifyFieldText не @escaping, захват в локальных func ask/decide` · exit 1 ❌
+- 2026-09-30 · `CI красный: https://github.com/8ui/SwitchFix/actions/runs/36777848431 (eba69c1) — EmissionLog.isEmpty не существует в тестах; исправлено в 99d374a` · exit 1 ❌
 
   ```
   (без вывода)
   ```
 
-- 2026-09-30 · `CI красный: https://github.com/8ui/SwitchFix/actions/runs/36776973579 (1713d71) — 1041/1042: тест ждал одно чтение, lagging теперь перечитывается (задумано)` · exit 1 ❌
+- 2026-09-30 · `CI зелёный: https://github.com/8ui/SwitchFix/actions/runs/36778002647 (99d374a) — InputPipelineTestRunner 1063/0, 8 новых сьютов screen check/verification` · exit 0 ✅
 
   ```
   (без вывода)
   ```
 
-- 2026-09-30 · `CI зелёный: https://github.com/8ui/SwitchFix/actions/runs/36777646863 (7f6506d)` · exit 0 ✅
+- 2026-10-01 · `Локальная матрица (macOS 27, сборка 3169092, enforce, синтетические HID-события с keyCode + computer use): TextEdit 9×match; Notes 11×match, 2×mismatch = настоящая автозамена руддщ→«Руда» (без сверки стёрла бы перевод строки); Telegram 3×match; хоткей (одиночный Option) match; Chrome омнибокс 2×unknown(unavailable) → fail-open. Ложных отмен на обычном наборе нет; остальные 5 mismatch — артефакт постера (второе слово того же процесса после переключения раскладки, буфер vbh / поле «мир»).` · exit 0 ✅
+
+  ```
+  verdict counts: TextEdit match 8 (att1 5, att2 3) · Notes match 11, mismatch 6 (2 autocorrect, 4 артефакт) · Telegram match 3 · Chrome unknown 2. Safari, textarea в Chrome, Slack, VS Code (в списке исключений) — не проверены: браузеры выданы computer use только на чтение.
+  ```
+
+- 2026-10-01 · `Локально: InputPipelineTestRunner 1090/0, TestRunner 603/0 (2ca5243)` · exit 0 ✅
+
+  ```
+  (без вывода)
+  ```
+
+- 2026-10-01 · `CI зелёный: https://github.com/8ui/SwitchFix/actions/runs/36826731829 (2ca5243)` · exit 0 ✅
+
+  ```
+  (без вывода)
+  ```
+
+- 2026-10-01 · `Живая автозамена в Заметках: руддщ→«Руда», verdict=replaced(5) attempts=3 → «Hello» (сборка с 2ca5243)` · exit 0 ✅
+
+  ```
+  (без вывода)
+  ```
+
+- 2026-10-01 · `Пользователь в Safari: «hello привет hello world test» — автозамена и раскладка исправлены; локально после слияния с master: InputPipelineTestRunner 1102/0, TestRunner 603/0` · exit 0 ✅
 
   ```
   (без вывода)
@@ -99,20 +136,19 @@ _Нетривиальные решения по ходу задачи. Одна 
 
 - **Задача:** `2026-09-30-correction-verifies-field-text-before-deleting` — Correction leaves stray letters when the field changed the text (inline autocomplete, predictions, autocorrect)
 - **Фаза:** review (pipeline `no-spec`, type `bug`)
-- **Прогресс:** 6/7 ▰▰▰▰▰▰▱
+- **Прогресс:** 5/6 ▰▰▰▰▰▱
 - **Worktree:** `/home/user/SwitchFix`
-- **Ветка:** `claude/funny-ramanujan-sdgiso` — своих коммитов 6, отставание от origin/master 0
+- **Ветка:** `claude/beautiful-shannon-hg5k6h` — своих коммитов 83, отставание от origin/master 78
 - **Незакоммиченного:** 2 файл(ов)
 
 **Шаги плана**
 
-1. ✅ Вердикт FieldTextVerification + тесты
-2. ✅ AX-чтение requestFieldText (verifyQueue)
-3. ✅ InputEngine: проверка с дедлайном в prepareCorrection
-4. ✅ Проводка AppDelegate + документация
-5. ✅ Тесты движка
-6. ✅ Ревью
-7. ▶ Ручная проверка: омнибокс, Spotlight, TextEdit с автокоррекцией, VS Code (локально)
+1. ✅ ScreenVerification (Core) + чистые тесты вердикта
+2. ✅ InputEngine — стадия сверки
+3. ✅ Coordinator + AppDelegate
+4. ✅ Тесты пайплайна
+5. ✅ Документация + ревью
+6. ▶ Локальная матрица и включение enforce (macOS)
 
 **Файлы в работе**
 
@@ -129,23 +165,24 @@ _Нетривиальные решения по ходу задачи. Одна 
 
 **Последние коммиты**
 
-- `7f6506d test(engine): a lagging field is read more than once`
-- `1713d71 fix(engine): field-text request escapes into the re-read closures`
-- `94e91b3 fix(engine): read a lagging field again until the boundary shows`
+- `2fa1393 docs(tasks): record red CI run`
+- `99d374a test(engine): EmissionLog has no isEmpty`
+- `eba69c1 fix(engine): review fixes for the field-text check`
 
 **Последние записи лога**
 
-- 2026-09-30: verify: `CI красный: https://github.com/8ui/SwitchFix/actions/runs/36776051345 (94e91b3) — request в verifyFieldText не @escaping, захват в локальных func ask/decide` → exit 1 ❌
-- 2026-09-30: verify: `CI красный: https://github.com/8ui/SwitchFix/actions/runs/36776973579 (1713d71) — 1041/1042: тест ждал одно чтение, lagging теперь перечитывается (задумано)` → exit 1 ❌
-- 2026-09-30: verify: `CI зелёный: https://github.com/8ui/SwitchFix/actions/runs/36777646863 (7f6506d)` → exit 0 ✅
-- 2026-09-30: шаг 6 ✅ Ревью — ревью субагента учтено, CI зелёный
-- 2026-09-30: impl complete, CI зелёный; осталась ручная проверка (шаг 7, локально)
+- 2026-09-30: code-review (субагент, opus): blocker — порядок аргументов в тестовом verdict() не компилировался; should-fix — shadow задерживал коррекцию ретраями (теперь одно чтение и эмиссия), пустое поле давало mismatch (теперь retry/unknown), тайминг тестов 0.4 с для позитивных (теперь 2 с); нит nonisolated в AppDelegate не взят — тот же паттерн, что у существующих замыканий
+- 2026-09-30: verify: `CI красный: https://github.com/8ui/SwitchFix/actions/runs/36777848431 (eba69c1) — EmissionLog.isEmpty не существует в тестах; исправлено в 99d374a` → exit 1 ❌
+- 2026-09-30: verify: `CI зелёный: https://github.com/8ui/SwitchFix/actions/runs/36778002647 (99d374a) — InputPipelineTestRunner 1063/0, 8 новых сьютов screen check/verification` → exit 0 ✅
+- 2026-09-30: шаг 5 ✅ Документация + ревью — ревью субагентом, CI зелёный
+- 2026-09-30: impl complete; остался шаг 6 — локальная матрица в shadow и решение о enforce по умолчанию (macOS)
 
-**Открытые долги (3)**
+**Открытые долги (4)**
 
-- Ghost text (inline predictions macOS 14+, zsh-autosuggest) не в AXValue — не ловится; next после каретки в вердикте не используется
-- Режим layoutSwitch: handleLayoutChange конвертирует любое выделение — может быть inline-подсказкой омнибокса; отдельная задача
-- Если граница так и не появилась за 40 мс (занятое приложение или поле её съело), коррекция идёт fail-open и может стереть на символ больше/попасть до автокоррекции — принято ради отстающего AX Chromium — переформулировано 2026-09-30
+- Chrome/Electron без AX-дерева: фокус — контейнер → unavailable → fail-open; омнибокс Chrome может остаться непокрытым — проверить локально, альтернатива — выделение Shift+← (OpenKey), отдельная задача
+- undo/revert (TextCorrector.undo) удаляет correctedText+boundary без сверки поля — тот же класс бага
+- hotkey/layoutSwitch при выделенной inline-подсказке идут в ветку .selection и конвертируют подсказку вместо слова
+- путь layoutSwitch со сверкой не покрыт тестом (layoutSwitchPlans строит свой движок без screenTextRequest); layoutSwitch читает AX дважды (выделение + сверка)
 
 **Следующее действие**
 
@@ -154,7 +191,7 @@ _Нетривиальные решения по ходу задачи. Одна 
 **Заметки агента** (не выводятся из кода — грабли, тупики, договорённости)
 
 <!-- handoff-notes -->
-- 2026-09-30: Код в claude/funny-ramanujan-sdgiso, CI зелёный (7f6506d), PR не открыт. Осталась ручная проверка на macOS: омнибокс Chrome/Safari (выделенная подсказка → отмена), Spotlight, TextEdit с автокоррекцией (ghbdtn → отмена при замене), VS Code с деревом и без. Для сравнения: defaults write com.switchfix.app SwitchFix_verifyFieldText -bool NO. Смотреть лог: correction cancelled reason=field-text-*, field text <verdict> ms=
+- 2026-09-30: Режим по умолчанию shadow (SwitchFix_fieldTextCheck): enforce включать только после локальной матрицы. В логе искать 'screen check verdict=' (probe/attempts/ms/pid) и 'correction cancelled reason=screen-mismatch'. Главный вопрос матрицы — отдаёт ли Chrome-омнибокс что-то кроме unavailable без AX-дерева. shadow делает одно чтение без ретраев; lagging-логика работает только в enforce.
 <!-- /handoff-notes -->
 
 ## Blockers

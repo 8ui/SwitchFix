@@ -203,7 +203,8 @@ public final class KeyboardMonitor {
         return start()
     }
 
-    /// Precompute HID fallback translations away from the event-tap callback.
+    /// Precompute the current layout's key texts away from the event-tap callback (the HID
+    /// tap's only source of text; at session level, a check of the event's own text).
     public func refreshInputTranslations() {
         let sources = [
             TISCopyCurrentKeyboardInputSource()?.takeRetainedValue(),
@@ -424,10 +425,19 @@ public final class KeyboardMonitor {
         }
 
         let prefersTranslation = lifecycle.withLock { $0.prefersLayoutTranslation }
-        let translated = prefersTranslation ? translations.withLock {
+        let translated = translations.withLock {
             $0[TranslationKey(keyCode: keyCode, shifted: flags.contains(.maskShift))]
-        } : nil
-        guard let text = translated ?? KeyboardMonitor.eventCharacterString(from: event) else {
+        }
+        // Only physical keys: text expanders and auto-type post their text with any keyCode.
+        // ISO keys 10 and 50 depend on a keyboard type an agent app may not know.
+        let physical = event.getIntegerValueField(.eventSourceStateID)
+            == Int64(CGEventSourceStateID.hidSystemState.rawValue)
+        guard let text = KeyboardMonitor.typedCharacters(
+            event: KeyboardMonitor.eventCharacterString(from: event),
+            translated: translated,
+            preferTranslation: prefersTranslation,
+            canOverrideEvent: physical && keyCode != 10 && keyCode != 50
+        ) else {
             return .navigation
         }
         if WordBoundary.isPunctuationBoundary(text) {
@@ -445,6 +455,29 @@ public final class KeyboardMonitor {
         guard keyCode == configuredKeyCode else { return false }
         let relevantMask: CGEventFlags = [.maskCommand, .maskControl, .maskAlternate, .maskShift]
         return flags.intersection(relevantMask) == CGEventFlags(rawValue: configuredModifiers).intersection(relevantMask)
+    }
+
+    /// The text a key typed: the event's own text, or the current layout's (`translated`).
+    ///
+    /// The HID tap sees events before they get text, so it always translates. At session
+    /// level, right after SwitchFix switches the layout, macOS may still attach the previous
+    /// layout's text to key events while the app (Safari, Notes) types with the new one; when
+    /// the two disagree on Cyrillic, the current layout wins. Case (Caps Lock) and differences
+    /// within one script (Russian vs Ukrainian, punctuation vs punctuation) keep the event's text.
+    /// - Parameter canOverrideEvent: false for posted (non-hardware) events and ISO-dependent keys.
+    public static func typedCharacters(
+        event: String?,
+        translated: String?,
+        preferTranslation: Bool,
+        canOverrideEvent: Bool = true
+    ) -> String? {
+        if preferTranslation { return translated ?? event }
+        guard canOverrideEvent, let event, let translated else { return event }
+        return isCyrillic(event) == isCyrillic(translated) ? event : translated
+    }
+
+    private static func isCyrillic(_ text: String) -> Bool {
+        text.unicodeScalars.contains { (0x400...0x4FF).contains($0.value) }
     }
 
     private static func eventCharacterString(from event: CGEvent) -> String? {
