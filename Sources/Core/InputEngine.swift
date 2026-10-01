@@ -602,12 +602,16 @@ public final class InputEngine {
                     // would delay corrections and lose them to the next keystroke.
                     let shadow = self.screenCheckMode == .shadow
                     // A field a whole word behind can look autocorrected (its previous word):
-                    // a replacement is deleted only when a second read agrees.
+                    // a replacement is deleted only when a second read agrees. One first seen
+                    // at the deadline still gets that read; a disagreeing one then cancels.
                     var unconfirmed: Int?
                     if case .replaced(let deleteCount) = verdict, deleteCount != replacedBefore {
                         unconfirmed = deleteCount
                     }
-                    if unconfirmed != nil, final, !shadow {
+                    // Once a replacement was seen, an unreadable field is no reason to delete
+                    // the typed length.
+                    if unconfirmed != nil && final && replacedBefore != nil
+                        || verdict == .unknown && replacedBefore != nil, !shadow {
                         SwitchFixLog.engine.notice("correction cancelled reason=screen-replacement-unconfirmed attempts=\(attempt)")
                         return
                     }
