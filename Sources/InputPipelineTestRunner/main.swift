@@ -1635,8 +1635,22 @@ run("screen verification: verdict") {
     check(verdict("ghbdtn", .text(before: "\u{1F600}ghbdtn ")) == .match, "an emoji before the word")
     check(verdict("ghbdtn", .text(before: "ghbdtn"), boundary: "") == .match, "the hotkey has no boundary")
     check(verdict("ghbdtn", .selection(length: 7)) == .mismatch, "an inline suggestion is selected")
-    check(verdict("teh", .text(before: "the ")) == .mismatch, "autocorrect replaced the word")
-    check(verdict("helo", .text(before: "hello ")) == .mismatch, "a prediction was accepted")
+    check(verdict("teh", .text(before: "the ")) == .mismatch, "a short word is not matched by similarity")
+    check(verdict("руддщ", .text(before: "дело, руда ")) == .replaced(deleteCount: 5),
+          "autocorrect replaced the word: delete what the field shows")
+    check(verdict("руддщ", .text(before: "Руда ", atTextStart: true)) == .replaced(deleteCount: 5),
+          "at the start of the field, capitalized")
+    check(verdict("руддщ", .text(before: "Руда ")) == .mismatch, "a word cut by the window is not deleted")
+    check(verdict("руддщ", .text(before: "x\nруда ")) == .replaced(deleteCount: 5), "after a newline")
+    check(verdict("ghbdtn", .text(before: "a ghbdth ")) == .replaced(deleteCount: 7), "a one-letter fix")
+    check(verdict("ghbdtn", .text(before: "a привет ")) == .mismatch, "another script is not an autocorrection")
+    check(verdict("ghbdtn", .text(before: "a ghost ")) == .mismatch, "too different")
+    check(verdict("ghbdtn", .text(before: "a xxghbdth ")) == .mismatch, "three edits are not an autocorrection")
+    check(verdict("ghbdtn", .text(before: "a ghb-dt ")) == .mismatch, "only letters")
+    check(verdict("ghbdtn", .text(before: "a ghbdth")) == .mismatch, "the boundary must still be there")
+    check(verdict("ghbdtn", .text(before: "a ghbdth"), boundary: "") == .mismatch, "the hotkey has no boundary to anchor on")
+    check(verdict("ie ww", .text(before: "a ie wx ")) == .mismatch, "a merged pair is never re-cut")
+    check(verdict("helo", .text(before: "hello ")) == .mismatch, "a short word is not matched by similarity")
     check(verdict("ghbdtn", .text(before: "xghbdtn ")) == .match, "only the deleted tail matters")
     check(verdict("ghbdtn", .text(before: "x ")) == .mismatch, "unrelated text")
     check(verdict("ghbdtn", .text(before: "ghbdtn")) == .retry, "the app has not handled the space yet")
@@ -1689,6 +1703,19 @@ run("screen check: corrects only what the field still shows") {
     harness = screenChecked(.unavailable(transient: false), emits: true)
     check(harness.emitted.count == 1, "no readable field: corrected as before")
     check(harness.screen?.queries == 1, "without retries")
+}
+
+run("screen check: an autocorrected word is replaced as the field shows it") {
+    var harness = screenChecked(.text(before: "ok ghbdth "), emits: true)
+    check(harness.emitted.count == 1, "corrected")
+    check(harness.emitted.last?.deleteCount == "ghbdth ".count, "deletes the field's word, got \(harness.emitted.last?.deleteCount ?? -1)")
+    check(harness.emitted.last?.replacementText == "привет ", "got \(harness.emitted.last?.replacementText ?? "nil")")
+    check(harness.emitted.last?.originalText == "ghbdtn", "the typed word is kept for undo and learning")
+    check((harness.screen?.windows.first ?? 0) >= "ghbdtn ".utf16.count + 3,
+          "the window reaches the separator before a longer field word, got \(harness.screen?.windows ?? [])")
+
+    harness = screenChecked(.text(before: "ok ghbdth "), emits: true, mode: .shadow)
+    check(harness.emitted.last?.deleteCount == "ghbdtn ".count, "shadow corrects as before")
 }
 
 run("screen check: waits for a field that lags behind") {

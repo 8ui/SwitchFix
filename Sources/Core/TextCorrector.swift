@@ -64,6 +64,25 @@ public struct CorrectionPlan: Equatable {
         self.provenance = provenance
     }
 
+    /// The same correction deleting `count` characters (the field changed what was typed).
+    public func deleting(_ count: Int) -> CorrectionPlan {
+        CorrectionPlan(
+            boundarySequence: boundarySequence,
+            contextEpoch: contextEpoch,
+            targetPID: targetPID,
+            editGeneration: editGeneration,
+            correctionEpoch: correctionEpoch,
+            deleteCount: count,
+            replacementText: replacementText,
+            originalText: originalText,
+            correctedText: correctedText,
+            boundaryText: boundaryText,
+            originalLayout: originalLayout,
+            targetLayout: targetLayout,
+            provenance: provenance
+        )
+    }
+
     public func isEligible(using state: CaptureStateSnapshot) -> Bool {
         state.latestPhysicalSequence == boundarySequence &&
             state.editGeneration == editGeneration &&

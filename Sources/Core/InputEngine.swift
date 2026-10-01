@@ -577,9 +577,10 @@ public final class InputEngine {
             SwitchFixLog.engine.notice("correction cancelled reason=stale-during-screen-check attempts=\(attempt - 1) provenance=\(String(describing: plan.provenance))")
             return
         }
-        // AX ranges are UTF-16; the margin covers a decomposed accent in the field. Only the
-        // suffix is compared, so a character cut at the window's start does not matter.
-        let window = (plan.originalText + plan.boundaryText).utf16.count + 2
+        // AX ranges are UTF-16; the margin covers a decomposed accent in the field, and an
+        // autocorrected word up to two characters longer plus the separator before it. Only
+        // the suffix is compared, so a character cut at the window's start does not matter.
+        let window = (plan.originalText + plan.boundaryText).utf16.count + 6
         selectionQueue.async {
             query(request.context.frontmostPID, request.context.epoch, window) { [weak self] probe in
                 self?.inputQueue.async {
@@ -611,6 +612,10 @@ public final class InputEngine {
                         SwitchFixLog.engine.notice("correction cancelled reason=screen-mismatch")
                         return
                     }
+                    if case .replaced(let deleteCount) = verdict, !shadow {
+                        self.emit(plan.deleting(deleteCount))
+                        return
+                    }
                     self.emit(plan)
                 }
             }
@@ -620,7 +625,8 @@ public final class InputEngine {
     /// The probe without its text: only lengths are logged.
     private static func logDescription(_ probe: FieldTextProbe) -> String {
         switch probe {
-        case .text(let before): return "text(\(SwitchFixLog.text(before)))"
+        case .text(let before, let atTextStart):
+            return "text(\(SwitchFixLog.text(before))\(atTextStart ? ", start" : ""))"
         case .selection(let length): return "selection(\(length))"
         case .unavailable(let transient): return transient ? "unavailable(transient)" : "unavailable"
         }

@@ -468,7 +468,7 @@ public final class AccessibilityFocusCoordinator {
         let total = intAttribute(kAXNumberOfCharactersAttribute, of: focused)
         // The caret moved before the text was updated.
         if let total, caret > total { return .unavailable(transient: true) }
-        if caret == start { return .text(before: "") }
+        if caret == start { return .text(before: "", atTextStart: start == 0) }
 
         var parameterRange = CFRange(location: start, length: caret - start)
         var stringError = AXError.failure
@@ -483,14 +483,17 @@ public final class AccessibilityFocusCoordinator {
             if stringError == .success, let string = value as? String {
                 // A different length: the text and the caret disagree for now.
                 return (string as NSString).length == caret - start
-                    ? .text(before: string)
+                    ? .text(before: string, atTextStart: start == 0)
                     : .unavailable(transient: true)
             }
         }
         if let total, total <= maxFieldCheckValueLength,
            let value = stringAttribute(kAXValueAttribute, of: focused) as NSString? {
             guard value.length == total else { return .unavailable(transient: true) }
-            return .text(before: value.substring(with: NSRange(location: start, length: caret - start)))
+            return .text(
+                before: value.substring(with: NSRange(location: start, length: caret - start)),
+                atTextStart: start == 0
+            )
         }
         return .unavailable(transient: stringError == .cannotComplete)
     }
@@ -689,7 +692,8 @@ public enum CaretContext: Equatable, Sendable {
 /// The focused field's text before the caret, read to verify a correction before it deletes.
 public enum FieldTextProbe: Equatable, Sendable {
     /// No selection: the text right before the caret (a window, possibly cut at its start).
-    case text(before: String)
+    /// `atTextStart`: the window begins at the start of the field's text, so nothing is cut.
+    case text(before: String, atTextStart: Bool = false)
     /// A non-empty selection (e.g. an inline autocomplete suggestion): Backspace would delete it.
     case selection(length: Int)
     /// No readable text field. `transient`: a timeout or an inconsistent answer that a
