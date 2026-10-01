@@ -5,7 +5,7 @@ type: bug
 pipeline: no-spec
 phase: review
 created: 2026-09-30
-updated: 2026-09-30
+updated: 2026-10-01
 blocked_by: null
 steps_done: 6
 steps_total: 7
@@ -13,8 +13,8 @@ step_current: 7
 artifacts:
   spec: null
   plan: docs/plans/correction-verifies-field-text-plan.md
-  branch: null
-  pr: null
+  branch: claude/funny-ramanujan-sdgiso
+  pr: "https://github.com/8ui/SwitchFix/pull/9"
 ---
 
 ## Context
@@ -61,6 +61,7 @@ Staleness-guards (`CorrectionPlan.isEligible`) этого не видят: ко�
 - 2026-09-30: verify: `CI зелёный: https://github.com/8ui/SwitchFix/actions/runs/36777646863 (7f6506d)` → exit 0 ✅
 - 2026-09-30: шаг 6 ✅ Ревью — ревью субагента учтено, CI зелёный
 - 2026-09-30: impl complete, CI зелёный; осталась ручная проверка (шаг 7, локально)
+- 2026-10-01: artifacts.branch = claude/funny-ramanujan-sdgiso; artifacts.pr = https://github.com/8ui/SwitchFix/pull/9
 
 ## Decisions
 
