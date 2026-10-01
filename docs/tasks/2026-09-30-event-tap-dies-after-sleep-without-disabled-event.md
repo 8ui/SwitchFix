@@ -5,7 +5,7 @@ type: bug
 pipeline: minimal
 phase: review
 created: 2026-09-30
-updated: 2026-09-30
+updated: 2026-10-01
 blocked_by: null
 steps_done: 3
 steps_total: 4
@@ -49,6 +49,7 @@ discussion #11819, OpenKey #87, Keyboop #23 — «со временем авто
 - 2026-09-30: verify: `CI зелёный: https://github.com/8ui/SwitchFix/actions/runs/36772967020 (374657a)` → exit 0 ✅
 - 2026-09-30: artifacts.branch = claude/funny-ramanujan-sdgiso; artifacts.pr = https://github.com/8ui/SwitchFix/pull/8
 - 2026-09-30: влито в master (https://github.com/8ui/SwitchFix/pull/8); осталась ручная проверка на macOS
+- 2026-10-01: verify: `Локально: переподпись работающего /Applications/SwitchFix.app той же identity (codesign --force) — тот же процесс продолжил получать нажатия, коррекция ghbdtn→привет прошла; сторож не понадобился. Сон и блокировка экрана не проверены (нужна разблокировка паролем) — за пользователем` → exit 0 ✅
 
 ## Decisions
 
@@ -61,6 +62,12 @@ _Нетривиальные решения по ходу задачи. Одна 
 ## Verification
 
 - 2026-09-30 · `CI зелёный: https://github.com/8ui/SwitchFix/actions/runs/36772967020 (374657a)` · exit 0 ✅
+
+  ```
+  (без вывода)
+  ```
+
+- 2026-10-01 · `Локально: переподпись работающего /Applications/SwitchFix.app той же identity (codesign --force) — тот же процесс продолжил получать нажатия, коррекция ghbdtn→привет прошла; сторож не понадобился. Сон и блокировка экрана не проверены (нужна разблокировка паролем) — за пользователем` · exit 0 ✅
 
   ```
   (без вывода)

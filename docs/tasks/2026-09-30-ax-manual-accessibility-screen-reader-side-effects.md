@@ -5,7 +5,7 @@ type: bug
 pipeline: minimal
 phase: review
 created: 2026-09-30
-updated: 2026-09-30
+updated: 2026-10-01
 blocked_by: null
 steps_done: 3
 steps_total: 4
@@ -49,6 +49,7 @@ Electron атрибут не поддерживается (electron #37465).
 - 2026-09-30: verify: `CI зелёный: https://github.com/8ui/SwitchFix/actions/runs/36772967020 (374657a)` → exit 0 ✅
 - 2026-09-30: artifacts.branch = claude/funny-ramanujan-sdgiso; artifacts.pr = https://github.com/8ui/SwitchFix/pull/8
 - 2026-09-30: влито в master (https://github.com/8ui/SwitchFix/pull/8); осталась ручная проверка на macOS
+- 2026-10-01: verify: `Локально (master 3cfd637): хоткей в Postman (Electron) включил AXManualAccessibility в 12:07:12, выключил сам в 12:07:42 (30 с); после — AXManualAccessibility=0, AXEnhancedUserInterface=0 (прочитано отдельным AX-скриптом); автокоррекция в Postman атрибут не включает. VS Code/Slack/Chrome не проверены (IDE/браузеры недоступны computer use; Slack не установлен)` → exit 0 ✅
 
 ## Decisions
 
@@ -58,10 +59,17 @@ _Нетривиальные решения по ходу задачи. Одна 
 
 - [ ] Первый запрос после включения ждёт дерево до 150 мс (3 × 50 мс на queryQueue); проверить локально на Electron, хватает ли — переформулировано 2026-09-30
 - [ ] После аварийного выхода атрибут остаётся включённым, и следующий запуск его не выключит (фокус виден — не наш); reset при выходе может разминуться с запросом между set и schedule; Electron может не отвечать на getter AXManualAccessibility — тогда включённый скринридером атрибут выглядит «не включённым»
+- [ ] Хоткей в Postman сразу после включения атрибута: 'manual: dropped after selection query … contextMatch=false' — коррекции не было; курсор, возможно, был не в поле (клик не прошёл), повторить с фокусом в поле
 
 ## Verification
 
 - 2026-09-30 · `CI зелёный: https://github.com/8ui/SwitchFix/actions/runs/36772967020 (374657a)` · exit 0 ✅
+
+  ```
+  (без вывода)
+  ```
+
+- 2026-10-01 · `Локально (master 3cfd637): хоткей в Postman (Electron) включил AXManualAccessibility в 12:07:12, выключил сам в 12:07:42 (30 с); после — AXManualAccessibility=0, AXEnhancedUserInterface=0 (прочитано отдельным AX-скриптом); автокоррекция в Postman атрибут не включает. VS Code/Slack/Chrome не проверены (IDE/браузеры недоступны computer use; Slack не установлен)` · exit 0 ✅
 
   ```
   (без вывода)
