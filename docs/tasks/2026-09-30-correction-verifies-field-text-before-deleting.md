@@ -7,9 +7,9 @@ phase: impl
 created: 2026-09-30
 updated: 2026-10-01
 blocked_by: null
-steps_done: 5
+steps_done: 6
 steps_total: 7
-step_current: 7
+step_current: 6
 artifacts:
   spec: null
   plan: docs/plans/correction-verifies-field-text-before-deleting-plan.md
@@ -40,8 +40,8 @@ Staleness-guards (`CorrectionPlan.isEligible`) этого не видят: ко�
 3. ✅ Coordinator + AppDelegate
 4. ✅ Тесты пайплайна
 5. ✅ Документация + ревью
-6. ⬜ Локальная матрица и включение enforce (macOS)
-7. ▶ Автозамена: стирать слово, которое показывает поле (вердикт replaced)
+6. ▶ Локальная матрица и включение enforce (macOS)
+7. ✅ Автозамена: стирать слово, которое показывает поле (вердикт replaced)
 
 ## Log
 
@@ -64,6 +64,9 @@ Staleness-guards (`CorrectionPlan.isEligible`) этого не видят: ко�
 - 2026-10-01: шаг 6: матрица TextEdit/Notes/Telegram/хоткей в enforce — ложных отмен нет; Chrome-омнибокс unavailable; Safari/Chrome textarea не проверены (браузеры только на чтение). Локально SwitchFix_fieldTextCheck=enforce; решение о default ждёт пользователя
 - 2026-10-01: Safari и Notes: автозамена (руддщ→«руда») до чтения поля → enforce отменяет, слово остаётся автозаменённым. Делаю вердикт replaced: стирать слово, которое показывает поле
 - 2026-10-01: шаг 7 ▶ Автозамена: стирать слово, которое показывает поле (вердикт replaced)
+- 2026-10-01: verify: `Локально: InputPipelineTestRunner 1090/0, TestRunner 603/0 (2ca5243)` → exit 0 ✅
+- 2026-10-01: шаг 7 ✅ Автозамена: стирать слово, которое показывает поле (вердикт replaced) — ревью субагентом учтено; ждёт CI 36826731829 и повтор пользователя в Safari
+- 2026-10-01: verify: `CI зелёный: https://github.com/8ui/SwitchFix/actions/runs/36826731829 (2ca5243)` → exit 0 ✅
 
 ## Decisions
 
@@ -75,7 +78,7 @@ _Нетривиальные решения по ходу задачи. Одна 
 - [ ] undo/revert (TextCorrector.undo) удаляет correctedText+boundary без сверки поля — тот же класс бага
 - [ ] hotkey/layoutSwitch при выделенной inline-подсказке идут в ветку .selection и конвертируют подсказку вместо слова
 - [ ] путь layoutSwitch со сверкой не покрыт тестом (layoutSwitchPlans строит свой движок без screenTextRequest); layoutSwitch читает AX дважды (выделение + сверка)
-- [ ] Автозамена до коррекции (Notes: руддщ→«Руда»): сверка отменяет коррекцию, текст не портится, но в поле остаётся автозаменённое слово — можно стирать то, что показывает поле (длина слова из AX), и вставлять конверсию
+- [x] Автозамена до коррекции (Notes: руддщ→«Руда»): сверка отменяет коррекцию, текст не портится, но в поле остаётся автозаменённое слово — можно стирать то, что показывает поле (длина слова из AX), и вставлять конверсию — закрыто 2026-10-01: d8fad9b+2ca5243: вердикт replaced
 
 ## Verification
 
@@ -95,6 +98,18 @@ _Нетривиальные решения по ходу задачи. Одна 
 
   ```
   verdict counts: TextEdit match 8 (att1 5, att2 3) · Notes match 11, mismatch 6 (2 autocorrect, 4 артефакт) · Telegram match 3 · Chrome unknown 2. Safari, textarea в Chrome, Slack, VS Code (в списке исключений) — не проверены: браузеры выданы computer use только на чтение.
+  ```
+
+- 2026-10-01 · `Локально: InputPipelineTestRunner 1090/0, TestRunner 603/0 (2ca5243)` · exit 0 ✅
+
+  ```
+  (без вывода)
+  ```
+
+- 2026-10-01 · `CI зелёный: https://github.com/8ui/SwitchFix/actions/runs/36826731829 (2ca5243)` · exit 0 ✅
+
+  ```
+  (без вывода)
   ```
 
 ## Handoff
