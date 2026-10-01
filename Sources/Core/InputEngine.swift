@@ -11,6 +11,8 @@ public struct DetectionRequest: Equatable {
     public let context: InputContextSnapshot
     /// See `InputStateCommand.flush`; false for hotkey requests.
     public let continuesPreviousWord: Bool
+    /// Read the field before deleting; false for a word the hotkey just read from the screen.
+    public let verifiesFieldText: Bool
 
     public init(
         word: String,
@@ -19,7 +21,8 @@ public struct DetectionRequest: Equatable {
         editGeneration: UInt64,
         correctionEpoch: UInt64,
         context: InputContextSnapshot,
-        continuesPreviousWord: Bool = false
+        continuesPreviousWord: Bool = false,
+        verifiesFieldText: Bool = true
     ) {
         self.word = word
         self.boundary = boundary
@@ -28,6 +31,7 @@ public struct DetectionRequest: Equatable {
         self.correctionEpoch = correctionEpoch
         self.context = context
         self.continuesPreviousWord = continuesPreviousWord
+        self.verifiesFieldText = verifiesFieldText
     }
 }
 
@@ -38,6 +42,9 @@ public final class InputEngine {
     /// Selection or, when `wantsCaretText`, text around the caret (Accessibility); used by
     /// the manual hotkey. Without `wantsCaretText` only the selection is read.
     public typealias CaretContextRequest = (pid_t, UInt64, Bool, @escaping (CaretContext) -> Void) -> Void
+    /// The text before the caret of the app with this PID, up to a UTF-16 length; read before
+    /// a correction deletes. May answer on any queue, late or never.
+    public typealias FieldTextRequest = (pid_t, Int, @escaping (FieldTextSnapshot) -> Void) -> Void
     /// Reverts the last correction; returns the reverted plan (tests replace `TextCorrector.undo`).
     public typealias RevertEmission = (UInt64, InputContextSnapshot) -> CorrectionPlan?
 
@@ -61,6 +68,11 @@ public final class InputEngine {
     private let customEmission: CorrectionEmission?
     private let selectedTextRequest: SelectedTextRequest?
     private let caretContextRequest: CaretContextRequest?
+    private let fieldTextRequest: FieldTextRequest?
+    /// How long a correction waits for the field text before proceeding unverified.
+    static let fieldTextDeadline: TimeInterval = 0.04
+    /// Pause before reading a lagging field again.
+    static let fieldTextRetryInterval: TimeInterval = 0.008
     private let revertEmission: RevertEmission?
     private let lexicon: PersonalLexicon?
     private let detectionConfiguration = OSAllocatedUnfairLock(initialState: DetectionConfiguration())
@@ -84,6 +96,7 @@ public final class InputEngine {
         correctionEmission: CorrectionEmission? = nil,
         selectedTextRequest: SelectedTextRequest? = nil,
         caretContextRequest: CaretContextRequest? = nil,
+        fieldTextRequest: FieldTextRequest? = nil,
         lexicon: PersonalLexicon? = nil,
         revertEmission: RevertEmission? = nil
     ) {
@@ -95,6 +108,7 @@ public final class InputEngine {
         self.customEmission = correctionEmission
         self.selectedTextRequest = selectedTextRequest
         self.caretContextRequest = caretContextRequest
+        self.fieldTextRequest = fieldTextRequest
         self.lexicon = lexicon
         self.revertEmission = revertEmission
         detector.lexicon = lexicon
@@ -524,6 +538,60 @@ public final class InputEngine {
             provenance: provenance
         )
 
+        guard request.verifiesFieldText, let fieldTextRequest else {
+            emit(plan)
+            return
+        }
+        verifyFieldText(plan: plan, word: result.originalWord, boundary: boundary, request: fieldTextRequest)
+    }
+
+    /// Reads the text before the caret and cancels the correction if the field changed what it
+    /// is about to delete. Never delays input: at most `fieldTextDeadline`, then fail-open;
+    /// exactly one decision is made, on `inputQueue`. While the field has not shown the
+    /// boundary yet (lagging), it is read again: autocorrect happens on that boundary.
+    private func verifyFieldText(plan: CorrectionPlan, word: String, boundary: String, request: @escaping FieldTextRequest) {
+        final class Decision { var isMade = false }
+        let decision = Decision()
+        let startedAt = DispatchTime.now().uptimeNanoseconds
+        let deadline = startedAt &+ UInt64(Self.fieldTextDeadline * 1_000_000_000)
+        let window = FieldTextVerification.window(word: word, boundary: boundary)
+
+        func ask() {
+            request(plan.targetPID, window) { [inputQueue] snapshot in
+                inputQueue.async { decide(snapshot) }
+            }
+        }
+
+        func decide(_ snapshot: FieldTextSnapshot?) {
+            guard !decision.isMade else { return }
+            let verdict = snapshot.map {
+                FieldTextVerification.verdict($0, word: word, boundary: boundary)
+            } ?? .unknown
+            let now = DispatchTime.now().uptimeNanoseconds
+            if verdict == .lagging,
+               now &+ UInt64(Self.fieldTextRetryInterval * 1_000_000_000) < deadline {
+                inputQueue.asyncAfter(deadline: .now() + Self.fieldTextRetryInterval) { ask() }
+                return
+            }
+            decision.isMade = true
+            let milliseconds = Double(now &- startedAt) / 1_000_000.0
+            if case .mismatch(let reason) = verdict {
+                SwitchFixLog.engine.notice(
+                    "correction cancelled reason=field-text-\(reason) word=\(SwitchFixLog.text(word)) ms=\(milliseconds)"
+                )
+                return
+            }
+            SwitchFixLog.engine.info(
+                "field text \(snapshot == nil ? "timeout" : String(describing: verdict)) ms=\(milliseconds)"
+            )
+            emit(plan)
+        }
+
+        ask()
+        inputQueue.asyncAfter(deadline: .now() + Self.fieldTextDeadline) { decide(nil) }
+    }
+
+    private func emit(_ plan: CorrectionPlan) {
         correctionQueue.async { [weak self] in
             guard let self else { return }
             guard plan.isEligible(using: self.captureState.snapshot()) else {
@@ -704,7 +772,8 @@ public final class InputEngine {
                         sequence: sequence,
                         editGeneration: generation,
                         correctionEpoch: requestCorrectionEpoch,
-                        context: context
+                        context: context,
+                        verifiesFieldText: word != nil
                     ), forceConversion: true, teaches: teaches && word != nil)
                 }
                 }

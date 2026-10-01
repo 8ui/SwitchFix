@@ -48,6 +48,7 @@ discussion #11819, OpenKey #87, Keyboop #23 — «со временем авто
 - 2026-09-30: impl complete; ручная проверка — шаг 4 (локально)
 - 2026-09-30: verify: `CI зелёный: https://github.com/8ui/SwitchFix/actions/runs/36772967020 (374657a)` → exit 0 ✅
 - 2026-09-30: artifacts.branch = claude/funny-ramanujan-sdgiso; artifacts.pr = https://github.com/8ui/SwitchFix/pull/8
+- 2026-09-30: влито в master (https://github.com/8ui/SwitchFix/pull/8); осталась ручная проверка на macOS
 
 ## Decisions
 

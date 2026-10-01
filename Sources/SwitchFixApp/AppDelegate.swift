@@ -57,6 +57,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         )
         focusCoordinator = coordinator
 
+        var fieldTextRequest: InputEngine.FieldTextRequest?
+        if Self.verifiesFieldText {
+            fieldTextRequest = { [weak self] pid, utf16Length, completion in
+                guard let coordinator = self?.focusCoordinator else { return completion(.unavailable) }
+                coordinator.requestFieldText(pid: pid, utf16Length: utf16Length, completion: completion)
+            }
+        }
         let engine = InputEngine(
             captureState: state,
             initialContext: initialContext,
@@ -77,6 +84,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                     completion: completion
                 )
             },
+            fieldTextRequest: fieldTextRequest,
             lexicon: PersonalLexicon.shared
         )
         engine.onFocusMayChange = { [weak self] pid, epoch in
@@ -432,6 +440,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             return
         }
         focusCoordinator?.focusMayChange(pid: pid, epoch: epoch)
+    }
+
+    /// Corrections read the field before deleting unless turned off for comparison:
+    /// `defaults write com.switchfix.app SwitchFix_verifyFieldText -bool NO` (read at launch).
+    private static var verifiesFieldText: Bool {
+        UserDefaults.standard.object(forKey: "SwitchFix_verifyFieldText") as? Bool ?? true
     }
 
     private func publishUnknownFocus(for pid: pid_t) -> UInt64? {
