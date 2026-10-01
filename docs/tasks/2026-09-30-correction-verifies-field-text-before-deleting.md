@@ -3,13 +3,13 @@ id: 2026-09-30-correction-verifies-field-text-before-deleting
 title: "Correction leaves stray letters when the field changed the text (inline autocomplete, predictions, autocorrect)"
 type: bug
 pipeline: no-spec
-phase: impl
+phase: review
 created: 2026-09-30
 updated: 2026-10-01
 blocked_by: null
-steps_done: 6
+steps_done: 7
 steps_total: 7
-step_current: 6
+step_current: null
 artifacts:
   spec: null
   plan: docs/plans/correction-verifies-field-text-before-deleting-plan.md
@@ -40,7 +40,7 @@ Staleness-guards (`CorrectionPlan.isEligible`) этого не видят: ко�
 3. ✅ Coordinator + AppDelegate
 4. ✅ Тесты пайплайна
 5. ✅ Документация + ревью
-6. ▶ Локальная матрица и включение enforce (macOS)
+6. ✅ Локальная матрица и включение enforce (macOS)
 7. ✅ Автозамена: стирать слово, которое показывает поле (вердикт replaced)
 
 ## Log
@@ -68,6 +68,9 @@ Staleness-guards (`CorrectionPlan.isEligible`) этого не видят: ко�
 - 2026-10-01: шаг 7 ✅ Автозамена: стирать слово, которое показывает поле (вердикт replaced) — ревью субагентом учтено; ждёт CI 36826731829 и повтор пользователя в Safari
 - 2026-10-01: verify: `CI зелёный: https://github.com/8ui/SwitchFix/actions/runs/36826731829 (2ca5243)` → exit 0 ✅
 - 2026-10-01: verify: `Живая автозамена в Заметках: руддщ→«Руда», verdict=replaced(5) attempts=3 → «Hello» (сборка с 2ca5243)` → exit 0 ✅
+- 2026-10-01: verify: `Пользователь в Safari: «hello привет hello world test» — автозамена и раскладка исправлены; локально после слияния с master: InputPipelineTestRunner 1102/0, TestRunner 603/0` → exit 0 ✅
+- 2026-10-01: шаг 6 ✅ Локальная матрица и включение enforce (macOS) — enforce по умолчанию; матрица TextEdit/Notes/Telegram + Safari/Chrome руками
+- 2026-10-01: Слияние с master: параллельная реализация из PR #9 (FieldTextVerification) убрана по решению пользователя, оставлена ScreenVerification; SwitchFix_verifyFieldText=NO → off
 
 ## Decisions
 
@@ -115,6 +118,12 @@ _Нетривиальные решения по ходу задачи. Одна 
   ```
 
 - 2026-10-01 · `Живая автозамена в Заметках: руддщ→«Руда», verdict=replaced(5) attempts=3 → «Hello» (сборка с 2ca5243)` · exit 0 ✅
+
+  ```
+  (без вывода)
+  ```
+
+- 2026-10-01 · `Пользователь в Safari: «hello привет hello world test» — автозамена и раскладка исправлены; локально после слияния с master: InputPipelineTestRunner 1102/0, TestRunner 603/0` · exit 0 ✅
 
   ```
   (без вывода)
