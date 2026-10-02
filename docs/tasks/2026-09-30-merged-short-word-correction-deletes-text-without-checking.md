@@ -5,7 +5,7 @@ type: bug
 pipeline: no-spec
 phase: done
 created: 2026-09-30
-updated: 2026-09-30
+updated: 2026-10-02
 blocked_by: null
 steps_done: 4
 steps_total: 4
@@ -70,7 +70,7 @@ _Нетривиальные решения по ходу задачи. Одна 
 
 ## Debt
 
-- [ ] unit-тест смежности в InputStateMachine не покрывает punctuation boundary, focusMayChange, revertHotkey, inputSourceKey, tapReset, queueOverflow, stale context, updateContext, delete на пустом буфере — сейчас корректно за счёт общего сброса, но не зафиксировано
+- [x] unit-тест смежности в InputStateMachine не покрывает punctuation boundary, focusMayChange, revertHotkey, inputSourceKey, tapReset, queueOverflow, stale context, updateContext, delete на пустом буфере — сейчас корректно за счёт общего сброса, но не зафиксировано — закрыто 2026-10-02: 2026-10-02-debt-batch-rtp-l10n-terminals-tests
 - [ ] updatePreferences сбрасывает смежность только при выключении SwitchFix, не при смене режима — на практике недостижимо (смена настроек требует клика)
 - [ ] смежность видит только захваченные события: вставка без key event между словами не снимает признак; частично закрыто сверкой текста поля (2026-09-30-correction-verifies-field-text-before-deleting) — но только в режиме enforce и где AX читается (иначе fail-open) — переформулировано 2026-09-30
 

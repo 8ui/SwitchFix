@@ -30,9 +30,7 @@ jobs:
 
       # ci.yml runs only on claude/** branches, so a release must not rely on it.
       - name: L10n has no duplicate keys
-        run: |
-          dups=$(grep -oE '^ *"([^"\\]|\\.)*":( |$)' Sources/UI/L10n.swift | sed -E 's/^ *//; s/ $//' | sort | uniq -d)
-          if [ -n "$dups" ]; then echo "Duplicate L10n keys:"; echo "$dups"; exit 1; fi
+        run: sh scripts/check-l10n.sh
 
       - name: TestRunner
         run: swift run -c release TestRunner

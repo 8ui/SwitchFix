@@ -42,6 +42,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         "org.alacritty",
         "com.github.wez.wezterm",
         "com.mitchellh.ghostty",
+        "co.zeit.hyper",
+        "org.tabby",
+        "com.raphaelamorim.rio",
+        "dev.commandline.waveterm",
     ]
 
     private static func hidesFieldText(pid: pid_t) -> Bool {
