@@ -284,6 +284,17 @@ public final class InputEngine {
         inputQueue.async { completion() }
     }
 
+    /// Runs `completion` once queued detections, the input work they posted and the detector
+    /// work that posted in turn are done (tests: a not-applied report reaches the detector).
+    public func drainDetection(completion: @escaping () -> Void) {
+        detectionQueue.async { [weak self] in
+            guard let self else { return completion() }
+            self.inputQueue.async {
+                self.detectionQueue.async { completion() }
+            }
+        }
+    }
+
     public func inspectState(
         completion: @escaping (_ buffer: String, _ invalidUntilBoundary: Bool, _ sequence: UInt64) -> Void
     ) {
@@ -802,8 +813,9 @@ public final class InputEngine {
     /// Shortest word a forced hotkey conversion may teach.
     static let minimumLearnedLength = 3
 
-    /// Only single-token automatic and hotkey corrections teach the personal lexicon;
-    /// selection, layout-switch and merged multi-word corrections don't.
+    /// Only single-token automatic, hotkey and forced hotkey corrections teach the personal
+    /// lexicon (a plain hotkey correction only when reverted); selection, layout-switch and
+    /// merged multi-word corrections don't.
     public static func isLearnable(_ plan: CorrectionPlan) -> Bool {
         guard !plan.originalText.isEmpty,
               !plan.originalText.contains(where: \.isWhitespace) else { return false }

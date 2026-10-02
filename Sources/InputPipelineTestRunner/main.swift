@@ -1548,10 +1548,14 @@ run("learning: reverting a hotkey correction made by a learned rule forgets the 
 }
 
 run("learning: a cancelled correction does not count as corrected") {
+    // Detection → the cancel on the input queue → the report on the detection queue.
     func drain(_ harness: LearningHarness) {
         let drained = DispatchSemaphore(value: 0)
         harness.engine.drain { drained.signal() }
         _ = drained.wait(timeout: .now() + 1)
+        let detected = DispatchSemaphore(value: 0)
+        harness.engine.drainDetection { detected.signal() }
+        _ = detected.wait(timeout: .now() + 1)
     }
     // Russian context, then an English word typed on Russian that is not corrected
     // (ended by Enter), then a short word: still kept by the strong context.
@@ -2199,6 +2203,7 @@ run("input-source shortcuts from com.apple.symbolichotkeys") {
     check(parsed(["60": entry(1, [32, 49, 0x840000])]) == [ctrlSpace, ctrlOptionSpace], "Fn and other bits are dropped")
     check(parsed(["60": entry("yes", [32, 49, 1048576])]) == defaults, "a malformed enabled value means the default")
     check(parsed(["60": ["enabled": 1]]) == defaults, "a missing value means the default")
+    check(parsed(["60": ["value": ["parameters": [32, 49, 1048576]]]]) == [InputSourceShortcut(keyCode: 49, modifiers: CGEventFlags.maskCommand.rawValue), ctrlOptionSpace], "no enabled key: on")
     check(parsed(["60": entry(1, ["a", "b", "c"])]) == defaults, "non-numeric parameters mean the default")
 }
 

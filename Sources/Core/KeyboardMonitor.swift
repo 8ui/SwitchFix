@@ -505,18 +505,20 @@ public final class KeyboardMonitor {
 
     // MARK: - System input-source shortcuts
 
-    /// macOS defaults for "Select the previous input source" (Ctrl+Space) and "Select next
-    /// source in Input menu" (Ctrl+Option+Space).
-    public static let defaultInputSourceShortcuts: Set<InputSourceShortcut> = [
-        InputSourceShortcut(keyCode: spaceKeyCode, modifiers: CGEventFlags.maskControl.rawValue),
-        InputSourceShortcut(
-            keyCode: spaceKeyCode,
-            modifiers: CGEventFlags.maskControl.rawValue | CGEventFlags.maskAlternate.rawValue
-        ),
-    ]
+    /// macOS default of "Select the previous input source" (id 60): Ctrl+Space.
+    private static let previousSourceDefault = InputSourceShortcut(
+        keyCode: spaceKeyCode,
+        modifiers: CGEventFlags.maskControl.rawValue
+    )
+    /// macOS default of "Select next source in Input menu" (id 61): Ctrl+Option+Space.
+    private static let nextSourceDefault = InputSourceShortcut(
+        keyCode: spaceKeyCode,
+        modifiers: CGEventFlags.maskControl.rawValue | CGEventFlags.maskAlternate.rawValue
+    )
+    public static let defaultInputSourceShortcuts: Set<InputSourceShortcut> = [previousSourceDefault, nextSourceDefault]
 
-    /// `AppleSymbolicHotKeys` ids of the input-source shortcuts.
-    private static let inputSourceShortcutIDs = ["60", "61"]
+    /// `AppleSymbolicHotKeys` ids of the input-source shortcuts and their defaults.
+    private static let inputSourceShortcutIDs = [("60", previousSourceDefault), ("61", nextSourceDefault)]
 
     /// The enabled input-source shortcuts in `symbolicHotKeys` (`AppleSymbolicHotKeys` of
     /// `com.apple.symbolichotkeys`; nil: the domain is missing). An absent or malformed entry
@@ -527,14 +529,22 @@ public final class KeyboardMonitor {
         selectableSourceCount: Int
     ) -> Set<InputSourceShortcut> {
         guard selectableSourceCount >= 2 else { return [] }
-        let defaults = Array(defaultInputSourceShortcuts.sorted { $0.modifiers < $1.modifiers })
         var result = Set<InputSourceShortcut>()
-        for (offset, id) in inputSourceShortcutIDs.enumerated() {
-            let fallback = defaults[offset]
-            guard let entry = symbolicHotKeys?[id] as? [String: Any],
-                  let enabled = (entry["enabled"] as? NSNumber)?.boolValue else {
+        for (id, fallback) in inputSourceShortcutIDs {
+            guard let entry = symbolicHotKeys?[id] as? [String: Any] else {
                 result.insert(fallback)
                 continue
+            }
+            // No `enabled` key: on. A value that is not a number or bool: malformed, the default.
+            let enabled: Bool
+            if let flag = entry["enabled"] {
+                guard let number = flag as? NSNumber else {
+                    result.insert(fallback)
+                    continue
+                }
+                enabled = number.boolValue
+            } else {
+                enabled = true
             }
             guard enabled else { continue }
             guard let value = entry["value"] as? [String: Any],

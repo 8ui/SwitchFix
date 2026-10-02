@@ -235,12 +235,13 @@ public class LayoutDetector {
             recentOutcomes[index].outcome = .unknown
         }
         guard let last = lastCorrection, last.id == detectionID else { return }
-        if detectionID == detectionSerial {
+        let restoresSwitch = detectionID == detectionSerial
+        if restoresSwitch {
             pendingSwitchLayout = last.switchLayout
             pendingSwitchCount = last.switchCount
         }
         lastCorrection = nil
-        SwitchFixLog.detector.debug("correction \(detectionID) not applied: context and switch state restored")
+        SwitchFixLog.detector.debug("correction \(detectionID) not applied: context restored, switch state \(restoresSwitch ? "restored" : "kept (detected since)")")
     }
 
     /// The current word buffer contents.
@@ -270,8 +271,11 @@ public class LayoutDetector {
         }
         // Every path that returns a correction records `.corrected` last.
         result.detectionID = detectionSerial
-        if let last = recentOutcomes.indices.last, case .corrected = recentOutcomes[last].outcome {
+        if let last = recentOutcomes.indices.last, case .corrected = recentOutcomes[last].outcome,
+           recentOutcomes[last].id == 0 {
             recentOutcomes[last].id = detectionSerial
+        } else {
+            assertionFailure("a returned correction must record .corrected last")
         }
         lastCorrection = (id: detectionSerial, switchLayout: switchBefore.layout, switchCount: switchBefore.count)
         return result
@@ -711,7 +715,7 @@ public class LayoutDetector {
 
     private func hasStrongCurrentContext() -> Bool {
         let window = max(1, shortWordSuppressionContextWindow)
-        let recent = recentOutcomes.suffix(window).map(\.outcome)
+        let recent = recentOutcomes.suffix(window).lazy.map(\.outcome)
         let validCount = recent.reduce(0) { partial, outcome in
             if case .validCurrent = outcome {
                 return partial + 1
