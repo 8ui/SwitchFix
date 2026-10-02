@@ -7,7 +7,7 @@ phase: review
 created: 2026-10-02
 updated: 2026-10-02
 blocked_by: null
-steps_done: 3
+steps_done: 4
 steps_total: 4
 step_current: null
 artifacts:
@@ -26,7 +26,7 @@ artifacts:
 
 1. ✅ classifyKeyDown — чистая функция + тесты
 2. ✅ Чтение symbolichotkeys 60/61 + тесты парсера
-3. ⛔ Ручная проверка на Mac (пользователь): ⌃Space, удержание ⌃, стрелка+⌃Space
+3. ✅ Ручная проверка на Mac (пользователь): ⌃Space, удержание ⌃, стрелка+⌃Space
 4. ✅ Ревью и CI
 
 ## Log
@@ -44,6 +44,9 @@ artifacts:
 - 2026-10-02: шаг 3 ⛔ Ручная проверка на Mac (пользователь): ⌃Space, удержание ⌃, стрелка+⌃Space — ручная проверка на Mac (⌃Space, удержание ⌃ >500 мс, стрелка+⌃Space) — только у пользователя локально
 - 2026-10-02: шаг 4 ✅ Ревью и CI
 - 2026-10-02: impl + ревью + CI; ждёт ручной проверки на Mac (шаг 3) и merge
+- 2026-10-02: verify: `ручная проверка на Mac (сборка ветки 3b3512a+, режим layoutSwitch, TextEdit, log stream): ⌃Space, удержание ⌃Space 1 с, стрелка+⌃Space` → exit 0 ✅
+- 2026-10-02: шаг 3 ✅ Ручная проверка на Mac (пользователь): ⌃Space, удержание ⌃, стрелка+⌃Space — проверено на Mac: все 3 сценария
+- 2026-10-02: ручная проверка на Mac пройдена, блокер снят; удержание: смена через 418 мс — запас до 500 мс небольшой
 
 ## Decisions
 
@@ -75,11 +78,20 @@ _Нетривиальные решения по ходу задачи. Одна 
   (без вывода)
   ```
 
+- 2026-10-02 · `ручная проверка на Mac (сборка ветки 3b3512a+, режим layoutSwitch, TextEdit, log stream): ⌃Space, удержание ⌃Space 1 с, стрелка+⌃Space` · exit 0 ✅
+
+  ```
+  1) быстрый ⌃Space: inputSourceKey keyCode=49 → layout changed через 33 мс → correction APPLIED (provenance layoutSwitch)
+  2) удержание ⌃Space 1 с: inputSourceKey → layout changed через 418 мс (раньше отпускания, в пределах 500 мс жизни слова) → correction APPLIED
+  3) стрелка влево + ⌃Space: navigation keyCode=123 → inputSourceKey → layout changed, коррекции нет
+  Нажатия слал computer-use (keyCode 0), системный ⌃Space реально переключал раскладку.
+  ```
+
 ## Handoff
 
 _Передача контекста следующему агенту. Перезаписывается целиком через `rtp handoff <id>`._
 
 ## Blockers
 
-- 2026-10-02: шаг 3 — ручная проверка на Mac (⌃Space, удержание ⌃ >500 мс, стрелка+⌃Space) — только у пользователя локально
+_Текущие блокеры. Очистить, когда разрешены._
 
