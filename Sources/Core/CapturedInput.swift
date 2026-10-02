@@ -39,7 +39,12 @@ public struct CapturedInput: Equatable {
         case character(String)
         case boundary(String)
         case delete
+        /// A shortcut or key that may edit the text unseen (Cmd+V, Option+Backspace, forward
+        /// delete, Up/Down in a combobox) or move focus.
         case navigation
+        /// The caret was placed without editing the text: a plain left click
+        /// (`byClick`) or Left/Right/Home/End, optionally with Cmd or Option for Left/Right.
+        case caretMove(byClick: Bool)
         /// The Globe key (keyCode 179): usually switches the input source and
         /// leaves focus and the word on screen alone.
         case inputSourceKey
@@ -363,7 +368,7 @@ private extension CapturedInput.Kind {
 
     var invalidatesFocus: Bool {
         switch self {
-        case .navigation, .focusMayChange:
+        case .navigation, .caretMove, .focusMayChange:
             return true
         default:
             return false
@@ -372,7 +377,7 @@ private extension CapturedInput.Kind {
 
     var isPhysicalEdit: Bool {
         switch self {
-        case .character, .boundary, .delete, .navigation, .focusMayChange:
+        case .character, .boundary, .delete, .navigation, .caretMove, .focusMayChange:
             return true
         case .inputSourceKey:
             // It may insert text (emoji picker), so pending corrections go stale.

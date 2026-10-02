@@ -47,9 +47,10 @@ public enum InputStateCommand: Equatable {
 
 /// The end of the text before the caret as SwitchFix saw it typed since the last edit it did
 /// not see. A word read from the screen (Accessibility, which can lag behind typing) is
-/// trusted only when the screen ends with it, so something must have been typed since.
-/// Clicks and arrow keys count as unseen too: focus resolution replaces the context, and
-/// modifier shortcuts (Cmd+V, Opt+Backspace) are classified as navigation.
+/// trusted only when the screen ends with it, so something must have been typed since —
+/// or the caret was only placed (a click, an arrow key) and nothing happened after it: then
+/// the suffix is empty and `InputEngine` waits for the field to settle and checks it again
+/// before deleting. Shortcuts (Cmd+V, Opt+Backspace) and focus keys (Tab, Esc) are unseen edits.
 struct ScreenSuffix {
     private(set) var text = ""
     /// Something changed the text unseen (undo, a correction, a dropped event): an empty
@@ -58,9 +59,18 @@ struct ScreenSuffix {
 
     var verification: String? { needsTyping && text.isEmpty ? nil : text }
 
+    /// The caret was placed and nothing was typed or deleted since.
+    var isCaretPlaced: Bool { text.isEmpty && !needsTyping }
+
     mutating func unknownEdit() {
         text = ""
         needsTyping = true
+    }
+
+    /// The caret moved without editing the text: the screen is current, nothing to match.
+    mutating func caretPlaced() {
+        text = ""
+        needsTyping = false
     }
 
     mutating func typed(_ characters: String) {
@@ -83,7 +93,7 @@ struct ScreenSuffix {
 public struct InputStateMachine {
     public private(set) var currentBuffer = ""
     public private(set) var isInvalidUntilBoundary = false
-    /// Set by caret keys (arrows, Home/End, Page Up/Down, with or without modifiers): the
+    /// Set by caret keys (arrows, Home/End, Page Up/Down, forward delete, with or without modifiers): the
     /// caret may now be inside a word, so the characters typed until the next boundary are
     /// kept for the hotkey but never flushed for automatic correction. Other shortcuts
     /// (Option+Backspace, Cmd+V) do not set it: the word retyped after them is corrected.
@@ -92,6 +102,8 @@ public struct InputStateMachine {
     /// context after every arrow key.
     public private(set) var skipsAutomaticFlushUntilBoundary = false
     public private(set) var layoutSwitchWord = ""
+    /// The caret was placed (a click, an arrow key) and nothing happened since.
+    public var hasPlacedCaret: Bool { screenSuffix.isCaretPlaced }
     /// The previous event was a flush, and since then only the next word's characters (and
     /// deletes inside it) were typed.
     private var wordFollowsFlush = false
@@ -117,6 +129,37 @@ public struct InputStateMachine {
         layoutSwitchWord = ""
         screenSuffix.unknownEdit()
         return [.invalidate(.contextChanged)]
+    }
+
+    /// Focus resolution for the current epoch: when the field turns out to be a plain one,
+    /// nothing was edited, so the screen suffix survives (a click or an arrow key resolves
+    /// focus right before the hotkey). Anything else is an ordinary context change.
+    public mutating func focusResolved(_ context: InputContextSnapshot) -> [InputStateCommand] {
+        let keepsSuffix = context.epoch == self.context.epoch
+            && context.secureFocus == .notSecure
+            && sameField(context)
+        let suffix = screenSuffix
+        let commands = updateContext(context)
+        if keepsSuffix { screenSuffix = suffix }
+        return commands
+    }
+
+    /// The focused element changed in the same app (a click into another field): text was not
+    /// edited, so a caret placed right before it stays usable. A suffix with typing in it does
+    /// not survive: the caret is no longer after that text.
+    public mutating func focusMoved(_ context: InputContextSnapshot) -> [InputStateCommand] {
+        let keepsSuffix = screenSuffix.isCaretPlaced && sameField(context)
+        let commands = updateContext(context)
+        if keepsSuffix { screenSuffix.caretPlaced() }
+        return commands
+    }
+
+    /// Same app, permissions and input source; epoch and focus may differ.
+    private func sameField(_ context: InputContextSnapshot) -> Bool {
+        context.frontmostPID == self.context.frontmostPID
+            && context.appAllowed == self.context.appAllowed
+            && context.layout == self.context.layout
+            && context.inputSourceID == self.context.inputSourceID
     }
 
     /// Marks the buffer invalid until the next boundary: used when an event was
@@ -171,6 +214,13 @@ public struct InputStateMachine {
                 skipsAutomaticFlushUntilBoundary = true
             }
             screenSuffix.unknownEdit()
+            return [.invalidate(.navigation)]
+        case .caretMove(let byClick):
+            invalidate(untilBoundary: false)
+            if !byClick {
+                skipsAutomaticFlushUntilBoundary = true
+            }
+            screenSuffix.caretPlaced()
             return [.invalidate(.navigation)]
         case .inputSourceKey:
             // The key may insert text instead of switching (emoji picker), so the

@@ -77,7 +77,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         let coordinator = AccessibilityFocusCoordinator(
             onFocusInvalidated: { [weak self] pid in
-                self?.publishUnknownFocus(for: pid)
+                self?.publishUnknownFocus(for: pid, focusMoved: true)
             },
             onResolved: { [weak self] resolution in
                 self?.publishFocusResolution(resolution)
@@ -113,6 +113,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 coordinator.requestFieldText(pid: pid, length: length, completion: completion)
             },
             screenCheckMode: Self.screenCheckMode,
+            // A terminal's Accessibility caret is not the shell's cursor, and arrow keys there
+            // recall history or accept a suggestion.
+            readsScreenAfterCaretMove: { pid in !Self.hidesFieldText(pid: pid) },
             lexicon: PersonalLexicon.shared
         )
         engine.onFocusMayChange = { [weak self] pid, epoch in
@@ -475,13 +478,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         focusCoordinator?.focusMayChange(pid: pid, epoch: epoch)
     }
 
-    private func publishUnknownFocus(for pid: pid_t) -> UInt64? {
+    /// `focusMoved`: the focused element changed (no keys were lost), so a caret placed
+    /// right before it stays usable for the hotkey.
+    private func publishUnknownFocus(for pid: pid_t, focusMoved: Bool = false) -> UInt64? {
         guard let state = captureState,
               state.snapshot().context.frontmostPID == pid else {
             return nil
         }
         let context = state.invalidateFocus()
-        inputEngine?.updateContext(context)
+        if focusMoved {
+            inputEngine?.focusMoved(context)
+        } else {
+            inputEngine?.updateContext(context)
+        }
         return context.epoch
     }
 
@@ -524,7 +533,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             return
         }
         SwitchFixLog.app.debug("focus resolved pid=\(resolution.pid) state=\(String(describing: secureFocus))")
-        inputEngine?.updateContext(context)
+        inputEngine?.focusResolved(context)
     }
 
     private func updateDetectionConfiguration(allowedLayouts: Set<Layout>) {
