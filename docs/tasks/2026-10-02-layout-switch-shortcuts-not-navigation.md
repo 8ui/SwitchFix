@@ -3,7 +3,7 @@ id: 2026-10-02-layout-switch-shortcuts-not-navigation
 title: Ctrl-Space and other layout-switch shortcuts are classified as navigation
 type: bug
 pipeline: no-spec
-phase: triage
+phase: plan-review
 created: 2026-10-02
 updated: 2026-10-02
 blocked_by: null
@@ -12,7 +12,7 @@ steps_total: 0
 step_current: null
 artifacts:
   spec: null
-  plan: null
+  plan: docs/plans/layout-switch-shortcuts-not-navigation-plan.md
   branch: null
   pr: null
 ---
@@ -29,6 +29,9 @@ _Шаги не заданы. `rtp steps <id> --set "…"` или `--from-plan <�
 ## Log
 
 - 2026-10-02: triage — pipeline `no-spec`, reason: вынести KeyboardMonitor.classify в чистую тестируемую функцию + распознавать системные хоткеи смены источника; KeyboardMonitor + тесты
+- 2026-10-02: brainstorm: пользователь одобрил чтение symbolichotkeys 60/61 → .inputSourceKey и вынос ветки keyDown в чистую функцию
+- 2026-10-02: artifacts.plan = docs/plans/layout-switch-shortcuts-not-navigation-plan.md
+- 2026-10-02: plan drafted
 
 ## Decisions
 

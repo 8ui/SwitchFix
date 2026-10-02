@@ -3,7 +3,7 @@ id: 2026-10-02-learning-revert-and-cancelled-outcome
 title: "Learning gaps: hotkey revert keeps the learned rule, cancelled corrections count as corrected"
 type: bug
 pipeline: no-spec
-phase: triage
+phase: plan-review
 created: 2026-10-02
 updated: 2026-10-02
 blocked_by: null
@@ -12,7 +12,7 @@ steps_total: 0
 step_current: null
 artifacts:
   spec: null
-  plan: null
+  plan: docs/plans/learning-revert-and-cancelled-outcome-plan.md
   branch: null
   pr: null
 ---
@@ -29,6 +29,9 @@ _Шаги не заданы. `rtp steps <id> --set "…"` или `--from-plan <�
 ## Log
 
 - 2026-10-02: triage — pipeline `no-spec`, reason: InputEngine learnFromReverted + LayoutDetector recordOutcome + PersonalLexicon; 3 файла, нужна схема хука отмены
+- 2026-10-02: brainstorm: пользователь одобрил (а) forgetAccepted при отмене .hotkey, (б) detectionID + noteCorrectionNotApplied во всех точках отмены, откат pendingSwitch только без новой детекции
+- 2026-10-02: artifacts.plan = docs/plans/learning-revert-and-cancelled-outcome-plan.md
+- 2026-10-02: plan drafted
 
 ## Decisions
 
