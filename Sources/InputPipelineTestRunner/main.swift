@@ -1918,7 +1918,7 @@ run("revert screen check: a changed field is not deleted and not converted") {
         check(!waitUntil(0.5) { harness.reverted.count > 0 }, "no revert for \(reply)")
         check(harness.emitted.count == 1, "no fallback conversion for \(reply)")
         check(harness.lexicon.entries.isEmpty, "nothing learned for \(reply)")
-        check(!harness.corrector.canUndo, "the refused revert is forgotten for \(reply)")
+        check(waitUntil { !harness.corrector.canUndo }, "the refused revert is forgotten for \(reply)")
         harness.send(.revertHotkey)
         check(!waitUntil(0.3) { harness.reverted.count > 0 || harness.emitted.count > 1 }, "a second press does nothing for \(reply)")
     }
@@ -1928,6 +1928,7 @@ run("revert screen check: a field still applying the correction is read again") 
     var harness = revertHarness([.text(before: "ghbdtn "), .text(before: "ghbd"), .text(before: "привет ")])
     harness.send(.revertHotkey)
     check(waitUntil { harness.reverted.count == 1 }, "reverted once the field shows the correction")
+    // Three reads within the 150 ms deadline (two 20 ms retries).
     check(harness.screen?.queries == 4, "after three reads, got \(harness.screen?.queries ?? -1)")
 
     var lagging = revertHarness([.text(before: "прив"), .text(before: "привет ")])
@@ -1968,6 +1969,60 @@ run("revert screen check: staleness during the read cancels without forgetting")
     check(harness.corrector.canUndo, "a stale revert is not a refusal: the correction can still be reverted")
     harness.send(.revertHotkey)
     check(waitUntil { harness.reverted.count == 1 }, "the next press reverts")
+}
+
+run("revert screen check: a correction recorded during the read is not wiped") {
+    var harness = revertHarness([.text(before: "приветствие ")])
+    let corrector = harness.corrector
+    let newer = harness.emitted.last.map { plan in
+        CorrectionPlan(
+            boundarySequence: plan.boundarySequence, contextEpoch: plan.contextEpoch,
+            targetPID: plan.targetPID, editGeneration: plan.editGeneration,
+            correctionEpoch: plan.correctionEpoch, deleteCount: 5, replacementText: "тест ",
+            originalText: "ntcn", correctedText: "тест", boundaryText: " ",
+            originalLayout: .english, targetLayout: .russian
+        )
+    }
+    harness.screen?.beforeReply = { index in
+        if index == 2, let newer { corrector.recordUndo(newer) }
+    }
+    harness.send(.revertHotkey)
+    check(!waitUntil(0.5) { harness.reverted.count > 0 }, "the replaced revert is not posted")
+    check(corrector.canUndo, "the refusal does not wipe the newer correction")
+}
+
+run("revert: a prepared revert is claimed once and restored when not posted") {
+    let store = CaptureStateStore(context: context(), hotkeys: HotkeyConfiguration(hotkeyModifiers: 0))
+    let corrector = TextCorrector()
+    let start = store.snapshot()
+    let plan = CorrectionPlan(
+        boundarySequence: start.latestPhysicalSequence, contextEpoch: start.context.epoch,
+        targetPID: start.context.frontmostPID, editGeneration: start.editGeneration,
+        correctionEpoch: start.correctionEpoch, deleteCount: 7, replacementText: "привет ",
+        originalText: "ghbdtn", correctedText: "привет", boundaryText: " ",
+        originalLayout: .english, targetLayout: .russian
+    )
+    corrector.recordUndo(plan)
+    let key = store.capture(
+        timestamp: 1, kind: .revertHotkey, keyCode: 0, flagsRawValue: 0,
+        isAutorepeat: false, sourcePID: 1, sourceUserData: 0
+    )
+    let first = corrector.prepareUndo(sequence: key.sequence, context: key.context, latestCaptureState: store.snapshot)
+    let second = corrector.prepareUndo(sequence: key.sequence, context: key.context, latestCaptureState: store.snapshot)
+    guard let first, let second else {
+        check(false, "the recorded correction can be reverted")
+        return
+    }
+    check(first.inverse.originalText == "привет" && first.inverse.replacementText == "ghbdtn ", "the inverse retypes the original")
+    check(corrector.refreshedRevert(first, latest: store.snapshot()) == first, "nothing changed, nothing to refresh")
+    check(corrector.takeUndo(first), "the first claim wins")
+    check(!corrector.takeUndo(second), "the same revert cannot be claimed twice")
+    check(!corrector.canUndo, "a claimed revert is no longer recorded")
+    corrector.restoreUndo(first)
+    check(corrector.canUndo, "an unposted revert is given back")
+    corrector.recordUndo(plan)
+    corrector.discardUndo(first)
+    check(corrector.canUndo, "discarding an older revert keeps a newer correction")
 }
 
 run("revert screen check: a hotkey correction (no boundary)") {

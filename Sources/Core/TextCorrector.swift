@@ -144,7 +144,8 @@ public final class TextCorrector {
         undoState.withLock { $0 != nil }
     }
 
-    /// Makes `plan` the correction the revert hotkey undoes.
+    /// Makes `plan` the correction the revert hotkey undoes (`apply` and the selection paste
+    /// call it; public for the pipeline tests, which replace posting).
     public func recordUndo(_ plan: CorrectionPlan) {
         let id = lastUndoID.withLock { value -> UInt64 in
             value &+= 1
@@ -311,6 +312,31 @@ public final class TextCorrector {
             inverse: Self.inversePlan(of: undo.plan, sequence: sequence, latest: latest),
             undoID: undo.id
         )
+    }
+
+    /// `revert` against the undo state as it is now: a layout switch SwitchFix made after the
+    /// correction rebases the recorded plan to the new context epoch (`rebaseUndoContext`),
+    /// which would otherwise make a revert prepared before it look stale. Nil when the
+    /// recorded correction changed or nothing may be reverted any more.
+    public func refreshedRevert(_ revert: RevertPlan, latest: CaptureStateSnapshot) -> RevertPlan? {
+        guard let current = undoState.withLock({ $0 }), current.id == revert.undoID else { return nil }
+        let sequence = revert.inverse.boundarySequence
+        guard Self.isUndoEligible(recordedPlan: current.plan, sequence: sequence, context: latest.context, latest: latest) else {
+            return nil
+        }
+        return RevertPlan(
+            recorded: current.plan,
+            inverse: Self.inversePlan(of: current.plan, sequence: sequence, latest: latest),
+            undoID: current.id
+        )
+    }
+
+    /// Gives back a revert claimed by `takeUndo` that was not posted, unless another
+    /// correction was recorded since.
+    public func restoreUndo(_ revert: RevertPlan) {
+        undoState.withLock { value in
+            if value == nil { value = UndoState(id: revert.undoID, plan: revert.recorded) }
+        }
     }
 
     /// Claims `revert` for posting: true only while it is still the recorded correction,

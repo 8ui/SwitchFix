@@ -411,7 +411,7 @@ public final class InputEngine {
                     retriesMismatch: true,
                     isCurrent: { [weak self] in
                         guard let self else { return false }
-                        return inverse.isEligible(using: self.captureState.snapshot())
+                        return self.corrector.refreshedRevert(revert, latest: self.captureState.snapshot()) != nil
                     },
                     proceed: { [weak self] _ in
                         self?.correctionQueue.async { self?.applyRevert(revert) }
@@ -677,7 +677,9 @@ public final class InputEngine {
                     if case .replaced = verdict, !check.acceptsReplacement {
                         verdict = .mismatch
                     }
-                    if verdict == .mismatch, check.retriesMismatch, !final, !shadow {
+                    // Only differing text: a selection or a changed word will not turn back into it.
+                    if case .text = probe, verdict == .mismatch, check.retriesMismatch, !final, !shadow,
+                       ScreenVerification.verdict(word: check.word, boundary: check.boundary, probe: probe, final: true) == .mismatch {
                         verdict = .retry
                     }
                     // A field a whole word behind can look autocorrected (its previous word):
@@ -752,9 +754,10 @@ public final class InputEngine {
 
     /// Runs on the correction queue: posts `revert` unless the state changed or another
     /// correction replaced it, then learns from it.
-    private func applyRevert(_ revert: RevertPlan) {
-        guard revert.inverse.isEligible(using: captureState.snapshot()) else {
-            SwitchFixLog.corrector.debug("revert skipped: state changed before apply \(SwitchFixLog.text(revert.inverse.originalText))")
+    private func applyRevert(_ prepared: RevertPlan) {
+        guard let revert = corrector.refreshedRevert(prepared, latest: captureState.snapshot()),
+              revert.inverse.isEligible(using: captureState.snapshot()) else {
+            SwitchFixLog.corrector.debug("revert skipped: stale \(SwitchFixLog.text(prepared.recorded.correctedText))")
             return
         }
         guard corrector.takeUndo(revert) else {
@@ -765,6 +768,9 @@ public final class InputEngine {
             ?? corrector.postUndo(revert, latestCaptureState: captureState.snapshot)
         if applied {
             learnFromReverted(revert.recorded)
+        } else {
+            // Not posted (state changed at the last moment): a stale revert is not a refusal.
+            corrector.restoreUndo(revert)
         }
     }
 
