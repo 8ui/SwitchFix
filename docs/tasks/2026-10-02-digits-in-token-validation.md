@@ -3,13 +3,13 @@ id: 2026-10-02-digits-in-token-validation
 title: "Index expressions like obj[0] and w[1] are converted"
 type: bug
 pipeline: minimal
-phase: triage
+phase: impl
 created: 2026-10-02
 updated: 2026-10-02
 blocked_by: null
 steps_done: 0
-steps_total: 0
-step_current: null
+steps_total: 3
+step_current: 1
 artifacts:
   spec: null
   plan: null
@@ -24,11 +24,14 @@ artifacts:
 
 ## Progress
 
-_Шаги не заданы. `rtp steps <id> --set "…"` или `--from-plan <файл>`._
+1. ▶ Тест: индексы остаются (до фикса FAIL в CI)
+2. ⬜ Правило: латинский токен с цифрой у скобки — нейтрально пропускать автоисправление
+3. ⬜ Eval-сравнение и ревью
 
 ## Log
 
 - 2026-10-02: triage — pipeline `minimal`, reason: одна функция splitTokenForValidation в LayoutDetector + тест; eval проверит FP
+- 2026-10-02: brainstorm: пользователь одобрил узкое нейтральное правило по образцу флагов вместо правки splitTokenForValidation
 
 ## Decisions
 

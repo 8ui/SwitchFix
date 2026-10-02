@@ -179,6 +179,25 @@ func runNgramDetectorSuites() {
         assertEqual(hotkey.flushBuffer(boundaryCharacter: nil)?.convertedWord, "-к", "the hotkey converts a flag")
     }
 
+    runSuite("NgramDetector: index expressions stay") {
+        for words in [["obj[0]"], ["w[1]"], ["x[0]."], ["arr[12]"], ["m{1}"], ["print", "a[0],", "b[1]"], ["[0]"]] {
+            let detector = ngramDetector(current: .english, allowed: [.english, .russian])
+            let recorder = MockDetectorDelegate()
+            detector.delegate = recorder
+            for word in words {
+                detector.addCharacter(word)
+                detector.flushBuffer(boundaryCharacter: " ")
+            }
+            assert(recorder.results.isEmpty, "\(words.joined(separator: " ")) must stay, got \(recorder.results.map(\.convertedWord))")
+        }
+        // Without a digit next to a bracket a word is still a word.
+        assertEqual(detectNgram("ghbdtn", current: .english, allowed: [.english, .russian])?.convertedWord, "привет")
+        // The hotkey (no boundary) still converts an index expression.
+        let hotkey = ngramDetector(current: .english, allowed: [.english, .russian])
+        hotkey.addCharacter("w[1]")
+        assert(hotkey.flushBuffer(boundaryCharacter: nil) != nil, "the hotkey converts an index expression")
+    }
+
     runSuite("NgramDetector: a deferred short word merges only with an adjacent word after a space") {
         func merged(boundary: String, continues: Bool) -> [String] {
             let detector = ngramDetector(current: .russian, allowed: [.english, .russian])
