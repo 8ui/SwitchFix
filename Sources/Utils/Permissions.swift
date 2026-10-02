@@ -461,11 +461,25 @@ public final class AccessibilityFocusCoordinator {
               range.location >= 0 else {
             return .unavailable(transient: rangeError == .cannotComplete)
         }
-        if range.length > 0 { return .selection(length: range.length) }
-
-        let caret = range.location
-        let start = max(0, caret - window)
         let total = intAttribute(kAXNumberOfCharactersAttribute, of: focused)
+        if range.length > 0 {
+            // An inline autocomplete suggestion is always the tail of the text, selected after
+            // the caret: only then is the text before it worth reading.
+            let reachesEnd = total.map { range.location + range.length == $0 } ?? true
+            guard reachesEnd,
+                  case .text(let before, let atTextStart) = textBefore(
+                    range.location, window: window, total: total, of: focused
+                  ) else {
+                return .selection(length: range.length)
+            }
+            return .selection(length: range.length, before: before, atTextStart: atTextStart)
+        }
+        return textBefore(range.location, window: window, total: total, of: focused)
+    }
+
+    /// Up to `window` characters before `caret` (UTF-16 offsets) of a text field.
+    private static func textBefore(_ caret: Int, window: Int, total: Int?, of focused: AXUIElement) -> FieldTextProbe {
+        let start = max(0, caret - window)
         // The caret moved before the text was updated.
         if let total, caret > total { return .unavailable(transient: true) }
         if caret == start { return .text(before: "", atTextStart: start == 0) }
@@ -695,7 +709,9 @@ public enum FieldTextProbe: Equatable, Sendable {
     /// `atTextStart`: the window begins at the start of the field's text, so nothing is cut.
     case text(before: String, atTextStart: Bool = false)
     /// A non-empty selection (e.g. an inline autocomplete suggestion): Backspace would delete it.
-    case selection(length: Int)
+    /// `before`: the text right before the selection when it is the tail of the text (as a
+    /// suggestion is) and could be read; `atTextStart` as for `text`.
+    case selection(length: Int, before: String? = nil, atTextStart: Bool = false)
     /// No readable text field. `transient`: a timeout or an inconsistent answer that a
     /// retry may resolve; otherwise the app does not expose the text at all.
     case unavailable(transient: Bool)

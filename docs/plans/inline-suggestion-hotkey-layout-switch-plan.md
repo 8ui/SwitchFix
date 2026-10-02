@@ -76,3 +76,30 @@ layoutSwitch). Автоматическая коррекция при выдел
   тогда слово сотрётся не полностью. Проверка вручную в Spotlight; при проблеме — долг.
 - Undo после такой коррекции: поле может снова показать подсказку → сверка revert увидит выделение и откажет
   (текст не портится). Долг, если подтвердится.
+
+## Поправки после plan-review (заменяют пункты выше, где расходятся)
+
+- **Режим обработки выделения** вместо `provenance != .automatic`: `DetectionRequest.selectionHandling`
+  (`ScreenSelectionHandling`: `.refuse` — по умолчанию, автоматика; `.accept` — хоткей/layoutSwitch без
+  увиденного выделения; `.require` — движок проигнорировал выделение). `ScreenCheck` получает его же.
+- **B1 — fail-closed:** при `.require` проходит только `.matchBeforeSelection`; `.match` без выделения,
+  `.unknown`, `.replaced` — отмена (чтение каретки и сверка — разные AX-пути; без этого fail-open удалил бы
+  word.count, и первый Backspace съела бы подсказка → «uготово»).
+- **Только enforce:** выделение игнорируется лишь при `screenCheckMode == .enforce`; shadow и off — старая
+  ветка selection (shadow всегда `proceed(nil)` и испортил бы текст).
+- **Вердикт с payload:** `.matchBeforeSelection(deleteCount:)` = word+boundary+1 считается в
+  `ScreenVerification`; не переиспользовать `.replaced` (его подтверждение вторым чтением).
+  `.selection(before: nil)` при accept/require: `final ? .mismatch : .retry` (чтение окна могло быть
+  transient); `.unknown` от внутреннего вердикта → `.mismatch` явно.
+- **Только хвост:** `fieldText` даёт `before` лишь если выделение доходит до конца текста
+  (`location + length == AXNumberOfCharacters`, когда счётчик известен) — inline-подсказка всегда хвост.
+- **logDescription:** `.selection(length, before, _)` — `before` только через `SwitchFixLog.text`.
+- **handleLayoutChange:** проверка буфера (enforce) — до `ScriptAnalyzer.containsScript`.
+- **Тесты layoutSwitch:** параметры `selectedText`, `screen`, `screenCheckMode` у `layoutSwitchPlans`;
+  случаи enforce (+1), off (ветка selection).
+- **Хоткей-тесты:** caret `.selection` + screen `.unavailable` → отмена; + screen `.text(before: word)` →
+  отмена; caret `.unavailable` + screen `.selection(before: word)` → эмиссия 7; `before: ""` → отмена; shadow →
+  ветка selection.
+- **Отложено в долг:** revert после такой коррекции (новая подсказка → revert откажет), автоматическая
+  коррекция при подсказке.
+- Пуш на CI после фаз 1–3 вместе (тесты нужны для проверки), затем документация.
