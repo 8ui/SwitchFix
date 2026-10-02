@@ -1,18 +1,22 @@
 name: CI
 
+# One run per pushed code commit: work happens on claude/** branches and reaches
+# master through a PR, so pull_request and push-to-master runs would only repeat
+# the branch run (a PR whose head is a docs-only commit shows no checks; the run
+# is on the last code commit). Releases run the tests again in release.yml.
+# Anything else: run manually (workflow_dispatch).
 on:
   push:
     branches:
-      - master
       - "claude/**"
-    # A commit that only updates the task tracker (e.g. recording CI evidence)
-    # must not start a run — with cancel-in-progress it would cancel the run of
-    # the code commit being recorded.
+    # Docs-only commits do not start a run. A commit that only updates the task
+    # tracker (e.g. recording CI evidence) must not: with cancel-in-progress it
+    # would cancel the run of the code commit being recorded.
     paths-ignore:
-      - "docs/tasks/**"
-  pull_request:
-    branches:
-      - master
+      - "docs/**"
+      - "plan/**"
+      - ".claude/**"
+      - "**/*.md"
   workflow_dispatch:
 
 permissions:
