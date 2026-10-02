@@ -9,6 +9,9 @@ public struct DetectionResult {
     public let convertedWord: String
     public let originalWord: String
     public let shouldSwitchLayout: Bool
+    /// Set by `LayoutDetector` on results it produced (never 0 then); the engine passes it
+    /// back to `noteCorrectionNotApplied(_:)` when the correction never reached the field.
+    public internal(set) var detectionID: UInt64 = 0
 
     public init(
         sourceLayout: Layout,
@@ -64,7 +67,12 @@ public class LayoutDetector {
     private var pendingBoundaryCharacter: String?
     private var pendingSwitchLayout: Layout?
     private var pendingSwitchCount: Int = 0
-    private var recentOutcomes: [RecentOutcome] = []
+    /// Outcomes of recent words; `id` is the `detectionID` of a returned correction, else 0.
+    private var recentOutcomes: [(outcome: RecentOutcome, id: UInt64)] = []
+    /// Counts `checkBuffer` calls; a returned correction's `detectionID`.
+    private var detectionSerial: UInt64 = 0
+    /// The last returned correction and the layout-switch confirmation state before it.
+    private var lastCorrection: (id: UInt64, switchLayout: Layout?, switchCount: Int)?
     private var pendingSuppressedShort: SuppressedShort?
     private var isOutOfSync: Bool = false
 
@@ -211,8 +219,29 @@ public class LayoutDetector {
         pendingSwitchLayout = nil
         pendingSwitchCount = 0
         recentOutcomes = []
+        lastCorrection = nil
         pendingSuppressedShort = nil
         isOutOfSync = false
+    }
+
+    /// A correction this detector returned never reached the field (cancelled after detection:
+    /// Enter, stale state, the field-text check). Its word no longer counts as corrected in the
+    /// context, and when nothing was detected since, the layout-switch confirmation state is
+    /// as before it. A deferred short word it merged is not given back: the pair stays on
+    /// screen, so merging it into a later word would delete the wrong length.
+    public func noteCorrectionNotApplied(_ detectionID: UInt64) {
+        guard detectionID != 0 else { return }
+        if let index = recentOutcomes.firstIndex(where: { $0.id == detectionID }) {
+            recentOutcomes[index].outcome = .unknown
+        }
+        guard let last = lastCorrection, last.id == detectionID else { return }
+        let restoresSwitch = detectionID == detectionSerial
+        if restoresSwitch {
+            pendingSwitchLayout = last.switchLayout
+            pendingSwitchCount = last.switchCount
+        }
+        lastCorrection = nil
+        SwitchFixLog.detector.debug("correction \(detectionID) not applied: context restored, switch state \(restoresSwitch ? "restored" : "kept (detected since)")")
     }
 
     /// The current word buffer contents.
@@ -224,6 +253,8 @@ public class LayoutDetector {
 
     private func checkBuffer(suppressedShort: SuppressedShort?) -> DetectionResult? {
         state = .detecting
+        detectionSerial &+= 1
+        let switchBefore = (layout: pendingSwitchLayout, count: pendingSwitchCount)
 
         let word = wordBuffer
         let sourceLayout = resolvedSourceLayout(for: word)
@@ -235,7 +266,19 @@ public class LayoutDetector {
             return nil
         }
 
-        return checkLanguageModels(word: word, sourceLayout: sourceLayout, suppressedShort: suppressedShort)
+        guard var result = checkLanguageModels(word: word, sourceLayout: sourceLayout, suppressedShort: suppressedShort) else {
+            return nil
+        }
+        // Every path that returns a correction records `.corrected` last.
+        result.detectionID = detectionSerial
+        if let last = recentOutcomes.indices.last, case .corrected = recentOutcomes[last].outcome,
+           recentOutcomes[last].id == 0 {
+            recentOutcomes[last].id = detectionSerial
+        } else {
+            assertionFailure("a returned correction must record .corrected last")
+        }
+        lastCorrection = (id: detectionSerial, switchLayout: switchBefore.layout, switchCount: switchBefore.count)
+        return result
     }
 
     // MARK: - Language-model decision
@@ -268,8 +311,9 @@ public class LayoutDetector {
             }
         }
 
-        if shouldSkipAutomaticCommandLineFlag(word: word, sourceLayout: sourceLayout) {
-            // Neutral: a flag is neither native-language context nor a correction
+        if shouldSkipAutomaticCommandLineFlag(word: word, sourceLayout: sourceLayout)
+            || shouldSkipAutomaticIndexExpression(word: word, sourceLayout: sourceLayout) {
+            // Neutral: a flag or an index is neither native-language context nor a correction
             // (checked before the acronym rule, which would count '-R' as context).
             consecutiveWrongCount = 0
             lastDetectionResult = nil
@@ -671,7 +715,7 @@ public class LayoutDetector {
 
     private func hasStrongCurrentContext() -> Bool {
         let window = max(1, shortWordSuppressionContextWindow)
-        let recent = recentOutcomes.suffix(window)
+        let recent = recentOutcomes.suffix(window).lazy.map(\.outcome)
         let validCount = recent.reduce(0) { partial, outcome in
             if case .validCurrent = outcome {
                 return partial + 1
@@ -686,7 +730,7 @@ public class LayoutDetector {
     }
 
     private func recordOutcome(_ outcome: RecentOutcome) {
-        recentOutcomes.append(outcome)
+        recentOutcomes.append((outcome: outcome, id: 0))
         let window = max(1, shortWordSuppressionContextWindow)
         if recentOutcomes.count > window {
             recentOutcomes.removeFirst(recentOutcomes.count - window)
@@ -757,6 +801,22 @@ public class LayoutDetector {
               parts.prefix.allSatisfy({ $0 == "-" }) else { return false }
         return parts.core.count == 1 && parts.core.allSatisfy(\.isLetter)
     }
+
+    /// Code with an index (`obj[0]`, `w[1].`, `m{2}`) is never rewritten automatically: its
+    /// bracket keys are Cyrillic letters (х ъ), so `w[1]` would become `цх1ъ`. A digit next
+    /// to a bracket is the sign; words without digits go through the model as usual.
+    private func shouldSkipAutomaticIndexExpression(word: String, sourceLayout: Layout) -> Bool {
+        guard sourceLayout == .english else { return false }
+        // Keep manual/hotkey correction available; suppress only automatic boundary-triggered rewrites.
+        guard pendingBoundaryCharacter != nil else { return false }
+        let chars = Array(word)
+        return zip(chars, chars.dropFirst()).contains { left, right in
+            (Self.indexBrackets.contains(left) && right.isNumber)
+                || (left.isNumber && Self.indexBrackets.contains(right))
+        }
+    }
+
+    private static let indexBrackets: Set<Character> = ["[", "]", "{", "}"]
 
     private func containsVowel(_ text: String, layout: Layout) -> Bool {
         let vowels: CharacterSet

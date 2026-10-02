@@ -179,6 +179,68 @@ func runNgramDetectorSuites() {
         assertEqual(hotkey.flushBuffer(boundaryCharacter: nil)?.convertedWord, "-к", "the hotkey converts a flag")
     }
 
+    runSuite("NgramDetector: index expressions stay") {
+        for words in [["obj[0]"], ["w[1]"], ["x[0]."], ["arr[12]"], ["m{1}"], ["print", "a[0],", "b[1]"], ["a[0]"]] {
+            let detector = ngramDetector(current: .english, allowed: [.english, .russian])
+            let recorder = MockDetectorDelegate()
+            detector.delegate = recorder
+            for word in words {
+                detector.addCharacter(word)
+                detector.flushBuffer(boundaryCharacter: " ")
+            }
+            assert(recorder.results.isEmpty, "\(words.joined(separator: " ")) must stay, got \(recorder.results.map(\.convertedWord))")
+        }
+        // Without a digit next to a bracket a word is still a word, bracket keys included.
+        assertEqual(detectNgram("ghbdtn", current: .english, allowed: [.english, .russian])?.convertedWord, "привет")
+        assertEqual(detectNgram("[jhjij", current: .english, allowed: [.english, .russian])?.convertedWord, "хорошо")
+        // The hotkey (no boundary) still converts an index expression.
+        let hotkey = ngramDetector(current: .english, allowed: [.english, .russian])
+        hotkey.addCharacter("w[1]")
+        assert(hotkey.flushBuffer(boundaryCharacter: nil) != nil, "the hotkey converts an index expression")
+    }
+
+    runSuite("NgramDetector: a correction that never reached the field") {
+        func flush(_ detector: LayoutDetector, _ word: String) -> DetectionResult? {
+            detector.addCharacter(word)
+            return detector.flushBuffer(boundaryCharacter: " ")
+        }
+        // Context: a cancelled correction no longer counts as corrected.
+        func shortWordAfterCorrection(notApplied: Bool) -> DetectionResult? {
+            let detector = ngramDetector(current: .russian, allowed: [.english, .russian])
+            _ = flush(detector, "сейчас")
+            _ = flush(detector, "на")
+            let corrected = flush(detector, "цщклы")
+            assert(corrected != nil && corrected?.detectionID != 0, "цщклы is corrected with an id")
+            if notApplied, let corrected { detector.noteCorrectionNotApplied(corrected.detectionID) }
+            return flush(detector, "ше")
+        }
+        assert(shortWordAfterCorrection(notApplied: false) != nil, "after a correction the short word is corrected")
+        assert(shortWordAfterCorrection(notApplied: true) == nil, "after a cancelled one it is kept by the context")
+
+        // Layout switch: a consumed confirmation is given back when nothing was detected since.
+        func thirdSwitches(_ between: (LayoutDetector, DetectionResult) -> Void) -> Bool? {
+            let detector = ngramDetector(current: .english, allowed: [.english, .russian])
+            let first = flush(detector, "yf")
+            assert(first?.shouldSwitchLayout == false, "the first short word waits for a confirmation")
+            guard let second = flush(detector, "yf") else { return nil }
+            assert(second.shouldSwitchLayout, "the second one confirms the switch")
+            between(detector, second)
+            return flush(detector, "yf")?.shouldSwitchLayout
+        }
+        assertEqual(thirdSwitches { _, _ in }, false, "without the hook the confirmation is spent")
+        assertEqual(thirdSwitches { detector, second in detector.noteCorrectionNotApplied(second.detectionID) }, true,
+                    "a cancelled switch gives the confirmation back")
+        assertEqual(thirdSwitches { detector, second in
+            _ = flush(detector, "hello")
+            detector.noteCorrectionNotApplied(second.detectionID)
+        }, false, "a later detection makes the switch state current: nothing is restored")
+        assertEqual(thirdSwitches { detector, second in
+            detector.reset()
+            detector.noteCorrectionNotApplied(second.detectionID)
+        }, false, "a reset detector is not restored")
+        assertEqual(thirdSwitches { detector, _ in detector.noteCorrectionNotApplied(0) }, false, "id 0 is ignored")
+    }
+
     runSuite("NgramDetector: a deferred short word merges only with an adjacent word after a space") {
         func merged(boundary: String, continues: Bool) -> [String] {
             let detector = ngramDetector(current: .russian, allowed: [.english, .russian])

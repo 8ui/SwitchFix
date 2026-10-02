@@ -1144,6 +1144,8 @@ private final class ScreenStub {
     private var _windows: [Int] = []
     /// Runs on the query queue before the first reply (e.g. to type while AX is answering).
     var beforeFirstReply: (() -> Void)?
+    /// Runs on the query queue before every reply with the query's 1-based index.
+    var beforeReply: ((Int) -> Void)?
 
     init(replies: [FieldTextProbe]) {
         self.replies = replies.isEmpty ? [.unavailable(transient: false)] : replies
@@ -1160,10 +1162,11 @@ private final class ScreenStub {
     func answer(window: Int, _ completion: @escaping (FieldTextProbe) -> Void) {
         lock.lock()
         _windows.append(window)
-        let first = _windows.count == 1
+        let index = _windows.count
         let reply = replies.count > 1 ? replies.removeFirst() : replies[0]
         lock.unlock()
-        if first { beforeFirstReply?() }
+        if index == 1 { beforeFirstReply?() }
+        beforeReply?(index)
         completion(reply)
     }
 }
@@ -1173,6 +1176,10 @@ private struct LearningHarness {
     let engine: InputEngine
     let lexicon: PersonalLexicon
     let emitted: EmissionLog
+    /// The corrections the revert hotkey posted (their recorded plans).
+    let reverted: EmissionLog
+    /// Real undo bookkeeping; only posting is replaced (`revertEmission`).
+    let corrector: TextCorrector
     let caret = CaretStub()
     let screen: ScreenStub?
     var timestamp: UInt64 = 0
@@ -1190,11 +1197,20 @@ private struct LearningHarness {
         lexicon = PersonalLexicon(storage: InMemoryLexiconStorage(), saveDelay: 0)
         let emitted = EmissionLog()
         self.emitted = emitted
+        let corrector = TextCorrector()
+        self.corrector = corrector
+        let reverted = EmissionLog()
+        self.reverted = reverted
         engine = InputEngine(
             captureState: store,
             initialContext: current,
             preferences: InputPreferencesSnapshot(isEnabled: true, correctionMode: mode),
-            correctionEmission: { plan in emitted.append(plan); return true },
+            corrector: corrector,
+            correctionEmission: { plan in
+                emitted.append(plan)
+                if !revertReturnsNothing { corrector.recordUndo(plan) }
+                return true
+            },
             caretContextRequest: { [caret] _, _, wantsCaretText, completion in
                 caret.answer(wantsCaretText: wantsCaretText, completion)
             },
@@ -1203,7 +1219,7 @@ private struct LearningHarness {
             },
             screenCheckMode: screenCheckMode,
             lexicon: lexicon,
-            revertEmission: { _, _ in revertReturnsNothing ? nil : emitted.last }
+            revertEmission: { revert in reverted.append(revert.recorded); return true }
         )
         engine.updateDetectionConfiguration(allowedLayouts: [.english, .russian])
     }
@@ -1509,6 +1525,72 @@ run("learning: reverting a forced hotkey conversion forgets the lesson") {
     check(waitUntil { harness.lexicon.rule(for: "rehk", sourceLayout: .english) != nil }, "learned")
     harness.send(.revertHotkey)
     check(waitUntil { harness.lexicon.rule(for: "rehk", sourceLayout: .english) == nil }, "revert of a hotkey fix forgets, never adds neverCorrect")
+}
+
+run("learning: reverting a hotkey correction made by a learned rule forgets the rule") {
+    var harness = LearningHarness()
+    harness.lexicon.recordAccepted(word: "rehk", sourceLayout: .english, target: .russian)
+    harness.type("rehk", boundary: nil)
+    harness.send(.hotkey)
+    check(waitUntil { harness.emitted.count == 1 }, "the hotkey applies the learned rule")
+    check(harness.emitted.last?.provenance == .hotkey, "the detector recognized it through the rule, got \(String(describing: harness.emitted.last?.provenance))")
+    harness.send(.revertHotkey)
+    check(waitUntil { harness.lexicon.rule(for: "rehk", sourceLayout: .english) == nil }, "the reverted rule is forgotten")
+
+    var manual = LearningHarness()
+    _ = manual.lexicon.add(word: "rehk", sourceLayout: .english, rule: .alwaysCorrect(to: .russian))
+    manual.type("rehk", boundary: nil)
+    manual.send(.hotkey)
+    check(waitUntil { manual.emitted.count == 1 }, "the hotkey applies the manual rule")
+    manual.send(.revertHotkey)
+    check(waitUntil { manual.reverted.count == 1 }, "reverted")
+    check(!waitUntil(0.3) { manual.lexicon.rule(for: "rehk", sourceLayout: .english) != .alwaysCorrect(to: .russian) }, "a manual rule stays")
+}
+
+run("learning: a cancelled correction does not count as corrected") {
+    // Detection → the cancel on the input queue → the report on the detection queue.
+    func drain(_ harness: LearningHarness) {
+        let drained = DispatchSemaphore(value: 0)
+        harness.engine.drain { drained.signal() }
+        _ = drained.wait(timeout: .now() + 1)
+        let detected = DispatchSemaphore(value: 0)
+        harness.engine.drainDetection { detected.signal() }
+        _ = detected.wait(timeout: .now() + 1)
+    }
+    // Russian context, then an English word typed on Russian that is not corrected
+    // (ended by Enter), then a short word: still kept by the strong context.
+    var cancelled = LearningHarness(layout: .russian)
+    cancelled.type("сейчас")
+    cancelled.type("на")
+    cancelled.type("цщклы", boundary: "\n")
+    check(!waitUntil(0.3) { cancelled.emitted.count > 0 }, "a word ended by Enter is not corrected")
+    drain(cancelled)
+    cancelled.type("ше")
+    check(!waitUntil(0.4) { cancelled.emitted.count > 0 }, "the short word stays in the strong context, got \(cancelled.emitted.all.map(\.correctedText))")
+
+    // Control: the same word corrected for real weakens the context, so the short word is corrected.
+    var applied = LearningHarness(layout: .russian)
+    applied.type("сейчас")
+    applied.type("на")
+    applied.type("цщклы")
+    check(waitUntil { applied.emitted.count == 1 }, "the word ended by a space is corrected")
+    drain(applied)
+    applied.type("ше")
+    check(waitUntil { applied.emitted.count == 2 }, "after a real correction the short word is corrected")
+
+    // A correction refused by the field-text check is reported back too.
+    var refused = LearningHarness(
+        layout: .russian,
+        screen: ScreenStub(.text(before: "сейчас на что-то другое "), .text(before: "сейчас на цщклы ше "))
+    )
+    refused.type("сейчас")
+    refused.type("на")
+    refused.type("цщклы")
+    check(waitUntil { refused.screen?.queries == 1 }, "the correction reads the field")
+    check(!waitUntil(0.4) { refused.emitted.count > 0 }, "a changed field cancels the correction")
+    drain(refused)
+    refused.type("ше")
+    check(!waitUntil(0.4) { refused.emitted.count > 0 }, "the short word stays after a refused correction")
 }
 
 run("learning: manual entries are not overwritten by reverts") {
@@ -1867,6 +1949,262 @@ run("screen check: the hotkey") {
     fromScreen.send(.hotkey)
     check(waitUntil { fromScreen.emitted.count == 1 }, "a word just read from the screen is converted")
     check(fromScreen.screen?.queries == 0, "without a second read")
+}
+
+/// Corrects "ghbdtn " (the field shows it), then answers the revert's reads with `revertReplies`.
+private func revertHarness(_ revertReplies: [FieldTextProbe], mode: ScreenCheckMode = .enforce) -> LearningHarness {
+    var harness = LearningHarness(
+        screen: ScreenStub(replies: [.text(before: "ghbdtn ")] + revertReplies),
+        screenCheckMode: mode
+    )
+    harness.type("ghbdtn")
+    check(waitUntil { harness.emitted.count == 1 }, "the word is corrected before the revert")
+    return harness
+}
+
+run("revert screen check: the field still shows the correction") {
+    var harness = revertHarness([.text(before: "привет ")])
+    harness.send(.revertHotkey)
+    check(waitUntil { harness.reverted.count == 1 }, "reverted")
+    check(harness.reverted.last?.correctedText == "привет", "the recorded correction is reverted")
+    check(waitUntil { harness.lexicon.rule(for: "ghbdtn", sourceLayout: .english) == .neverCorrect }, "and learned")
+    check(harness.screen?.queries == 2, "one read for the correction, one for the revert, got \(harness.screen?.queries ?? -1)")
+    check(harness.screen?.windows.last == "привет ".utf16.count + 6, "reads the corrected text, got \(harness.screen?.windows ?? [])")
+}
+
+run("revert screen check: a changed field is not deleted and not converted") {
+    let replies: [FieldTextProbe] = [
+        .text(before: "приветствие "),
+        .selection(length: 3),
+        .text(before: "приветы "),  // looks like an autocorrection of the corrected word
+    ]
+    for reply in replies {
+        var harness = revertHarness([reply])
+        harness.send(.revertHotkey)
+        check(!waitUntil(0.5) { harness.reverted.count > 0 }, "no revert for \(reply)")
+        check(harness.emitted.count == 1, "no fallback conversion for \(reply)")
+        check(harness.lexicon.entries.isEmpty, "nothing learned for \(reply)")
+        check(waitUntil { !harness.corrector.canUndo }, "the refused revert is forgotten for \(reply)")
+        harness.send(.revertHotkey)
+        check(!waitUntil(0.3) { harness.reverted.count > 0 || harness.emitted.count > 1 }, "a second press does nothing for \(reply)")
+    }
+}
+
+run("revert screen check: a field still applying the correction is read again") {
+    var harness = revertHarness([.text(before: "ghbdtn "), .text(before: "ghbd"), .text(before: "привет ")])
+    harness.send(.revertHotkey)
+    check(waitUntil { harness.reverted.count == 1 }, "reverted once the field shows the correction")
+    // Three reads within the 150 ms deadline (two 20 ms retries).
+    check(harness.screen?.queries == 4, "after three reads, got \(harness.screen?.queries ?? -1)")
+
+    var lagging = revertHarness([.text(before: "прив"), .text(before: "привет ")])
+    lagging.send(.revertHotkey)
+    check(waitUntil { lagging.reverted.count == 1 }, "a lagging field is re-read")
+}
+
+run("revert screen check: unreadable field, shadow and off") {
+    var blind = revertHarness([.unavailable(transient: false)])
+    blind.send(.revertHotkey)
+    check(waitUntil { blind.reverted.count == 1 }, "an unreadable field reverts as before")
+
+    var shadow = revertHarness([.text(before: "приветствие ")], mode: .shadow)
+    shadow.send(.revertHotkey)
+    check(waitUntil { shadow.reverted.count == 1 }, "shadow reverts anyway")
+    check(shadow.screen?.queries == 2, "after one read, got \(shadow.screen?.queries ?? -1)")
+
+    var off = revertHarness([.selection(length: 3)], mode: .off)
+    off.send(.revertHotkey)
+    check(waitUntil { off.reverted.count == 1 }, "off reverts without reading")
+    check(off.screen?.queries == 0, "off never reads the field")
+}
+
+run("revert screen check: staleness during the read cancels without forgetting") {
+    var harness = revertHarness([.text(before: "привет ")])
+    let store = harness.store
+    harness.screen?.beforeReply = { index in
+        // A key (that edits nothing) pressed while the revert's read is in flight.
+        guard index == 2 else { return }
+        _ = store.capture(
+            timestamp: 1_000, kind: .revertHotkey, keyCode: 0, flagsRawValue: 0,
+            isAutorepeat: false, sourcePID: 1, sourceUserData: 0
+        )
+    }
+    harness.send(.revertHotkey)
+    check(waitUntil { harness.screen?.queries == 2 }, "the revert reads the field")
+    check(!waitUntil(0.3) { harness.reverted.count > 0 }, "a key during the read cancels the revert")
+    check(harness.corrector.canUndo, "a stale revert is not a refusal: the correction can still be reverted")
+    harness.send(.revertHotkey)
+    check(waitUntil { harness.reverted.count == 1 }, "the next press reverts")
+}
+
+run("revert screen check: a correction recorded during the read is not wiped") {
+    var harness = revertHarness([.text(before: "приветствие ")])
+    let corrector = harness.corrector
+    let newer = harness.emitted.last.map { plan in
+        CorrectionPlan(
+            boundarySequence: plan.boundarySequence, contextEpoch: plan.contextEpoch,
+            targetPID: plan.targetPID, editGeneration: plan.editGeneration,
+            correctionEpoch: plan.correctionEpoch, deleteCount: 5, replacementText: "тест ",
+            originalText: "ntcn", correctedText: "тест", boundaryText: " ",
+            originalLayout: .english, targetLayout: .russian
+        )
+    }
+    harness.screen?.beforeReply = { index in
+        if index == 2, let newer { corrector.recordUndo(newer) }
+    }
+    harness.send(.revertHotkey)
+    check(!waitUntil(0.5) { harness.reverted.count > 0 }, "the replaced revert is not posted")
+    check(corrector.canUndo, "the refusal does not wipe the newer correction")
+}
+
+run("revert: a prepared revert is claimed once and restored when not posted") {
+    let store = CaptureStateStore(context: context(), hotkeys: HotkeyConfiguration(hotkeyModifiers: 0))
+    let corrector = TextCorrector()
+    let start = store.snapshot()
+    let plan = CorrectionPlan(
+        boundarySequence: start.latestPhysicalSequence, contextEpoch: start.context.epoch,
+        targetPID: start.context.frontmostPID, editGeneration: start.editGeneration,
+        correctionEpoch: start.correctionEpoch, deleteCount: 7, replacementText: "привет ",
+        originalText: "ghbdtn", correctedText: "привет", boundaryText: " ",
+        originalLayout: .english, targetLayout: .russian
+    )
+    corrector.recordUndo(plan)
+    let key = store.capture(
+        timestamp: 1, kind: .revertHotkey, keyCode: 0, flagsRawValue: 0,
+        isAutorepeat: false, sourcePID: 1, sourceUserData: 0
+    )
+    let first = corrector.prepareUndo(sequence: key.sequence, context: key.context, latestCaptureState: store.snapshot)
+    let second = corrector.prepareUndo(sequence: key.sequence, context: key.context, latestCaptureState: store.snapshot)
+    guard let first, let second else {
+        check(false, "the recorded correction can be reverted")
+        return
+    }
+    check(first.inverse.originalText == "привет" && first.inverse.replacementText == "ghbdtn ", "the inverse retypes the original")
+    check(corrector.refreshedRevert(first, latest: store.snapshot()) == first, "nothing changed, nothing to refresh")
+    check(corrector.takeUndo(first), "the first claim wins")
+    check(!corrector.takeUndo(second), "the same revert cannot be claimed twice")
+    check(!corrector.canUndo, "a claimed revert is no longer recorded")
+    corrector.restoreUndo(first)
+    check(corrector.canUndo, "an unposted revert is given back")
+    corrector.recordUndo(plan)
+    corrector.discardUndo(first)
+    check(corrector.canUndo, "discarding an older revert keeps a newer correction")
+}
+
+run("layout switch after a correction: rechecked on main") {
+    let store = CaptureStateStore(context: context(), hotkeys: HotkeyConfiguration(hotkeyModifiers: 0))
+    let start = store.snapshot()
+    let plan = CorrectionPlan(
+        boundarySequence: start.latestPhysicalSequence, contextEpoch: start.context.epoch,
+        targetPID: start.context.frontmostPID, editGeneration: start.editGeneration,
+        correctionEpoch: start.correctionEpoch, deleteCount: 7, replacementText: "привет ",
+        originalText: "ghbdtn", correctedText: "привет", boundaryText: " ",
+        originalLayout: .english, targetLayout: .russian
+    )
+    let pid = plan.targetPID
+    check(TextCorrector.mayFinishLayoutSwitch(for: plan, latest: store.snapshot(), frontmostPID: pid), "nothing changed: switch")
+    check(!TextCorrector.mayFinishLayoutSwitch(for: plan, latest: store.snapshot(), frontmostPID: pid + 1), "another app in front: no switch")
+    check(!TextCorrector.mayFinishLayoutSwitch(for: plan, latest: store.snapshot(), frontmostPID: nil), "no app in front: no switch")
+    _ = store.capture(
+        timestamp: 1, kind: .character("g"), keyCode: 0, flagsRawValue: 0,
+        isAutorepeat: false, sourcePID: 1, sourceUserData: 0
+    )
+    check(TextCorrector.mayFinishLayoutSwitch(for: plan, latest: store.snapshot(), frontmostPID: pid), "typing on does not cancel the switch")
+    _ = store.capture(
+        timestamp: 2, kind: .focusMayChange, keyCode: 0, flagsRawValue: 0,
+        isAutorepeat: false, sourcePID: 1, sourceUserData: 0
+    )
+    check(!TextCorrector.mayFinishLayoutSwitch(for: plan, latest: store.snapshot(), frontmostPID: pid), "a click (new focus epoch): no switch")
+    let refocused = CaptureStateStore(context: context(), hotkeys: HotkeyConfiguration(hotkeyModifiers: 0))
+    _ = refocused.replaceContext(
+        frontmostPID: pid, appAllowed: true, layout: .english,
+        inputSourceID: "com.test.english", secureFocus: .notSecure
+    )
+    check(!TextCorrector.mayFinishLayoutSwitch(for: plan, latest: refocused.snapshot(), frontmostPID: pid), "only the epoch changed: no switch")
+    let otherApp = CaptureStateStore(context: context(pid: pid + 1), hotkeys: HotkeyConfiguration(hotkeyModifiers: 0))
+    check(!TextCorrector.mayFinishLayoutSwitch(for: plan, latest: otherApp.snapshot(), frontmostPID: pid), "the capture state already moved to another app")
+}
+
+run("revert screen check: a hotkey correction (no boundary)") {
+    var harness = LearningHarness(screen: ScreenStub(.text(before: "ujnjdj"), .text(before: "готово")))
+    harness.type("ujnjdj", boundary: nil)
+    harness.send(.hotkey)
+    check(waitUntil { harness.emitted.count == 1 }, "converted")
+    harness.send(.revertHotkey)
+    check(waitUntil { harness.reverted.count == 1 }, "reverted")
+    check(harness.screen?.windows.last == "готово".utf16.count + 6, "reads the converted word only, got \(harness.screen?.windows ?? [])")
+}
+
+// MARK: - Key-down classification
+
+private let ctrl = CGEventFlags.maskControl
+private let defaultHotkeys = HotkeyConfiguration(hotkeyModifiers: CGEventFlags.maskControl.rawValue | CGEventFlags.maskShift.rawValue)
+
+private func keyDown(
+    _ keyCode: UInt16,
+    _ flags: CGEventFlags = [],
+    hotkeys: HotkeyConfiguration = defaultHotkeys,
+    shortcuts: Set<InputSourceShortcut> = KeyboardMonitor.defaultInputSourceShortcuts
+) -> CapturedInput.Kind? {
+    KeyboardMonitor.classifyKeyDown(keyCode: keyCode, flags: flags, hotkeys: hotkeys, inputSourceShortcuts: shortcuts)
+}
+
+run("key-down classification: input-source shortcuts act like the Globe key") {
+    check(keyDown(179) == .inputSourceKey, "Globe switches the input source")
+    check(keyDown(179, shortcuts: []) == .inputSourceKey, "Globe does not depend on the shortcuts")
+    check(keyDown(49, ctrl) == .inputSourceKey, "Ctrl+Space is the default previous-source shortcut")
+    check(keyDown(49, [ctrl, .maskAlternate]) == .inputSourceKey, "Ctrl+Option+Space is the default next-source shortcut")
+    check(keyDown(49, ctrl, shortcuts: []) == .navigation, "without the shortcut Ctrl+Space is a plain shortcut")
+    check(keyDown(49, [ctrl, .maskAlphaShift]) == .inputSourceKey, "Caps Lock does not change the match")
+    check(keyDown(49, [ctrl, .maskSecondaryFn]) == .inputSourceKey, "Fn does not change the match")
+    check(keyDown(49, [ctrl, .maskShift]) == .hotkey, "SwitchFix's default hotkey Ctrl+Shift+Space wins")
+    let otherHotkey = HotkeyConfiguration(hotkeyKeyCode: 2, hotkeyModifiers: ctrl.rawValue)
+    check(keyDown(49, [ctrl, .maskShift], hotkeys: otherHotkey) == .navigation, "Ctrl+Shift+Space is no input-source shortcut")
+    let ctrlSpaceHotkey = HotkeyConfiguration(hotkeyModifiers: ctrl.rawValue)
+    check(keyDown(49, ctrl, hotkeys: ctrlSpaceHotkey) == .hotkey, "a SwitchFix hotkey on Ctrl+Space keeps working")
+    check(keyDown(49, .maskCommand) == .navigation, "Cmd+Space (Spotlight) is a shortcut")
+    check(keyDown(49, [ctrl, .maskCommand]) == .navigation, "Ctrl+Cmd+Space (Character Viewer) is a shortcut")
+    let onF5: Set<InputSourceShortcut> = [InputSourceShortcut(keyCode: 96, modifiers: 0)]
+    check(keyDown(96, shortcuts: onF5) == .inputSourceKey, "a shortcut on a function key wins over the F-key rule")
+    check(keyDown(96) == .navigation, "a function key is navigation")
+}
+
+run("key-down classification: other keys as before") {
+    check(keyDown(49) == .boundary(" "), "Space")
+    check(keyDown(36) == .boundary("\n") && keyDown(76) == .boundary("\n"), "Return and keypad Enter")
+    check(keyDown(51) == .delete, "Delete")
+    check(keyDown(48) == .focusMayChange && keyDown(53) == .focusMayChange, "Tab and Esc")
+    check(keyDown(6, .maskCommand) == .undo, "Cmd+Z")
+    check(keyDown(6, [.maskCommand, .maskShift]) == .navigation, "Cmd+Shift+Z is not undo")
+    check(keyDown(9, .maskCommand) == .navigation && keyDown(8, ctrl) == .navigation, "Cmd+V, Ctrl+C")
+    check(keyDown(123) == .navigation && keyDown(117) == .navigation, "arrows and forward delete")
+    check(keyDown(0) == nil && keyDown(0, .maskShift) == nil, "a letter key types text")
+}
+
+run("input-source shortcuts from com.apple.symbolichotkeys") {
+    let defaults = KeyboardMonitor.defaultInputSourceShortcuts
+    let ctrlSpace = InputSourceShortcut(keyCode: 49, modifiers: ctrl.rawValue)
+    let ctrlOptionSpace = InputSourceShortcut(keyCode: 49, modifiers: ctrl.rawValue | CGEventFlags.maskAlternate.rawValue)
+    func parsed(_ hotKeys: [String: Any]?, sources: Int = 2) -> Set<InputSourceShortcut> {
+        KeyboardMonitor.inputSourceShortcuts(from: hotKeys, selectableSourceCount: sources)
+    }
+    func entry(_ enabled: Any, _ parameters: [Any]) -> [String: Any] {
+        ["enabled": enabled, "value": ["parameters": parameters, "type": "standard"]]
+    }
+    check(defaults == [ctrlSpace, ctrlOptionSpace], "the macOS defaults")
+    check(parsed(nil) == defaults, "a missing domain means the defaults")
+    check(parsed([:]) == defaults, "missing entries mean the defaults")
+    check(parsed(nil, sources: 1).isEmpty, "with one input source nothing switches")
+    check(parsed(["60": entry(0, [32, 49, 262144])]) == [ctrlOptionSpace], "a disabled entry (integer) is off")
+    check(parsed(["60": entry(false, [32, 49, 262144])]) == [ctrlOptionSpace], "a disabled entry (bool) is off")
+    check(parsed(["60": entry(true, [32, 49, 1048576])]) == [InputSourceShortcut(keyCode: 49, modifiers: CGEventFlags.maskCommand.rawValue), ctrlOptionSpace], "a remapped entry")
+    check(parsed(["61": entry(1, [65535, 96, 0])]) == [ctrlSpace, InputSourceShortcut(keyCode: 96, modifiers: 0)], "a function key without modifiers")
+    check(parsed(["60": entry(1, [65535, 65535, 0])]) == [ctrlOptionSpace], "a cleared shortcut is none")
+    check(parsed(["60": entry(1, [32, 49, 0x840000])]) == [ctrlSpace, ctrlOptionSpace], "Fn and other bits are dropped")
+    check(parsed(["60": entry("yes", [32, 49, 1048576])]) == defaults, "a malformed enabled value means the default")
+    check(parsed(["60": ["enabled": 1]]) == defaults, "a missing value means the default")
+    check(parsed(["60": ["value": ["parameters": [32, 49, 1048576]]]]) == [InputSourceShortcut(keyCode: 49, modifiers: CGEventFlags.maskCommand.rawValue), ctrlOptionSpace], "no enabled key: on")
+    check(parsed(["60": entry(1, ["a", "b", "c"])]) == defaults, "non-numeric parameters mean the default")
 }
 
 if CommandLine.arguments.contains("--integration-smoke") {

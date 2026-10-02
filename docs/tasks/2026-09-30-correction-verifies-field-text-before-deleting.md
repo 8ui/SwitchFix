@@ -5,7 +5,7 @@ type: bug
 pipeline: no-spec
 phase: done
 created: 2026-09-30
-updated: 2026-10-01
+updated: 2026-10-02
 blocked_by: null
 steps_done: 7
 steps_total: 7
@@ -81,7 +81,7 @@ _Нетривиальные решения по ходу задачи. Одна 
 ## Debt
 
 - [ ] Chrome-омнибокс подтверждён локально 2026-10-01: probe=unavailable (не transient) → fail-open, сверка gпривет там не ловит; альтернатива — выделение Shift+← (OpenKey), отдельная задача — переформулировано 2026-10-01
-- [ ] undo/revert (TextCorrector.undo) удаляет correctedText+boundary без сверки поля — тот же класс бага
+- [x] undo/revert (TextCorrector.undo) удаляет correctedText+boundary без сверки поля — тот же класс бага — закрыто 2026-10-02: 2026-10-02-revert-verifies-field-text
 - [ ] hotkey/layoutSwitch при выделенной inline-подсказке идут в ветку .selection и конвертируют подсказку вместо слова
 - [ ] путь layoutSwitch со сверкой не покрыт тестом (layoutSwitchPlans строит свой движок без screenTextRequest); layoutSwitch читает AX дважды (выделение + сверка)
 - [x] Автозамена до коррекции (Notes: руддщ→«Руда»): сверка отменяет коррекцию, текст не портится, но в поле остаётся автозаменённое слово — можно стирать то, что показывает поле (длина слова из AX), и вставлять конверсию — закрыто 2026-10-01: d8fad9b+2ca5243: вердикт replaced

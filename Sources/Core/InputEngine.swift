@@ -43,10 +43,11 @@ public final class InputEngine {
     /// the manual hotkey. Without `wantsCaretText` only the selection is read.
     public typealias CaretContextRequest = (pid_t, UInt64, Bool, @escaping (CaretContext) -> Void) -> Void
     /// The focused field's text before the caret (pid, epoch, window in UTF-16 units), read
-    /// before a correction deletes; the completion may run on any queue.
+    /// before a correction or a revert deletes; the completion may run on any queue.
     public typealias ScreenTextRequest = (pid_t, UInt64, Int, @escaping (FieldTextProbe) -> Void) -> Void
-    /// Reverts the last correction; returns the reverted plan (tests replace `TextCorrector.undo`).
-    public typealias RevertEmission = (UInt64, InputContextSnapshot) -> CorrectionPlan?
+    /// Posts a revert claimed from the corrector; returns whether it reached the app (tests
+    /// replace `TextCorrector.postUndo`).
+    public typealias RevertEmission = (RevertPlan) -> Bool
 
     public var onFocusMayChange: ((pid_t, UInt64) -> Void)?
 
@@ -283,6 +284,17 @@ public final class InputEngine {
         inputQueue.async { completion() }
     }
 
+    /// Runs `completion` once queued detections, the input work they posted and the detector
+    /// work that posted in turn are done (tests: a not-applied report reaches the detector).
+    public func drainDetection(completion: @escaping () -> Void) {
+        detectionQueue.async { [weak self] in
+            guard let self else { return completion() }
+            self.inputQueue.async {
+                self.detectionQueue.async { completion() }
+            }
+        }
+    }
+
     public func inspectState(
         completion: @escaping (_ buffer: String, _ invalidUntilBoundary: Bool, _ sequence: UInt64) -> Void
     ) {
@@ -372,19 +384,11 @@ public final class InputEngine {
             logger.notice("revert hotkey pressed word=\(SwitchFixLog.text(word), privacy: .public) seq=\(sequence)")
             correctionQueue.async { [weak self] in
                 guard let self else { return }
-                let reverted: CorrectionPlan?
-                if let revertEmission = self.revertEmission {
-                    reverted = revertEmission(sequence, context)
-                } else {
-                    reverted = self.corrector.undo(
-                        sequence: sequence,
-                        context: context,
-                        latestCaptureState: self.captureState.snapshot
-                    )
-                }
-                if let reverted {
-                    self.learnFromReverted(reverted)
-                } else {
+                guard let revert = self.corrector.prepareUndo(
+                    sequence: sequence,
+                    context: context,
+                    latestCaptureState: self.captureState.snapshot
+                ) else {
                     self.inputQueue.async {
                         // Nothing to revert: convert instead, but the user asked to reject,
                         // so this conversion must not teach "always correct".
@@ -398,6 +402,44 @@ public final class InputEngine {
                             teaches: false
                         )
                     }
+                    return
+                }
+                guard let screenTextRequest = self.screenTextRequest else {
+                    self.applyRevert(revert)
+                    return
+                }
+                // A revert the field refuses is not turned into a conversion: it would be one
+                // more change to text the field shows differently.
+                let inverse = revert.inverse
+                let check = ScreenCheck(
+                    kind: .revert,
+                    word: inverse.originalText,
+                    boundary: inverse.boundaryText,
+                    pid: inverse.targetPID,
+                    epoch: inverse.contextEpoch,
+                    provenance: revert.recorded.provenance,
+                    acceptsReplacement: false,
+                    retriesMismatch: true,
+                    isCurrent: { [weak self] in
+                        guard let self else { return false }
+                        return self.corrector.refreshedRevert(revert, latest: self.captureState.snapshot()) != nil
+                    },
+                    proceed: { [weak self] _ in
+                        self?.correctionQueue.async { self?.applyRevert(revert) }
+                    },
+                    reject: { [weak self] in
+                        // The field no longer shows the corrected text: a later revert cannot be right.
+                        self?.corrector.discardUndo(revert)
+                    },
+                    cancelled: {}
+                )
+                self.inputQueue.async { [weak self] in
+                    self?.verifyScreen(
+                        check,
+                        query: screenTextRequest,
+                        startedAt: DispatchTime.now().uptimeNanoseconds,
+                        attempt: 1
+                    )
                 }
             }
         case .nativeUndo:
@@ -516,6 +558,7 @@ public final class InputEngine {
             cancelReason = "word-ended-by-enter"
         }
         guard cancelReason == nil else {
+            noteNotApplied(result.detectionID)
             SwitchFixLog.engine.notice("correction cancelled reason=\(cancelReason!)")
             logger.debug("correction cancelled reason=\(cancelReason!) word=\(SwitchFixLog.text(result.originalWord), privacy: .public)")
             return
@@ -542,15 +585,30 @@ public final class InputEngine {
         )
 
         if let screenTextRequest, !request.screenVerified {
+            let check = ScreenCheck(
+                kind: .correction,
+                word: plan.originalText,
+                boundary: plan.boundaryText,
+                pid: request.context.frontmostPID,
+                epoch: request.context.epoch,
+                provenance: plan.provenance,
+                acceptsReplacement: true,
+                retriesMismatch: false,
+                isCurrent: { [weak self] in self?.isCurrent(request) ?? false },
+                proceed: { [weak self] deleteCount in
+                    self?.emit(deleteCount.map(plan.deleting) ?? plan, detectionID: result.detectionID)
+                },
+                reject: {},
+                cancelled: { [weak self] in self?.noteNotApplied(result.detectionID) }
+            )
             verifyScreen(
-                plan,
-                request: request,
+                check,
                 query: screenTextRequest,
                 startedAt: DispatchTime.now().uptimeNanoseconds,
                 attempt: 1
             )
         } else {
-            emit(plan)
+            emit(plan, detectionID: result.detectionID)
         }
     }
 
@@ -563,45 +621,85 @@ public final class InputEngine {
             && latest.context == request.context
     }
 
-    /// Reads the text before the caret and emits `plan` only if the field still ends with
-    /// what it deletes (inline autocomplete, predictions and autocorrect change the field
+    private enum ScreenCheckKind: String {
+        case correction
+        case revert
+    }
+
+    /// What the field-text check compares and what it does with the verdict.
+    private struct ScreenCheck {
+        let kind: ScreenCheckKind
+        /// The text about to be deleted (a merged pair includes its bridge) and the boundary after it.
+        let word: String
+        let boundary: String
+        let pid: pid_t
+        let epoch: UInt64
+        let provenance: CorrectionProvenance
+        /// Whether a `.replaced` verdict deletes the field's word instead; otherwise it rejects.
+        let acceptsReplacement: Bool
+        /// Whether a mismatch is read again until the deadline: a revert pressed right after a
+        /// correction can read the field before the app has applied that correction.
+        let retriesMismatch: Bool
+        /// Runs on the input queue before and after every read.
+        let isCurrent: () -> Bool
+        /// Runs on the input queue: nil deletes what was planned, a count the field's word instead.
+        let proceed: (Int?) -> Void
+        /// Runs on the input queue when the field refuses the text in enforce mode (never on staleness).
+        let reject: () -> Void
+        /// Runs on the input queue whenever the check ends without proceeding (refusal or staleness).
+        let cancelled: () -> Void
+    }
+
+    /// Reads the text before the caret and proceeds only if the field still ends with what
+    /// `check` deletes (inline autocomplete, predictions and autocorrect change the field
     /// behind the buffer). Runs on the input queue; retries while the field lags behind.
     private func verifyScreen(
-        _ plan: CorrectionPlan,
-        request: DetectionRequest,
+        _ check: ScreenCheck,
         query: @escaping ScreenTextRequest,
         startedAt: UInt64,
         attempt: Int,
         replacedBefore: Int? = nil,
         sawReplacement: Bool = false
     ) {
-        guard isCurrent(request) else {
-            SwitchFixLog.engine.notice("correction cancelled reason=stale-during-screen-check attempts=\(attempt - 1) provenance=\(String(describing: plan.provenance))")
+        let kind = check.kind.rawValue
+        let provenance = String(describing: check.provenance)
+        guard check.isCurrent() else {
+            SwitchFixLog.engine.notice("\(kind) cancelled reason=stale-during-screen-check attempts=\(attempt - 1) provenance=\(provenance)")
+            check.cancelled()
             return
         }
         // AX ranges are UTF-16. The margin: 2 for a decomposed accent in the field, 2 for an
         // autocorrected word that is longer, 1 for the separator before it, 1 spare. Only the
         // suffix is compared, so a character cut at the window's start does not matter.
-        let window = (plan.originalText + plan.boundaryText).utf16.count + 6
+        let window = (check.word + check.boundary).utf16.count + 6
         selectionQueue.async {
-            query(request.context.frontmostPID, request.context.epoch, window) { [weak self] probe in
+            query(check.pid, check.epoch, window) { [weak self] probe in
                 self?.inputQueue.async {
                     guard let self else { return }
-                    guard self.isCurrent(request) else {
-                        SwitchFixLog.engine.notice("correction cancelled reason=stale-during-screen-check attempts=\(attempt) provenance=\(String(describing: plan.provenance))")
+                    guard check.isCurrent() else {
+                        SwitchFixLog.engine.notice("\(kind) cancelled reason=stale-during-screen-check attempts=\(attempt) provenance=\(provenance)")
+                        check.cancelled()
                         return
                     }
                     let elapsed = DispatchTime.now().uptimeNanoseconds &- startedAt
                     let final = elapsed >= Self.screenCheckDeadlineNanoseconds
-                    let verdict = ScreenVerification.verdict(
-                        word: plan.originalText,
-                        boundary: plan.boundaryText,
-                        probe: probe,
-                        final: final
-                    )
                     // Shadow reads once and corrects as before: waiting for a lagging field
                     // would delay corrections and lose them to the next keystroke.
                     let shadow = self.screenCheckMode == .shadow
+                    var verdict = ScreenVerification.verdict(
+                        word: check.word,
+                        boundary: check.boundary,
+                        probe: probe,
+                        final: final
+                    )
+                    if case .replaced = verdict, !check.acceptsReplacement {
+                        verdict = .mismatch
+                    }
+                    // Only differing text: a selection or a changed word will not turn back into it.
+                    if case .text = probe, verdict == .mismatch, check.retriesMismatch, !final, !shadow,
+                       ScreenVerification.verdict(word: check.word, boundary: check.boundary, probe: probe, final: true) == .mismatch {
+                        verdict = .retry
+                    }
                     // A field a whole word behind can look autocorrected (its previous word):
                     // a replacement is deleted only when a second read agrees. One first seen
                     // at the deadline still gets that read; a disagreeing one then cancels.
@@ -610,19 +708,21 @@ public final class InputEngine {
                         unconfirmed = deleteCount
                     }
                     if unconfirmed != nil, final, sawReplacement, !shadow {
-                        SwitchFixLog.engine.notice("correction cancelled reason=screen-replacement-unconfirmed attempts=\(attempt)")
+                        SwitchFixLog.engine.notice("\(kind) cancelled reason=screen-replacement-unconfirmed attempts=\(attempt)")
+                        check.cancelled()
                         return
                     }
                     // Once a replacement was seen (even before a retry), an unreadable field
                     // is no reason to delete the typed length.
                     if verdict == .unknown, sawReplacement, !shadow {
-                        SwitchFixLog.engine.notice("correction cancelled reason=screen-unreadable-after-replacement attempts=\(attempt)")
+                        SwitchFixLog.engine.notice("\(kind) cancelled reason=screen-unreadable-after-replacement attempts=\(attempt)")
+                        check.cancelled()
                         return
                     }
                     if verdict == .retry || unconfirmed != nil, !shadow {
                         self.inputQueue.asyncAfter(deadline: .now() + Self.screenCheckRetryInterval) { [weak self] in
                             self?.verifyScreen(
-                                plan, request: request, query: query, startedAt: startedAt,
+                                check, query: query, startedAt: startedAt,
                                 attempt: attempt + 1, replacedBefore: unconfirmed,
                                 sawReplacement: sawReplacement || unconfirmed != nil
                             )
@@ -630,17 +730,19 @@ public final class InputEngine {
                         return
                     }
                     SwitchFixLog.engine.notice(
-                        "screen check verdict=\(String(describing: verdict)) probe=\(Self.logDescription(probe)) attempts=\(attempt) ms=\(Double(elapsed) / 1_000_000.0) mode=\(self.screenCheckMode.rawValue) provenance=\(String(describing: plan.provenance)) pid=\(request.context.frontmostPID)"
+                        "screen check \(kind) verdict=\(String(describing: verdict)) probe=\(Self.logDescription(probe)) attempts=\(attempt) ms=\(Double(elapsed) / 1_000_000.0) mode=\(self.screenCheckMode.rawValue) provenance=\(provenance) pid=\(check.pid)"
                     )
                     if verdict == .mismatch, !shadow {
-                        SwitchFixLog.engine.notice("correction cancelled reason=screen-mismatch")
+                        SwitchFixLog.engine.notice("\(kind) cancelled reason=screen-mismatch")
+                        check.reject()
+                        check.cancelled()
                         return
                     }
                     if case .replaced(let deleteCount) = verdict, !shadow {
-                        self.emit(plan.deleting(deleteCount))
+                        check.proceed(deleteCount)
                         return
                     }
-                    self.emit(plan)
+                    check.proceed(nil)
                 }
             }
         }
@@ -656,18 +758,53 @@ public final class InputEngine {
         }
     }
 
-    private func emit(_ plan: CorrectionPlan) {
+    /// - Parameter detectionID: the detector's id of the result behind `plan` (0: none).
+    private func emit(_ plan: CorrectionPlan, detectionID: UInt64) {
         correctionQueue.async { [weak self] in
             guard let self else { return }
             guard plan.isEligible(using: self.captureState.snapshot()) else {
                 SwitchFixLog.corrector.debug("emission skipped: state changed before apply \(SwitchFixLog.text(plan.originalText))")
+                self.noteNotApplied(detectionID)
                 return
             }
             let applied = self.customEmission.map { $0(plan) }
                 ?? self.corrector.apply(plan, latestCaptureState: self.captureState.snapshot)
             if applied {
                 self.learnFromApplied(plan)
+            } else {
+                self.noteNotApplied(detectionID)
             }
+        }
+    }
+
+    /// Tells the detector that the correction it detected as `detectionID` never reached the
+    /// field, so it does not count as corrected (any queue).
+    private func noteNotApplied(_ detectionID: UInt64) {
+        guard detectionID != 0 else { return }
+        detectionQueue.async { [weak self] in
+            self?.detector.noteCorrectionNotApplied(detectionID)
+        }
+    }
+
+    /// Runs on the correction queue: posts `revert` unless the state changed or another
+    /// correction replaced it, then learns from it.
+    private func applyRevert(_ prepared: RevertPlan) {
+        guard let revert = corrector.refreshedRevert(prepared, latest: captureState.snapshot()),
+              revert.inverse.isEligible(using: captureState.snapshot()) else {
+            SwitchFixLog.corrector.debug("revert skipped: stale \(SwitchFixLog.text(prepared.recorded.correctedText))")
+            return
+        }
+        guard corrector.takeUndo(revert) else {
+            SwitchFixLog.corrector.debug("revert skipped: the recorded correction changed")
+            return
+        }
+        let applied = revertEmission.map { $0(revert) }
+            ?? corrector.postUndo(revert, latestCaptureState: captureState.snapshot)
+        if applied {
+            learnFromReverted(revert.recorded)
+        } else {
+            // Not posted (state changed at the last moment): a stale revert is not a refusal.
+            corrector.restoreUndo(revert)
         }
     }
 
@@ -676,14 +813,15 @@ public final class InputEngine {
     /// Shortest word a forced hotkey conversion may teach.
     static let minimumLearnedLength = 3
 
-    /// Only single-token automatic corrections and forced hotkey conversions teach the
-    /// personal lexicon; selection, layout-switch and merged multi-word corrections don't.
+    /// Only single-token automatic, hotkey and forced hotkey corrections teach the personal
+    /// lexicon (a plain hotkey correction only when reverted); selection, layout-switch and
+    /// merged multi-word corrections don't.
     public static func isLearnable(_ plan: CorrectionPlan) -> Bool {
         guard !plan.originalText.isEmpty,
               !plan.originalText.contains(where: \.isWhitespace) else { return false }
         switch plan.provenance {
-        case .automatic, .hotkeyForced: return true
-        case .hotkey, .selection, .layoutSwitch: return false
+        case .automatic, .hotkey, .hotkeyForced: return true
+        case .selection, .layoutSwitch: return false
         }
     }
 
@@ -722,7 +860,15 @@ public final class InputEngine {
             lexicon.recordRejected(word: word, sourceLayout: plan.originalLayout)
         case .hotkeyForced:
             lexicon.forgetAccepted(word: word, sourceLayout: plan.originalLayout)
-        case .hotkey, .selection, .layoutSwitch:
+        case .hotkey:
+            // A rule converting the word to this target is what the detector applied (it
+            // checks the lexicon before the model); reverting rejects a rule learned from the
+            // hotkey (`forgetAccepted` leaves manual ones).
+            if let target = plan.targetLayout,
+               lexicon.rule(for: word, sourceLayout: plan.originalLayout) == .alwaysCorrect(to: target) {
+                lexicon.forgetAccepted(word: word, sourceLayout: plan.originalLayout)
+            }
+        case .selection, .layoutSwitch:
             break
         }
     }
