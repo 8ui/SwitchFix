@@ -1,9 +1,9 @@
 import Foundation
 import Utils
 
-/// How the field-text check before a correction is applied (`SwitchFix_fieldTextCheck`).
+/// How the field-text check before a correction or a revert is applied (`SwitchFix_fieldTextCheck`).
 public enum ScreenCheckMode: String, Sendable {
-    /// No check: corrections delete what the buffer says.
+    /// No check: corrections and reverts delete what the buffer or the recorded correction says.
     case off
     /// Check and log the verdict, but correct as if it matched.
     case shadow

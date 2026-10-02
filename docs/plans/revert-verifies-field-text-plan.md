@@ -195,3 +195,33 @@ public typealias RevertEmission = (RevertPlan) -> Bool
 
 - [ ] CLAUDE.md, input pipeline item 5: one sentence that the revert hotkey goes through the same check
   (a rejection does not convert instead). Commit with Task 3 or as `docs(claude): …`.
+
+---
+
+## Rev. 2 — plan-review findings (override the tasks above where they differ)
+
+- **Mismatch retries until the deadline for a revert (B2).** A revert pressed right after a correction can read
+  the field while the app still processes the correction's events (`ghbdtn `, `ghbd`): that is `.mismatch`,
+  not lag. `ScreenCheck.retriesMismatch` (true for revert): while `!final`, `.mismatch` and an unaccepted
+  `.replaced` become `.retry`; only a final verdict rejects. Test: replies `ghbdtn `, `ghbd`, `привет ` → reverted.
+- **Real `TextCorrector` in the harness, one seam (B1, B3).** No `RevertPreparation`: `TextCorrector.recordUndo(_:)`
+  (public) lets the harness's `correctionEmission` record the plan; the engine always uses the corrector's
+  `prepareUndo` / `takeUndo`; only posting is seamed: `revertEmission: (RevertPlan) -> Bool` replaces
+  `TextCorrector.postUndo`. Tests then cover `isUndoEligible`, the stale → fallback path and `discardUndo`.
+  `RevertPlan` is built only inside Core (internal init).
+- **Undo identity (S2, S5).** `UndoState` gets a monotonically increasing `id`; `RevertPlan.undoID` carries it.
+  `takeUndo(revert)` = atomic compare-and-take (`id` matches → clear, true); `discardUndo(revert)` clears only on a
+  matching `id`. `rebaseUndoContext` keeps the id (the epoch change already makes the inverse stale).
+- **Apply order (S2).** Engine on the correction queue: `revert.inverse.isEligible(snapshot)` → `corrector.takeUndo`
+  → `revertEmission ?? corrector.postUndo` → `learnFromReverted(recorded)` if posted. `postUndo` builds events,
+  posts, logs and switches the layout as today. Not building events after the take loses the undo (logged) —
+  accepted; today it fell back to converting, which the constraints forbid for a refused revert (S6).
+- **`[weak self]`** in every `ScreenCheck` closure; `isCurrent` returns false without self (S1).
+- **`ScreenCheck.kind`** is an enum (`correction` / `revert`), log reasons say `revert cancelled reason=…`.
+  `inverse.provenance` stays `.automatic` with a comment: learning reads `recorded.provenance`.
+- **Tests added:** `ScreenStub.beforeReply: ((Int) -> Void)?` (1-based query index); stale during the revert's read
+  (capture a key in the hook at query 2 → `queries == 2`, no revert); stale capture of a non-edit key does not
+  discard (a second revert press with a matching field reverts); rejection clears undo (second press → no revert,
+  fallback finds an empty buffer, `emitted.count == 1`); revert of a hotkey correction (empty boundary, window
+  `correctedText.utf16.count + 6`). Negative waits 0.5 s (rejection now waits for the deadline).
+- **Docs:** CLAUDE.md item 5, `ScreenTextRequest` and `ScreenCheckMode` doc comments mention the revert.

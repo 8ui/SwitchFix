@@ -1144,6 +1144,8 @@ private final class ScreenStub {
     private var _windows: [Int] = []
     /// Runs on the query queue before the first reply (e.g. to type while AX is answering).
     var beforeFirstReply: (() -> Void)?
+    /// Runs on the query queue before every reply with the query's 1-based index.
+    var beforeReply: ((Int) -> Void)?
 
     init(replies: [FieldTextProbe]) {
         self.replies = replies.isEmpty ? [.unavailable(transient: false)] : replies
@@ -1160,10 +1162,11 @@ private final class ScreenStub {
     func answer(window: Int, _ completion: @escaping (FieldTextProbe) -> Void) {
         lock.lock()
         _windows.append(window)
-        let first = _windows.count == 1
+        let index = _windows.count
         let reply = replies.count > 1 ? replies.removeFirst() : replies[0]
         lock.unlock()
-        if first { beforeFirstReply?() }
+        if index == 1 { beforeFirstReply?() }
+        beforeReply?(index)
         completion(reply)
     }
 }
@@ -1173,6 +1176,10 @@ private struct LearningHarness {
     let engine: InputEngine
     let lexicon: PersonalLexicon
     let emitted: EmissionLog
+    /// The corrections the revert hotkey posted (their recorded plans).
+    let reverted: EmissionLog
+    /// Real undo bookkeeping; only posting is replaced (`revertEmission`).
+    let corrector: TextCorrector
     let caret = CaretStub()
     let screen: ScreenStub?
     var timestamp: UInt64 = 0
@@ -1190,11 +1197,20 @@ private struct LearningHarness {
         lexicon = PersonalLexicon(storage: InMemoryLexiconStorage(), saveDelay: 0)
         let emitted = EmissionLog()
         self.emitted = emitted
+        let corrector = TextCorrector()
+        self.corrector = corrector
+        let reverted = EmissionLog()
+        self.reverted = reverted
         engine = InputEngine(
             captureState: store,
             initialContext: current,
             preferences: InputPreferencesSnapshot(isEnabled: true, correctionMode: mode),
-            correctionEmission: { plan in emitted.append(plan); return true },
+            corrector: corrector,
+            correctionEmission: { plan in
+                emitted.append(plan)
+                if !revertReturnsNothing { corrector.recordUndo(plan) }
+                return true
+            },
             caretContextRequest: { [caret] _, _, wantsCaretText, completion in
                 caret.answer(wantsCaretText: wantsCaretText, completion)
             },
@@ -1203,7 +1219,7 @@ private struct LearningHarness {
             },
             screenCheckMode: screenCheckMode,
             lexicon: lexicon,
-            revertEmission: { _, _ in revertReturnsNothing ? nil : emitted.last }
+            revertEmission: { revert in reverted.append(revert.recorded); return true }
         )
         engine.updateDetectionConfiguration(allowedLayouts: [.english, .russian])
     }
@@ -1867,6 +1883,101 @@ run("screen check: the hotkey") {
     fromScreen.send(.hotkey)
     check(waitUntil { fromScreen.emitted.count == 1 }, "a word just read from the screen is converted")
     check(fromScreen.screen?.queries == 0, "without a second read")
+}
+
+/// Corrects "ghbdtn " (the field shows it), then answers the revert's reads with `revertReplies`.
+private func revertHarness(_ revertReplies: [FieldTextProbe], mode: ScreenCheckMode = .enforce) -> LearningHarness {
+    var harness = LearningHarness(
+        screen: ScreenStub(replies: [.text(before: "ghbdtn ")] + revertReplies),
+        screenCheckMode: mode
+    )
+    harness.type("ghbdtn")
+    check(waitUntil { harness.emitted.count == 1 }, "the word is corrected before the revert")
+    return harness
+}
+
+run("revert screen check: the field still shows the correction") {
+    var harness = revertHarness([.text(before: "привет ")])
+    harness.send(.revertHotkey)
+    check(waitUntil { harness.reverted.count == 1 }, "reverted")
+    check(harness.reverted.last?.correctedText == "привет", "the recorded correction is reverted")
+    check(waitUntil { harness.lexicon.rule(for: "ghbdtn", sourceLayout: .english) == .neverCorrect }, "and learned")
+    check(harness.screen?.queries == 2, "one read for the correction, one for the revert, got \(harness.screen?.queries ?? -1)")
+    check(harness.screen?.windows.last == "привет ".utf16.count + 6, "reads the corrected text, got \(harness.screen?.windows ?? [])")
+}
+
+run("revert screen check: a changed field is not deleted and not converted") {
+    let replies: [FieldTextProbe] = [
+        .text(before: "приветствие "),
+        .selection(length: 3),
+        .text(before: "приветы "),  // looks like an autocorrection of the corrected word
+    ]
+    for reply in replies {
+        var harness = revertHarness([reply])
+        harness.send(.revertHotkey)
+        check(!waitUntil(0.5) { harness.reverted.count > 0 }, "no revert for \(reply)")
+        check(harness.emitted.count == 1, "no fallback conversion for \(reply)")
+        check(harness.lexicon.entries.isEmpty, "nothing learned for \(reply)")
+        check(!harness.corrector.canUndo, "the refused revert is forgotten for \(reply)")
+        harness.send(.revertHotkey)
+        check(!waitUntil(0.3) { harness.reverted.count > 0 || harness.emitted.count > 1 }, "a second press does nothing for \(reply)")
+    }
+}
+
+run("revert screen check: a field still applying the correction is read again") {
+    var harness = revertHarness([.text(before: "ghbdtn "), .text(before: "ghbd"), .text(before: "привет ")])
+    harness.send(.revertHotkey)
+    check(waitUntil { harness.reverted.count == 1 }, "reverted once the field shows the correction")
+    check(harness.screen?.queries == 4, "after three reads, got \(harness.screen?.queries ?? -1)")
+
+    var lagging = revertHarness([.text(before: "прив"), .text(before: "привет ")])
+    lagging.send(.revertHotkey)
+    check(waitUntil { lagging.reverted.count == 1 }, "a lagging field is re-read")
+}
+
+run("revert screen check: unreadable field, shadow and off") {
+    var blind = revertHarness([.unavailable(transient: false)])
+    blind.send(.revertHotkey)
+    check(waitUntil { blind.reverted.count == 1 }, "an unreadable field reverts as before")
+
+    var shadow = revertHarness([.text(before: "приветствие ")], mode: .shadow)
+    shadow.send(.revertHotkey)
+    check(waitUntil { shadow.reverted.count == 1 }, "shadow reverts anyway")
+    check(shadow.screen?.queries == 2, "after one read, got \(shadow.screen?.queries ?? -1)")
+
+    var off = revertHarness([.selection(length: 3)], mode: .off)
+    off.send(.revertHotkey)
+    check(waitUntil { off.reverted.count == 1 }, "off reverts without reading")
+    check(off.screen?.queries == 0, "off never reads the field")
+}
+
+run("revert screen check: staleness during the read cancels without forgetting") {
+    var harness = revertHarness([.text(before: "привет ")])
+    let store = harness.store
+    harness.screen?.beforeReply = { index in
+        // A key (that edits nothing) pressed while the revert's read is in flight.
+        guard index == 2 else { return }
+        _ = store.capture(
+            timestamp: 1_000, kind: .revertHotkey, keyCode: 0, flagsRawValue: 0,
+            isAutorepeat: false, sourcePID: 1, sourceUserData: 0
+        )
+    }
+    harness.send(.revertHotkey)
+    check(waitUntil { harness.screen?.queries == 2 }, "the revert reads the field")
+    check(!waitUntil(0.3) { harness.reverted.count > 0 }, "a key during the read cancels the revert")
+    check(harness.corrector.canUndo, "a stale revert is not a refusal: the correction can still be reverted")
+    harness.send(.revertHotkey)
+    check(waitUntil { harness.reverted.count == 1 }, "the next press reverts")
+}
+
+run("revert screen check: a hotkey correction (no boundary)") {
+    var harness = LearningHarness(screen: ScreenStub(.text(before: "ujnjdj"), .text(before: "готово")))
+    harness.type("ujnjdj", boundary: nil)
+    harness.send(.hotkey)
+    check(waitUntil { harness.emitted.count == 1 }, "converted")
+    harness.send(.revertHotkey)
+    check(waitUntil { harness.reverted.count == 1 }, "reverted")
+    check(harness.screen?.windows.last == "готово".utf16.count + 6, "reads the converted word only, got \(harness.screen?.windows ?? [])")
 }
 
 if CommandLine.arguments.contains("--integration-smoke") {

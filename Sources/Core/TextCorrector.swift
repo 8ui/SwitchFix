@@ -97,6 +97,16 @@ public struct CorrectionPlan: Equatable {
     }
 }
 
+/// The revert of the last correction, prepared before its field-text check.
+public struct RevertPlan: Equatable {
+    /// The correction being reverted (what learning reads).
+    public let recorded: CorrectionPlan
+    /// Deletes `recorded.correctedText` + boundary and types `recorded.originalText` + boundary.
+    public let inverse: CorrectionPlan
+    /// Which recorded correction this is: the undo state may be replaced while the field is read.
+    let undoID: UInt64
+}
+
 public struct CorrectionEventDescriptor: Equatable {
     public enum Kind: Equatable {
         case deleteKeyDown
@@ -111,12 +121,15 @@ public struct CorrectionEventDescriptor: Equatable {
 
 public final class TextCorrector {
     private struct UndoState {
+        /// Kept by `rebaseUndoContext`; a new correction gets a new one.
+        let id: UInt64
         let plan: CorrectionPlan
     }
 
     private let inputSourceManager: InputSourceManager
     private let eventSource: CGEventSource?
     private let undoState = OSAllocatedUnfairLock<UndoState?>(initialState: nil)
+    private let lastUndoID = OSAllocatedUnfairLock<UInt64>(initialState: 0)
     private let logger = Logger(subsystem: "com.switchfix", category: "correction")
 
     public init(inputSourceManager: InputSourceManager = .shared) {
@@ -129,6 +142,15 @@ public final class TextCorrector {
 
     public var canUndo: Bool {
         undoState.withLock { $0 != nil }
+    }
+
+    /// Makes `plan` the correction the revert hotkey undoes.
+    public func recordUndo(_ plan: CorrectionPlan) {
+        let id = lastUndoID.withLock { value -> UInt64 in
+            value &+= 1
+            return value
+        }
+        undoState.withLock { $0 = UndoState(id: id, plan: plan) }
     }
 
     public static func isUndoEligible(
@@ -186,7 +208,7 @@ public final class TextCorrector {
         }
         post(events, targetPID: plan.targetPID)
 
-        undoState.withLock { $0 = UndoState(plan: plan) }
+        recordUndo(plan)
         if let layout = plan.targetLayout,
            plan.isEligible(using: latestCaptureState()) {
             // TIS APIs are main-thread-only; apply() runs on the correction queue.
@@ -221,7 +243,7 @@ public final class TextCorrector {
                 return
             }
             let plan = current.plan
-            value = UndoState(plan: CorrectionPlan(
+            value = UndoState(id: current.id, plan: CorrectionPlan(
                 boundarySequence: plan.boundarySequence,
                 contextEpoch: context.epoch,
                 targetPID: context.frontmostPID,
@@ -239,13 +261,36 @@ public final class TextCorrector {
         }
     }
 
-    /// Reverts the last correction; returns the plan that was reverted, or nil.
-    @discardableResult
-    public func undo(
+    /// The inverse of `recorded`, built against the state at the revert hotkey. Its
+    /// provenance stays `.automatic`: learning reads the recorded plan's.
+    public static func inversePlan(
+        of recorded: CorrectionPlan,
+        sequence: UInt64,
+        latest: CaptureStateSnapshot
+    ) -> CorrectionPlan {
+        CorrectionPlan(
+            boundarySequence: sequence,
+            contextEpoch: latest.context.epoch,
+            targetPID: latest.context.frontmostPID,
+            editGeneration: latest.editGeneration,
+            correctionEpoch: latest.correctionEpoch,
+            deleteCount: recorded.correctedText.count + recorded.boundaryText.count,
+            replacementText: recorded.originalText + recorded.boundaryText,
+            originalText: recorded.correctedText,
+            correctedText: recorded.originalText,
+            boundaryText: recorded.boundaryText,
+            originalLayout: latest.context.layout,
+            targetLayout: recorded.originalLayout
+        )
+    }
+
+    /// The revert of the last correction when nothing changed since it; nil when there is
+    /// none or it is stale (a stale one is forgotten). Posts nothing.
+    public func prepareUndo(
         sequence: UInt64,
         context: InputContextSnapshot,
         latestCaptureState: () -> CaptureStateSnapshot
-    ) -> CorrectionPlan? {
+    ) -> RevertPlan? {
         guard let undo = undoState.withLock({ $0 }) else {
             logger.info("undo skipped: no recorded correction")
             return nil
@@ -258,43 +303,61 @@ public final class TextCorrector {
             latest: latest
         ) else {
             logger.info("undo skipped: state stale since correction \(SwitchFixLog.text(undo.plan.correctedText), privacy: .public)")
-            undoState.withLock { $0 = nil }
+            discardUndo(id: undo.id)
             return nil
         }
-
-        let replacement = undo.plan.originalText + undo.plan.boundaryText
-        let inverse = CorrectionPlan(
-            boundarySequence: sequence,
-            contextEpoch: latest.context.epoch,
-            targetPID: latest.context.frontmostPID,
-            editGeneration: latest.editGeneration,
-            correctionEpoch: latest.correctionEpoch,
-            deleteCount: undo.plan.correctedText.count + undo.plan.boundaryText.count,
-            replacementText: replacement,
-            originalText: undo.plan.correctedText,
-            correctedText: undo.plan.originalText,
-            boundaryText: undo.plan.boundaryText,
-            originalLayout: latest.context.layout,
-            targetLayout: undo.plan.originalLayout
+        return RevertPlan(
+            recorded: undo.plan,
+            inverse: Self.inversePlan(of: undo.plan, sequence: sequence, latest: latest),
+            undoID: undo.id
         )
+    }
+
+    /// Claims `revert` for posting: true only while it is still the recorded correction,
+    /// which is then forgotten so the same revert cannot be applied twice.
+    public func takeUndo(_ revert: RevertPlan) -> Bool {
+        undoState.withLock { value in
+            guard value?.id == revert.undoID else { return false }
+            value = nil
+            return true
+        }
+    }
+
+    /// Forgets `revert` (the field no longer shows it) unless another correction replaced it.
+    public func discardUndo(_ revert: RevertPlan) {
+        discardUndo(id: revert.undoID)
+    }
+
+    private func discardUndo(id: UInt64) {
+        undoState.withLock { value in
+            if value?.id == id { value = nil }
+        }
+    }
+
+    /// Posts a revert claimed by `takeUndo` and switches back to the original layout.
+    @discardableResult
+    public func postUndo(
+        _ revert: RevertPlan,
+        latestCaptureState: () -> CaptureStateSnapshot
+    ) -> Bool {
+        let inverse = revert.inverse
         guard let events = makeCorrectionEvents(plan: inverse),
               inverse.isEligible(using: latestCaptureState()) else {
             logger.debug("undo rejected: could not build inverse events or state changed")
-            return nil
+            return false
         }
         post(events, targetPID: inverse.targetPID)
-        undoState.withLock { $0 = nil }
         logger.notice(
             "revert APPLIED \(SwitchFixLog.text(inverse.correctedText), privacy: .public) <- \(SwitchFixLog.text(inverse.originalText), privacy: .public) deletes=\(inverse.deleteCount) pid=\(inverse.targetPID)"
         )
         if inverse.isEligible(using: latestCaptureState()) {
-            let undoLayout = undo.plan.originalLayout
-            // TIS APIs are main-thread-only; undo() runs on the correction queue.
+            let undoLayout = revert.recorded.originalLayout
+            // TIS APIs are main-thread-only; postUndo() runs on the correction queue.
             DispatchQueue.main.async { [inputSourceManager] in
                 inputSourceManager.switchTo(undoLayout)
             }
         }
-        return undo.plan
+        return true
     }
 
     public func performSelectionCorrection(
@@ -380,7 +443,7 @@ public final class TextCorrector {
             if finalState.editGeneration == editGeneration,
                finalState.correctionEpoch == correctionEpoch,
                finalState.correctionAllowed {
-                self.undoState.withLock { $0 = UndoState(plan: plan) }
+                self.recordUndo(plan)
             }
         }
     }
