@@ -166,8 +166,13 @@ public final class InputEngine {
     /// The focused element changed in the same app (see `InputStateMachine.focusMoved`).
     public func focusMoved(_ context: InputContextSnapshot) {
         inputQueue.async { [weak self] in
-            _ = self?.stateMachine.focusMoved(context)
-            self?.resetDetectorState()
+            guard let self else { return }
+            _ = self.stateMachine.focusMoved(context)
+            // The new field may still be settling: count from the focus move.
+            if self.stateMachine.hasPlacedCaret {
+                self.caretMoveUptime = DispatchTime.now().uptimeNanoseconds
+            }
+            self.resetDetectorState()
         }
     }
 

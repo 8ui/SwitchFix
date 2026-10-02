@@ -102,6 +102,8 @@ public struct InputStateMachine {
     /// context after every arrow key.
     public private(set) var skipsAutomaticFlushUntilBoundary = false
     public private(set) var layoutSwitchWord = ""
+    /// The caret was placed (a click, an arrow key) and nothing happened since.
+    public var hasPlacedCaret: Bool { screenSuffix.isCaretPlaced }
     /// The previous event was a flush, and since then only the next word's characters (and
     /// deletes inside it) were typed.
     private var wordFollowsFlush = false

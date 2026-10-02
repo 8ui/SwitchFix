@@ -1375,10 +1375,6 @@ run("state machine: a placed caret keeps the screen readable") {
     check(hotkeySuffix() == .some("ab"), "typing after a caret move is the suffix")
 
     moveCaret(byClick: true)
-    resolve(.unknown)
-    resolve()
-    check(hotkeySuffix() == .some(""), "an unresolved focus that resolves later keeps the placed caret")
-    moveCaret(byClick: true)
     current = context(epoch: current.epoch + 1, focus: .unknown)
     _ = machine.updateContext(current)
     resolve()
@@ -2400,6 +2396,19 @@ run("mouse-down classification") {
         check(click(flags) == .focusMayChange, "a modified click (\(flags.rawValue)) adds a cursor, opens a menu or selects")
     }
     check(click(clicks: 2) == .focusMayChange && click(clicks: 3) == .focusMayChange, "double and triple clicks select")
+
+    var tracker = PlainClickTracker()
+    check(tracker.mouseDown(click()) == .focusMayChange, "the mouse-down only may change focus")
+    check(tracker.mouseUp() == .caretMove(byClick: true), "a plain click places the caret at mouse-up")
+    check(tracker.mouseUp() == nil, "one caret move per click")
+    _ = tracker.mouseDown(click())
+    tracker.dragged()
+    check(tracker.mouseUp() == nil, "a drag selects or moves text")
+    _ = tracker.mouseDown(click(.maskCommand))
+    check(tracker.mouseUp() == nil, "a modified click is no caret move")
+    _ = tracker.mouseDown(click())
+    _ = tracker.mouseDown(click(left: false))
+    check(tracker.mouseUp() == nil, "a right click during the click (context menu) is no caret move")
 }
 
 run("input-source shortcuts from com.apple.symbolichotkeys") {

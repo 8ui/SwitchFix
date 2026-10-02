@@ -56,6 +56,7 @@ public final class KeyboardMonitor {
     private var lastAlphaShiftState: Bool?
     // Tap-callback-thread confined: a lone hotkey-modifier press awaiting its release.
     private var controlTapArmed = false
+    private var clickTracker = PlainClickTracker()
     private var tapResetCount: UInt64 = 0
     /// Uptime of the last mouse-down the tap delivered: a watchdog compares it with clicks
     /// seen elsewhere to catch a tap that reports enabled but gets no events.
@@ -176,6 +177,8 @@ public final class KeyboardMonitor {
             (1 << CGEventType.keyDown.rawValue) |
             (1 << CGEventType.flagsChanged.rawValue) |
             (1 << CGEventType.leftMouseDown.rawValue) |
+            (1 << CGEventType.leftMouseDragged.rawValue) |
+            (1 << CGEventType.leftMouseUp.rawValue) |
             (1 << CGEventType.rightMouseDown.rawValue) |
             (1 << CGEventType.otherMouseDown.rawValue)
         let userInfo = Unmanaged.passUnretained(self).toOpaque()
@@ -379,11 +382,21 @@ public final class KeyboardMonitor {
         }
 
         if type == .leftMouseDown || type == .rightMouseDown || type == .otherMouseDown {
-            return Self.classifyMouseDown(
+            return clickTracker.mouseDown(Self.classifyMouseDown(
                 isLeftButton: type == .leftMouseDown,
                 flags: flags,
                 clickState: event.getIntegerValueField(.mouseEventClickState)
-            )
+            ))
+        }
+        if type == .leftMouseDragged {
+            clickTracker.dragged()
+            return nil
+        }
+        if type == .leftMouseUp {
+            return clickTracker.mouseUp()
+        }
+        if type == .keyDown {
+            clickTracker.dragged()
         }
 
         if type == .flagsChanged {
@@ -452,7 +465,8 @@ public final class KeyboardMonitor {
             == CGEventFlags(rawValue: configuredModifiers).intersection(shortcutModifierMask)
     }
 
-    /// A plain single left click only places the caret. Other buttons open menus that may
+    /// A plain single left click only places the caret (reported at mouse-up, see
+    /// `PlainClickTracker`). Other buttons open menus that may
     /// insert text; with modifiers a click adds a cursor (VS Code), opens the context menu
     /// (Control) or extends the selection (Shift); a double or triple click selects.
     public static func classifyMouseDown(isLeftButton: Bool, flags: CGEventFlags, clickState: Int64) -> CapturedInput.Kind {
@@ -698,5 +712,31 @@ public final class KeyboardMonitor {
 
     deinit {
         stop()
+    }
+}
+
+/// Turns a plain click into a caret move at mouse-up. The mouse-down itself may change focus
+/// and is reported as such; text a click edits (a menu item, a suggestion, dropped text)
+/// changes at mouse-up, so the caret settles from there, and a drag in between is an edit.
+public struct PlainClickTracker {
+    private var pending = false
+
+    public init() {}
+
+    /// `kind`: `KeyboardMonitor.classifyMouseDown`; reported as `.focusMayChange`.
+    public mutating func mouseDown(_ kind: CapturedInput.Kind) -> CapturedInput.Kind {
+        pending = kind == .caretMove(byClick: true)
+        return .focusMayChange
+    }
+
+    /// The mouse moved with the button down (selecting or dragging text), or a key was
+    /// pressed during the click.
+    public mutating func dragged() {
+        pending = false
+    }
+
+    public mutating func mouseUp() -> CapturedInput.Kind? {
+        defer { pending = false }
+        return pending ? .caretMove(byClick: true) : nil
     }
 }
