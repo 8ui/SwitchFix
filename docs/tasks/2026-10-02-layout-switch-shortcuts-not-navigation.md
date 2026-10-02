@@ -3,7 +3,7 @@ id: 2026-10-02-layout-switch-shortcuts-not-navigation
 title: Ctrl-Space and other layout-switch shortcuts are classified as navigation
 type: bug
 pipeline: no-spec
-phase: review
+phase: done
 created: 2026-10-02
 updated: 2026-10-02
 blocked_by: null
@@ -14,7 +14,7 @@ artifacts:
   spec: null
   plan: docs/plans/layout-switch-shortcuts-not-navigation-plan.md
   branch: null
-  pr: null
+  pr: "https://github.com/8ui/SwitchFix/pull/12"
 ---
 
 ## Context
@@ -47,6 +47,8 @@ artifacts:
 - 2026-10-02: verify: `ручная проверка на Mac (сборка ветки 3b3512a+, режим layoutSwitch, TextEdit, log stream): ⌃Space, удержание ⌃Space 1 с, стрелка+⌃Space` → exit 0 ✅
 - 2026-10-02: шаг 3 ✅ Ручная проверка на Mac (пользователь): ⌃Space, удержание ⌃, стрелка+⌃Space — проверено на Mac: все 3 сценария
 - 2026-10-02: ручная проверка на Mac пройдена, блокер снят; удержание: смена через 418 мс — запас до 500 мс небольшой
+- 2026-10-02: artifacts.pr = https://github.com/8ui/SwitchFix/pull/12
+- 2026-10-02: merged in PR 12 (f180995)
 
 ## Decisions
 

@@ -3,7 +3,7 @@ id: 2026-10-02-recheck-context-before-layout-switch
 title: Layout switch after a correction runs on main without rechecking the context
 type: bug
 pipeline: minimal
-phase: review
+phase: done
 created: 2026-10-02
 updated: 2026-10-02
 blocked_by: null
@@ -14,7 +14,7 @@ artifacts:
   spec: null
   plan: null
   branch: null
-  pr: null
+  pr: "https://github.com/8ui/SwitchFix/pull/12"
 ---
 
 ## Context
@@ -39,6 +39,8 @@ artifacts:
 - 2026-10-02: verify: `код-ревью субагентом: блокеров нет; should-fix (вытеснение старого переключения) и тестовые замечания исправлены в 7f18ea8` → exit 0 ✅
 - 2026-10-02: шаг 3 ✅ Тесты предиката, CI и ревью
 - 2026-10-02: impl + ревью + CI; остаётся в review до merge ветки
+- 2026-10-02: artifacts.pr = https://github.com/8ui/SwitchFix/pull/12
+- 2026-10-02: merged in PR 12 (f180995)
 
 ## Decisions
 

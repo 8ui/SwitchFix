@@ -3,7 +3,7 @@ id: 2026-10-02-learning-revert-and-cancelled-outcome
 title: "Learning gaps: hotkey revert keeps the learned rule, cancelled corrections count as corrected"
 type: bug
 pipeline: no-spec
-phase: review
+phase: done
 created: 2026-10-02
 updated: 2026-10-02
 blocked_by: null
@@ -14,7 +14,7 @@ artifacts:
   spec: null
   plan: docs/plans/learning-revert-and-cancelled-outcome-plan.md
   branch: null
-  pr: null
+  pr: "https://github.com/8ui/SwitchFix/pull/12"
 ---
 
 ## Context
@@ -44,6 +44,8 @@ artifacts:
 - 2026-10-02: verify: `код-ревью субагентом: блокеров нет; should-fix (порядок в тесте) и нитпики исправлены в 3b3512a` → exit 0 ✅
 - 2026-10-02: шаг 4 ✅ Ревью и CI
 - 2026-10-02: impl + ревью + CI; остаётся в review до merge ветки
+- 2026-10-02: artifacts.pr = https://github.com/8ui/SwitchFix/pull/12
+- 2026-10-02: merged in PR 12 (f180995)
 
 ## Decisions
 
