@@ -34,6 +34,7 @@ artifacts:
 - 2026-10-02: brainstorm: пользователь одобрил перепроверку на main (isEligible по свежему снимку + frontmost PID) и чистый предикат для тестов
 - 2026-10-02: шаг 1 ✅ Чистый предикат + перепроверка на main в apply/postUndo — mayFinishLayoutSwitch + finishLayoutSwitch на main
 - 2026-10-02: шаг 2 ✅ Проверка frontmost в selection-пути — frontmost перед вставкой и перед switch после вставки
+- 2026-10-02: verify: `CI зелёный: https://github.com/8ui/SwitchFix/actions/runs/36991085388 (push dd11ce7 включает ba1f61a; новый сьют 'layout switch after a correction: rechecked on main')` → exit 0 ✅
 
 ## Decisions
 
@@ -48,7 +49,11 @@ _Без `[ ]`/`[x]` пункт невидим для агрегатора и т�
 
 ## Verification
 
-_Доказательства, а не утверждения. Заполняется `rtp verify <id> --run "<команда>"`: команда, exit code, хвост вывода._
+- 2026-10-02 · `CI зелёный: https://github.com/8ui/SwitchFix/actions/runs/36991085388 (push dd11ce7 включает ba1f61a; новый сьют 'layout switch after a correction: rechecked on main')` · exit 0 ✅
+
+  ```
+  (без вывода)
+  ```
 
 ## Handoff
 

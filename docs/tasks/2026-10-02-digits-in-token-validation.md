@@ -35,6 +35,7 @@ artifacts:
 - 2026-10-02: verify: `до фикса: CI https://github.com/8ui/SwitchFix/actions/runs/36990742397 — 5 FAIL (obj[0]→щиох0ъ, w[1]→цх1ъ, x[0].→чх0ъю, arr[12]→фккх12ъ, a[0],/b[1]); m{1}, [0] уже оставались` → exit 1 ❌
 - 2026-10-02: шаг 1 ✅ Тест: индексы остаются (до фикса FAIL в CI)
 - 2026-10-02: шаг 2 ✅ Правило: латинский токен с цифрой у скобки — нейтрально пропускать автоисправление — shouldSkipAutomaticIndexExpression рядом с правилом флагов
+- 2026-10-02: verify: `CI зелёный: https://github.com/8ui/SwitchFix/actions/runs/36991085388 (push dd11ce7; TestRunner 612/0, InputPipelineTestRunner 1172/0); LayoutEval и threshold sweep побайтно совпадают с базой 36990249513` → exit 0 ✅
 
 ## Decisions
 
@@ -50,6 +51,12 @@ _Без `[ ]`/`[x]` пункт невидим для агрегатора и т�
 ## Verification
 
 - 2026-10-02 · `до фикса: CI https://github.com/8ui/SwitchFix/actions/runs/36990742397 — 5 FAIL (obj[0]→щиох0ъ, w[1]→цх1ъ, x[0].→чх0ъю, arr[12]→фккх12ъ, a[0],/b[1]); m{1}, [0] уже оставались` · exit 1 ❌
+
+  ```
+  (без вывода)
+  ```
+
+- 2026-10-02 · `CI зелёный: https://github.com/8ui/SwitchFix/actions/runs/36991085388 (push dd11ce7; TestRunner 612/0, InputPipelineTestRunner 1172/0); LayoutEval и threshold sweep побайтно совпадают с базой 36990249513` · exit 0 ✅
 
   ```
   (без вывода)
