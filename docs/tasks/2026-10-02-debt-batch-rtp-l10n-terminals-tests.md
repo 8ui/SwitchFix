@@ -13,8 +13,8 @@ step_current: null
 artifacts:
   spec: null
   plan: null
-  branch: null
-  pr: null
+  branch: claude/upbeat-fermi-bv13ag
+  pr: "https://github.com/8ui/SwitchFix/pull/16"
 ---
 
 ## Context
@@ -55,6 +55,7 @@ artifacts:
 - 2026-10-02: verify: `CI зелёный после правок ревью: https://github.com/8ui/SwitchFix/actions/runs/37027049646 (push 6ed41c7)` → exit 0 ✅
 - 2026-10-02: шаг 7 ✅ Ревью и CI — ревью учтено, CI зелёный
 - 2026-10-02: 6 долгов закрыто, CI 37027049646 зелёный; ветка claude/upbeat-fermi-bv13ag, PR не создавался
+- 2026-10-02: artifacts.branch = claude/upbeat-fermi-bv13ag; artifacts.pr = https://github.com/8ui/SwitchFix/pull/16
 
 ## Decisions
 
