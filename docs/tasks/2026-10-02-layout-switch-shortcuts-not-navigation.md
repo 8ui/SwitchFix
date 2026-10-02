@@ -3,13 +3,13 @@ id: 2026-10-02-layout-switch-shortcuts-not-navigation
 title: Ctrl-Space and other layout-switch shortcuts are classified as navigation
 type: bug
 pipeline: no-spec
-phase: impl
+phase: review
 created: 2026-10-02
 updated: 2026-10-02
 blocked_by: null
-steps_done: 2
+steps_done: 3
 steps_total: 4
-step_current: 3
+step_current: null
 artifacts:
   spec: null
   plan: docs/plans/layout-switch-shortcuts-not-navigation-plan.md
@@ -26,8 +26,8 @@ artifacts:
 
 1. ✅ classifyKeyDown — чистая функция + тесты
 2. ✅ Чтение symbolichotkeys 60/61 + тесты парсера
-3. ▶ Ручная проверка на Mac (пользователь): ⌃Space, удержание ⌃, стрелка+⌃Space
-4. ⬜ Ревью и CI
+3. ⛔ Ручная проверка на Mac (пользователь): ⌃Space, удержание ⌃, стрелка+⌃Space
+4. ✅ Ревью и CI
 
 ## Log
 
@@ -39,6 +39,11 @@ artifacts:
 - 2026-10-02: шаг 1 ✅ classifyKeyDown — чистая функция + тесты — classifyKeyDown + тесты
 - 2026-10-02: шаг 2 ✅ Чтение symbolichotkeys 60/61 + тесты парсера — inputSourceShortcuts(from:selectableSourceCount:) + CFPreferences + тесты
 - 2026-10-02: verify: `CI зелёный: https://github.com/8ui/SwitchFix/actions/runs/36993040417 (push bb9e34b; TestRunner 613/0, InputPipelineTestRunner 1215/0; 3 новых сьюта classifyKeyDown/парсер)` → exit 0 ✅
+- 2026-10-02: verify: `CI зелёный после правок код-ревью: https://github.com/8ui/SwitchFix/actions/runs/36994039723 (push 3b3512a; TestRunner 632/0, InputPipelineTestRunner 1223/0)` → exit 0 ✅
+- 2026-10-02: verify: `код-ревью субагентом: блокеров нет; should-fix (порядок в тесте) и нитпики исправлены в 3b3512a` → exit 0 ✅
+- 2026-10-02: шаг 3 ⛔ Ручная проверка на Mac (пользователь): ⌃Space, удержание ⌃, стрелка+⌃Space — ручная проверка на Mac (⌃Space, удержание ⌃ >500 мс, стрелка+⌃Space) — только у пользователя локально
+- 2026-10-02: шаг 4 ✅ Ревью и CI
+- 2026-10-02: impl + ревью + CI; ждёт ручной проверки на Mac (шаг 3) и merge
 
 ## Decisions
 
@@ -58,10 +63,23 @@ _Нетривиальные решения по ходу задачи. Одна 
   (без вывода)
   ```
 
+- 2026-10-02 · `CI зелёный после правок код-ревью: https://github.com/8ui/SwitchFix/actions/runs/36994039723 (push 3b3512a; TestRunner 632/0, InputPipelineTestRunner 1223/0)` · exit 0 ✅
+
+  ```
+  (без вывода)
+  ```
+
+- 2026-10-02 · `код-ревью субагентом: блокеров нет; should-fix (порядок в тесте) и нитпики исправлены в 3b3512a` · exit 0 ✅
+
+  ```
+  (без вывода)
+  ```
+
 ## Handoff
 
 _Передача контекста следующему агенту. Перезаписывается целиком через `rtp handoff <id>`._
 
 ## Blockers
 
-_Текущие блокеры. Очистить, когда разрешены._
+- 2026-10-02: шаг 3 — ручная проверка на Mac (⌃Space, удержание ⌃ >500 мс, стрелка+⌃Space) — только у пользователя локально
+

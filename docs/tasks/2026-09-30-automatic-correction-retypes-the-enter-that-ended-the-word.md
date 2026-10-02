@@ -5,7 +5,7 @@ type: bug
 pipeline: minimal
 phase: done
 created: 2026-09-30
-updated: 2026-09-30
+updated: 2026-10-02
 blocked_by: null
 steps_done: 3
 steps_total: 3
@@ -54,7 +54,7 @@ _Нетривиальные решения по ходу задачи. Одна 
 
 ## Debt
 
-- [ ] Отменённая Enter-коррекция всё равно пишет детектору recordOutcome(.corrected) и тратит pendingSwitch — ослабляет защиту коротких слов на следующих словах; нужен хук «отменено» в детекторе
+- [x] Отменённая Enter-коррекция всё равно пишет детектору recordOutcome(.corrected) и тратит pendingSwitch — ослабляет защиту коротких слов на следующих словах; нужен хук «отменено» в детекторе — закрыто 2026-10-02: 2026-10-02-learning-revert-and-cancelled-outcome
 - [ ] Слово, законченное Enter, не переключает раскладку, и Shift+Return (перевод строки без отправки) тоже пропускается — можно переключать источник без перенабора и/или пропускать Shift+Return
 
 ## Verification

@@ -3,13 +3,13 @@ id: 2026-10-02-learning-revert-and-cancelled-outcome
 title: "Learning gaps: hotkey revert keeps the learned rule, cancelled corrections count as corrected"
 type: bug
 pipeline: no-spec
-phase: impl
+phase: review
 created: 2026-10-02
 updated: 2026-10-02
 blocked_by: null
-steps_done: 3
+steps_done: 4
 steps_total: 4
-step_current: 4
+step_current: null
 artifacts:
   spec: null
   plan: docs/plans/learning-revert-and-cancelled-outcome-plan.md
@@ -27,7 +27,7 @@ artifacts:
 1. ✅ (а) отмена hotkey забывает выученное правило
 2. ✅ (б) detectionID + noteCorrectionNotApplied в детекторе + тесты
 3. ✅ (б) движок зовёт хук во всех точках отмены + тесты
-4. ▶ Ревью и CI
+4. ✅ Ревью и CI
 
 ## Log
 
@@ -40,6 +40,10 @@ artifacts:
 - 2026-10-02: шаг 2 ✅ (б) detectionID + noteCorrectionNotApplied в детекторе + тесты
 - 2026-10-02: шаг 3 ✅ (б) движок зовёт хук во всех точках отмены + тесты — ждём CI
 - 2026-10-02: verify: `CI зелёный: https://github.com/8ui/SwitchFix/actions/runs/36993289377 (push 5bf3102; TestRunner 632/0, InputPipelineTestRunner 1222/0); LayoutEval и sweep идентичны базе` → exit 0 ✅
+- 2026-10-02: verify: `CI зелёный после правок код-ревью: https://github.com/8ui/SwitchFix/actions/runs/36994039723 (push 3b3512a; TestRunner 632/0, InputPipelineTestRunner 1223/0)` → exit 0 ✅
+- 2026-10-02: verify: `код-ревью субагентом: блокеров нет; should-fix (порядок в тесте) и нитпики исправлены в 3b3512a` → exit 0 ✅
+- 2026-10-02: шаг 4 ✅ Ревью и CI
+- 2026-10-02: impl + ревью + CI; остаётся в review до merge ветки
 
 ## Decisions
 
@@ -53,6 +57,18 @@ artifacts:
 ## Verification
 
 - 2026-10-02 · `CI зелёный: https://github.com/8ui/SwitchFix/actions/runs/36993289377 (push 5bf3102; TestRunner 632/0, InputPipelineTestRunner 1222/0); LayoutEval и sweep идентичны базе` · exit 0 ✅
+
+  ```
+  (без вывода)
+  ```
+
+- 2026-10-02 · `CI зелёный после правок код-ревью: https://github.com/8ui/SwitchFix/actions/runs/36994039723 (push 3b3512a; TestRunner 632/0, InputPipelineTestRunner 1223/0)` · exit 0 ✅
+
+  ```
+  (без вывода)
+  ```
+
+- 2026-10-02 · `код-ревью субагентом: блокеров нет; should-fix (порядок в тесте) и нитпики исправлены в 3b3512a` · exit 0 ✅
 
   ```
   (без вывода)
