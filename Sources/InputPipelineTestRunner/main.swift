@@ -688,6 +688,8 @@ private func layoutSwitchPlans(
     selectedText: String? = nil,
     screen: ScreenStub? = nil,
     screenCheckMode: ScreenCheckMode = .enforce,
+    selections: SelectionLog? = nil,
+    expectedPlans: Int? = nil,
     beforeNotification: (InputEngine, CaptureStateStore) -> Void = { _, _ in }
 ) -> [CorrectionPlan] {
     let current = context()
@@ -710,7 +712,10 @@ private func layoutSwitchPlans(
         screenTextRequest: screen.map { screen in
             { _, _, window, completion in screen.answer(window: window, completion) }
         },
-        screenCheckMode: screenCheckMode
+        screenCheckMode: screenCheckMode,
+        selectionEmission: selections.map { selections in
+            { _, converted in selections.append(converted) }
+        }
     )
     func press(_ kind: CapturedInput.Kind) {
         engine.enqueue(store.capture(
@@ -752,8 +757,12 @@ private func layoutSwitchPlans(
     )
     engine.handleLayoutChange(from: .english, to: .russian, context: switched, keyboardTables: .pc)
     drain("layout change")
-    // The correction is emitted on the correction queue.
-    Thread.sleep(forTimeInterval: 0.2)
+    // The correction is emitted on the correction queue (after the field check, if any).
+    if let expectedPlans {
+        _ = waitUntil { lock.lock(); defer { lock.unlock() }; return plans.count >= expectedPlans }
+    } else {
+        Thread.sleep(forTimeInterval: 0.2)
+    }
     lock.lock()
     defer { lock.unlock() }
     return plans
@@ -1124,6 +1133,14 @@ private func waitUntil(_ timeout: TimeInterval = 2, _ condition: () -> Bool) -> 
     return condition()
 }
 
+/// Selections the engine replaced with their conversion (`InputEngine.selectionEmission`).
+private final class SelectionLog {
+    private let lock = NSLock()
+    private var _converted: [String] = []
+    func append(_ converted: String) { lock.lock(); _converted.append(converted); lock.unlock() }
+    var converted: [String] { lock.lock(); defer { lock.unlock() }; return _converted }
+}
+
 /// What the fake Accessibility query answers for the manual hotkey.
 private final class CaretStub {
     private let lock = NSLock()
@@ -1191,6 +1208,7 @@ private struct LearningHarness {
     /// Real undo bookkeeping; only posting is replaced (`revertEmission`).
     let corrector: TextCorrector
     let caret = CaretStub()
+    let selections = SelectionLog()
     let screen: ScreenStub?
     var timestamp: UInt64 = 0
 
@@ -1229,7 +1247,8 @@ private struct LearningHarness {
             },
             screenCheckMode: screenCheckMode,
             lexicon: lexicon,
-            revertEmission: { revert in reverted.append(revert.recorded); return true }
+            revertEmission: { revert in reverted.append(revert.recorded); return true },
+            selectionEmission: { [selections] _, converted in selections.append(converted) }
         )
         engine.updateDetectionConfiguration(allowedLayouts: [.english, .russian])
     }
@@ -1802,13 +1821,16 @@ run("screen verification: an inline suggestion after the word") {
         word: "ghbdtn", boundary: " ", probe: .selection(length: 3, before: "ghbdtn "), final: false, selection: .accept
     ) == .matchBeforeSelection(deleteCount: 8), "the boundary is deleted too")
     check(verdict(.selection(length: 4, before: "ya other"), .accept) == .mismatch, "other text before the selection")
-    check(verdict(.selection(length: 4, before: "ujnjdh "), .accept) == .mismatch, "no autocorrection before a selection")
+    check(verdict(.selection(length: 4, before: "ujnjdh "), .accept) == .mismatch, "a changed word before a selection")
     check(verdict(.selection(length: 4, before: "ujn"), .accept) == .retry, "a lagging field is read again")
     check(verdict(.selection(length: 4, before: "ujn"), .accept, final: true) == .mismatch, "until the deadline")
     check(verdict(.selection(length: 4, before: ""), .accept) == .retry, "nothing before it yet")
     check(verdict(.selection(length: 4, before: ""), .accept, final: true) == .mismatch,
           "an empty text before a selection is never deleted blindly")
     check(verdict(.selection(length: 4), .accept) == .retry, "the text before it may be readable on the next try")
+    check(ScreenVerification.verdict(
+        word: "ghbdtn", boundary: " ", probe: .selection(length: 3, before: "ghbdtn"), final: true, selection: .accept
+    ) == .mismatch, "a missing trailing space is not deleted through a selection")
     check(verdict(.selection(length: 4), .accept, final: true) == .mismatch, "not at the deadline")
     check(verdict(.selection(length: 4, before: "ujnjdj", atTextStart: true), .accept)
           == .matchBeforeSelection(deleteCount: 7), "at the start of the field")
@@ -2002,6 +2024,7 @@ run("screen check: the hotkey with an inline suggestion") {
     harness.type("ujnjdj", boundary: nil)
     harness.send(.hotkey)
     check(waitUntil { harness.emitted.count == 1 }, "the typed word is converted, not the suggestion")
+    check(harness.selections.converted.isEmpty, "the suggestion is not converted")
     check(harness.emitted.last?.deleteCount == 7, "one more Backspace clears the suggestion, got \(harness.emitted.last?.deleteCount ?? -1)")
     check(harness.emitted.last?.correctedText == "готово", "got \(harness.emitted.last?.correctedText ?? "nil")")
     check(harness.emitted.last?.originalText == "ujnjdj", "the typed word is kept for undo")
@@ -2038,14 +2061,16 @@ run("screen check: the hotkey with an inline suggestion") {
     shadow.caret.reply = .selection("ndex")
     shadow.type("ujnjdj", boundary: nil)
     shadow.send(.hotkey)
-    check(!waitUntil(0.3) { shadow.emitted.count > 0 || shadow.screen?.queries ?? 0 > 0 },
+    check(waitUntil { shadow.selections.converted.count == 1 },
           "shadow mode keeps converting the selection: it never clears a suggestion")
+    check(shadow.emitted.count == 0 && shadow.screen?.queries == 0, "the word is not corrected")
 
     var typedNothing = LearningHarness(screen: ScreenStub(.selection(length: 4, before: "ujnjdj")))
     typedNothing.caret.reply = .selection("ndex")
     typedNothing.send(.hotkey)
-    check(!waitUntil(0.3) { typedNothing.emitted.count > 0 || typedNothing.screen?.queries ?? 0 > 0 },
+    check(waitUntil { typedNothing.selections.converted.count == 1 },
           "without a typed word the selection is the user's: converted as a selection")
+    check(typedNothing.emitted.count == 0 && typedNothing.screen?.queries == 0, "no word is corrected")
 }
 
 run("screen check: automatic correction still refuses an inline suggestion") {
@@ -2056,7 +2081,7 @@ run("screen check: automatic correction still refuses an inline suggestion") {
 run("layout switch: an inline suggestion after the word") {
     var plans = layoutSwitchPlans(
         typing: "ghbdtn", then: .inputSourceKey,
-        selectedText: "ndex", screen: ScreenStub(.selection(length: 4, before: "ghbdtn"))
+        selectedText: "ndex", screen: ScreenStub(.selection(length: 4, before: "ghbdtn")), expectedPlans: 1
     )
     check(plans.count == 1, "the typed word is converted, got \(plans.count) plans")
     check(plans.first?.correctedText == "привет", "got \(plans.first?.correctedText ?? "nil")")
@@ -2064,7 +2089,7 @@ run("layout switch: an inline suggestion after the word") {
 
     plans = layoutSwitchPlans(
         typing: "ghbdtn", then: .inputSourceKey,
-        selectedText: ".ru", screen: ScreenStub(.selection(length: 3, before: "ghbdtn"))
+        selectedText: ".ru", screen: ScreenStub(.selection(length: 3, before: "ghbdtn")), expectedPlans: 1
     )
     check(plans.first?.deleteCount == 7, "a suggestion without letters of the old layout too, got \(plans.map(\.deleteCount))")
 
@@ -2074,14 +2099,19 @@ run("layout switch: an inline suggestion after the word") {
     )
     check(plans.isEmpty, "a selection seen, then an unreadable field: cancelled, got \(plans.count) plans")
 
-    plans = layoutSwitchPlans(typing: "ghbdtn", then: .inputSourceKey, screen: ScreenStub(.text(before: "ghbdtn")))
+    plans = layoutSwitchPlans(
+        typing: "ghbdtn", then: .inputSourceKey, screen: ScreenStub(.text(before: "ghbdtn")), expectedPlans: 1
+    )
     check(plans.count == 1 && plans.first?.deleteCount == 6, "no selection: checked and corrected as before")
 
+    let selections = SelectionLog()
     plans = layoutSwitchPlans(
         typing: "ghbdtn", then: .inputSourceKey,
-        selectedText: "ndex", screen: ScreenStub(.selection(length: 4, before: "ghbdtn")), screenCheckMode: .off
+        selectedText: "ndex", screen: ScreenStub(.selection(length: 4, before: "ghbdtn")), screenCheckMode: .off,
+        selections: selections
     )
-    check(plans.isEmpty, "with the check off the selection is converted as before (paste), not the word")
+    check(plans.isEmpty, "with the check off the word is not corrected")
+    check(selections.converted == ["твуч"], "the selection is converted as before, got \(selections.converted)")
 }
 
 /// Corrects "ghbdtn " (the field shows it), then answers the revert's reads with `revertReplies`.

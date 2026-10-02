@@ -33,7 +33,8 @@ public enum ScreenSelectionHandling: Sendable {
     /// Cancel: Backspace would delete the selection (automatic corrections, reverts).
     case refuse
     /// Clear an inline suggestion that follows the typed text, else cancel (the hotkey and
-    /// layout-switch mode: the user asked for this word to be converted).
+    /// layout-switch mode: the user asked for this word to be converted). Without a selection
+    /// the verdict is the same as for `refuse`.
     case accept
     /// As `accept`, and only a suggestion is accepted: the engine saw a selection while a word
     /// was buffered and ignored it, so a field that reads otherwise (unreadable, no selection)
@@ -74,6 +75,9 @@ public enum ScreenVerification {
             guard let before else { return final ? .mismatch : .retry }
             switch verdict(word: word, boundary: boundary, probe: .text(before: before, atTextStart: atTextStart), final: final) {
             case .match:
+                // Only the exact text: a word missing its trailing space at the deadline would
+                // make the extra Backspace delete the character before it.
+                guard folded(before).hasSuffix(folded(word + boundary)) else { return .mismatch }
                 return .matchBeforeSelection(deleteCount: word.count + boundary.count + 1)
             case .retry:
                 return .retry

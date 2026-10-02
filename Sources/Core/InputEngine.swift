@@ -52,6 +52,9 @@ public final class InputEngine {
     /// Posts a revert claimed from the corrector; returns whether it reached the app (tests
     /// replace `TextCorrector.postUndo`).
     public typealias RevertEmission = (RevertPlan) -> Bool
+    /// Replaces the selected text with its conversion (tests replace
+    /// `TextCorrector.performSelectionCorrection`): the selection and the converted text.
+    public typealias SelectionEmission = (String, String) -> Void
 
     public var onFocusMayChange: ((pid_t, UInt64) -> Void)?
 
@@ -82,6 +85,7 @@ public final class InputEngine {
         screenTextRequest != nil && screenCheckMode == .enforce
     }
     private let revertEmission: RevertEmission?
+    private let selectionEmission: SelectionEmission?
     private let lexicon: PersonalLexicon?
     private let detectionConfiguration = OSAllocatedUnfairLock(initialState: DetectionConfiguration())
     private var correctionEpoch: UInt64
@@ -111,7 +115,8 @@ public final class InputEngine {
         screenTextRequest: ScreenTextRequest? = nil,
         screenCheckMode: ScreenCheckMode = .enforce,
         lexicon: PersonalLexicon? = nil,
-        revertEmission: RevertEmission? = nil
+        revertEmission: RevertEmission? = nil,
+        selectionEmission: SelectionEmission? = nil
     ) {
         self.captureState = captureState
         self.stateMachine = InputStateMachine(context: initialContext, preferences: preferences)
@@ -125,6 +130,7 @@ public final class InputEngine {
         self.screenCheckMode = screenCheckMode
         self.lexicon = lexicon
         self.revertEmission = revertEmission
+        self.selectionEmission = selectionEmission
         detector.lexicon = lexicon
         correctionEpoch = captureState.updateCorrectionEnabled(preferences.isEnabled)
     }
@@ -264,18 +270,22 @@ public final class InputEngine {
                                 tables: keyboardTables
                             )
                             guard converted != selectedText else { return }
-                            self.corrector.performSelectionCorrection(
-                                selectedText: selectedText,
-                                convertedText: converted,
-                                targetLayout: newLayout,
-                                shouldSwitchLayout: false,
-                                originalLayout: oldLayout,
-                                sequence: latest.latestPhysicalSequence,
-                                context: context,
-                                editGeneration: latest.editGeneration,
-                                correctionEpoch: requestCorrectionEpoch,
-                                latestCaptureState: self.captureState.snapshot
-                            )
+                            if let selectionEmission = self.selectionEmission {
+                                selectionEmission(selectedText, converted)
+                            } else {
+                                self.corrector.performSelectionCorrection(
+                                    selectedText: selectedText,
+                                    convertedText: converted,
+                                    targetLayout: newLayout,
+                                    shouldSwitchLayout: false,
+                                    originalLayout: oldLayout,
+                                    sequence: latest.latestPhysicalSequence,
+                                    context: context,
+                                    editGeneration: latest.editGeneration,
+                                    correctionEpoch: requestCorrectionEpoch,
+                                    latestCaptureState: self.captureState.snapshot
+                                )
+                            }
                         } else {
                             applyBufferedCorrection(.accept)
                         }
@@ -997,18 +1007,22 @@ public final class InputEngine {
                     currentLayout: context.layout,
                     configuration: configuration
                    ) {
-                    self.corrector.performSelectionCorrection(
-                        selectedText: selectedText,
-                        convertedText: converted,
-                        targetLayout: targetLayout,
-                        shouldSwitchLayout: true,
-                        originalLayout: sourceLayout,
-                        sequence: sequence,
-                        context: context,
-                        editGeneration: generation,
-                        correctionEpoch: requestCorrectionEpoch,
-                        latestCaptureState: self.captureState.snapshot
-                    )
+                    if let selectionEmission = self.selectionEmission {
+                        selectionEmission(selectedText, converted)
+                    } else {
+                        self.corrector.performSelectionCorrection(
+                            selectedText: selectedText,
+                            convertedText: converted,
+                            targetLayout: targetLayout,
+                            shouldSwitchLayout: true,
+                            originalLayout: sourceLayout,
+                            sequence: sequence,
+                            context: context,
+                            editGeneration: generation,
+                            correctionEpoch: requestCorrectionEpoch,
+                            latestCaptureState: self.captureState.snapshot
+                        )
+                    }
                 } else if let target = word ?? caretWord {
                     // A word read from the screen may have been pasted or typed long ago:
                     // weak evidence of intent, so it never teaches the lexicon. It was just
