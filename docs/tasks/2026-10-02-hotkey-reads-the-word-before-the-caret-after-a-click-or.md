@@ -13,8 +13,8 @@ step_current: null
 artifacts:
   spec: null
   plan: docs/plans/hotkey-after-click-plan.md
-  branch: null
-  pr: null
+  branch: claude/nice-allen-fv07al
+  pr: "https://github.com/8ui/SwitchFix/pull/14"
 ---
 
 ## Context
@@ -42,6 +42,7 @@ _2-5 строк: что делаем и зачем. Задача этой сек
 - 2026-10-02: verify: `CI зелёный: https://github.com/8ui/SwitchFix/actions/runs/37014999364 (d72a853)` → exit 0 ✅
 - 2026-10-02: шаг 4 ✅ CI, ревью, документация (CLAUDE.md, долг исходной задачи) — CI зелёный d72a853; ревью кода учтено (mouse-up)
 - 2026-10-02: impl + ревью кода (opus): should-fix (клик на mouse-down) исправлен в d72a853; CI зелёный. Не done: ветка не влита (PR не просили), нужна проверка на Mac (TextEdit, Chrome/Electron)
+- 2026-10-02: artifacts.branch = claude/nice-allen-fv07al; artifacts.pr = https://github.com/8ui/SwitchFix/pull/14
 
 ## Decisions
 
