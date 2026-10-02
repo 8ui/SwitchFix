@@ -81,6 +81,17 @@ struct ScreenSuffix {
         }
     }
 
+    /// A correction replaced the end of the text: when the suffix ends with what it deleted,
+    /// the screen now ends with the replacement; otherwise the screen is unknown.
+    mutating func replaced(_ deleted: String, with replacement: String) {
+        guard !text.isEmpty, text.hasSuffix(deleted) else {
+            unknownEdit()
+            return
+        }
+        text.removeLast(deleted.count)
+        typed(replacement)
+    }
+
     mutating func deleted() {
         if text.isEmpty {
             needsTyping = true
@@ -169,8 +180,23 @@ public struct InputStateMachine {
         screenSuffix.unknownEdit()
     }
 
+    /// A correction posted outside the event stream deleted `deleted` before the caret and
+    /// typed `replacement`, and nothing was processed since it was planned.
+    public mutating func correctionApplied(deleted: String, replacement: String) {
+        screenSuffix.replaced(deleted, with: replacement)
+    }
+
+    /// The text changed outside the event stream in a way the suffix cannot follow.
+    public mutating func screenChangedUnseen() {
+        screenSuffix.unknownEdit()
+    }
+
     public mutating func updatePreferences(_ preferences: InputPreferencesSnapshot) -> [InputStateCommand] {
         let wasEnabled = self.preferences.isEnabled
+        // A word flushed in another mode was never offered as the previous word of a pair.
+        if preferences.correctionMode != self.preferences.correctionMode {
+            wordFollowsFlush = false
+        }
         self.preferences = preferences
         guard wasEnabled && !preferences.isEnabled else { return [] }
         wordFollowsFlush = false

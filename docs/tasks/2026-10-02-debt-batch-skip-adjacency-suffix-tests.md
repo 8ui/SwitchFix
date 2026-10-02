@@ -1,0 +1,71 @@
+---
+id: 2026-10-02-debt-batch-skip-adjacency-suffix-tests
+title: "Debt batch: transparent token skip, adjacency on mode change, suffix after correction, revert and layout-switch tests"
+type: chore
+pipeline: minimal
+phase: review
+created: 2026-10-02
+updated: 2026-10-02
+blocked_by: null
+steps_done: 5
+steps_total: 6
+step_current: 6
+artifacts:
+  spec: null
+  plan: null
+  branch: null
+  pr: null
+---
+
+## Context
+
+Следующая пачка открытых долгов из соседних задач:
+1. digits-in-token-validation: нейтральный пропуск флага/индекса обнуляет consecutiveWrongCount/pendingSwitch — сделать прозрачным (только state=.buffering).
+2. merged-short-word: updatePreferences сбрасывает смежность только при выключении, не при смене режима.
+3. hotkey-converts-the-word-before-the-caret: применённая автокоррекция не обновляет ScreenSuffix — хоткей после неё не читает слово перед кареткой.
+4. debt-batch-rtp-l10n (прошлая пачка): путь teaches:false (хоткей отката без отмены → конвертация) с выученным правилом не проверен.
+5. correction-verifies-field-text: путь layoutSwitch со сверкой поля не покрыт тестом.
+Готово, когда: правки + тесты, CI зелёный на push-ране, долги в исходных задачах закрыты со ссылкой на эту.
+
+## Progress
+
+1. ✅ Прозрачный пропуск флага/индекса в детекторе
+2. ✅ Смежность сбрасывается при смене режима
+3. ✅ ScreenSuffix после применённой автокоррекции
+4. ✅ Тест: откат без отмены с выученным правилом (teaches:false)
+5. ✅ Тест: layoutSwitch со сверкой поля
+6. ▶ Ревью и CI
+
+## Log
+
+- 2026-10-02: triage — pipeline `minimal`, reason: пять независимых мелких долгов (1-2 файла каждый, в основном тесты), без новой архитектуры; ревью субагентом и CI
+- 2026-10-02: brainstorm: что — 5 долгов (см. Context); зачем — пользователь попросил закрыть следующую пачку долгов; готово — тесты + CI + закрытые долги
+- 2026-10-02: шаг 1 ✅ Прозрачный пропуск флага/индекса в детекторе — neutral-ветка оставляет только state=.buffering; тест yf / -r|w[1] / yf
+- 2026-10-02: шаг 2 ✅ Смежность сбрасывается при смене режима — updatePreferences снимает wordFollowsFlush при смене режима; тест
+- 2026-10-02: шаг 3 ✅ ScreenSuffix после применённой автокоррекции — ScreenSuffix.replaced + InputEngine.noteScreenCorrected; drainCorrection для теста
+- 2026-10-02: шаг 4 ✅ Тест: откат без отмены с выученным правилом (teaches:false) — тест: fallback отката не трогает выученное правило
+- 2026-10-02: шаг 5 ✅ Тест: layoutSwitch со сверкой поля — тест: mismatch, lag, unreadable, shadow в layoutSwitch
+- 2026-10-02: impl complete: 5 правок/тестов; Swift проверит CI
+
+## Decisions
+
+_Нетривиальные решения по ходу задачи. Одна строка на решение._
+
+## Debt
+
+_Отложенное, упрощения, известные пробелы. Формат — чекбоксы (их считают индекс и отчёты по долгам):_
+_- `- [ ] <что отложено> — <почему/контекст>` — открытый долг_
+_- `- [x] <что было> — закрыто YYYY-MM-DD: <причина/ссылка на task>` — закрытый_
+_Без `[ ]`/`[x]` пункт невидим для агрегатора и теряется через 2 недели._
+
+## Verification
+
+_Доказательства, а не утверждения. Заполняется `rtp verify <id> --run "<команда>"`: команда, exit code, хвост вывода._
+
+## Handoff
+
+_Передача контекста следующему агенту. Перезаписывается целиком через `rtp handoff <id>`._
+
+## Blockers
+
+_Текущие блокеры. Очистить, когда разрешены._

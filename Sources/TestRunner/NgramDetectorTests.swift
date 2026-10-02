@@ -197,6 +197,18 @@ func runNgramDetectorSuites() {
         let hotkey = ngramDetector(current: .english, allowed: [.english, .russian])
         hotkey.addCharacter("w[1]")
         assert(hotkey.flushBuffer(boundaryCharacter: nil) != nil, "the hotkey converts an index expression")
+
+        // Transparent: a flag or an index between two short words keeps the switch confirmation.
+        for neutral in ["-r", "w[1]"] {
+            let detector = ngramDetector(current: .english, allowed: [.english, .russian])
+            func flush(_ word: String) -> DetectionResult? {
+                detector.addCharacter(word)
+                return detector.flushBuffer(boundaryCharacter: " ")
+            }
+            assertEqual(flush("yf")?.shouldSwitchLayout, false, "the first short word waits for a confirmation")
+            assert(flush(neutral) == nil, "\(neutral) stays")
+            assertEqual(flush("yf")?.shouldSwitchLayout, true, "\(neutral) does not spend the confirmation")
+        }
     }
 
     runSuite("NgramDetector: a correction that never reached the field") {
