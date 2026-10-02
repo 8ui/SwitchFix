@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project
 
-SwitchFix is a macOS 13+ menu bar app (Swift Package, no Xcode project) that detects words typed in the wrong keyboard layout (English ↔ Ukrainian/Russian), deletes them, switches the input source and retypes the converted text. This repo is a fork of `rundax/SwitchFix` (`upstream` remote); fork-specific changes are described in the Russian section of README.md.
+SwitchFix is a macOS 13+ menu bar app (Swift Package, no Xcode project) that detects words typed in the wrong keyboard layout (English ↔ Ukrainian/Russian), deletes them, switches the input source and retypes the converted text. It is developed as an independent project; README.md (in Russian) is the user-facing description. The product name is still SwitchFix — a new name and brand are an open debt in `docs/tasks/2026-10-02-readme-rewrite-independent-project.md`.
 
 ## Commands
 
@@ -69,7 +69,6 @@ Module graph (Package.swift): `Utils` ← `Core` ← `UI` ← `SwitchFixApp`, an
   does not cancel it.
 - Cloud sessions cannot push tags: a release there = bump the version in `Resources/Info.plist` on master;
   the `v*` tag and the GitHub release are made locally.
-- Never push to `upstream` (`rundax/SwitchFix`).
 
 ## Debugging
 
@@ -83,5 +82,5 @@ Rebuilding with ad-hoc signing invalidates Accessibility/Input Monitoring grants
 
 ## Conventions
 
-- Commit messages use conventional prefixes with a scope (`feat(ui):`, `fix(focus):`, `ci:`, `docs(readme):`); fork docs/README text is in Russian, code and comments in English.
+- Commit messages use conventional prefixes with a scope (`feat(ui):`, `fix(focus):`, `ci:`, `docs(readme):`); docs/README text is in Russian, code and comments in English.
 - `plan/` holds design documents; `004_per_app_default_language.md` is not yet implemented; `005_ngram_layout_detection.md` (character n-gram detector, learning from reverts, Words tab, sensitivity slider) is implemented — see its §12 and `plan/benchmarks/`.
