@@ -3,13 +3,13 @@ id: 2026-10-02-debt-batch-rtp-l10n-terminals-tests
 title: "Debt batch: rtp verify hints, L10n script, terminals, flaky revert test, learning and adjacency tests"
 type: chore
 pipeline: minimal
-phase: review
+phase: done
 created: 2026-10-02
 updated: 2026-10-02
 blocked_by: null
-steps_done: 6
+steps_done: 7
 steps_total: 7
-step_current: 7
+step_current: null
 artifacts:
   spec: null
   plan: null
@@ -36,7 +36,7 @@ artifacts:
 4. ✅ Инжектируемый дедлайн сверки + тест отката
 5. ✅ Тест: отмена hotkey сохраняет правило с другой целью
 6. ✅ Тесты сброса смежности в InputStateMachine
-7. ▶ Ревью и CI
+7. ✅ Ревью и CI
 
 ## Log
 
@@ -51,6 +51,10 @@ artifacts:
 - 2026-10-02: impl complete: 6 правок, regress rtp 164/0; Swift проверит CI
 - 2026-10-02: verify: `sh .claude/skills/run-task-pipeline/scripts/regress.sh 2>&1 | tail -1` → exit 0 ✅
 - 2026-10-02: verify: `CI зелёный: https://github.com/8ui/SwitchFix/actions/runs/37026412225 (push 80f9efb; build, TestRunner, sweep, InputPipelineTestRunner, build-app)` → exit 0 ✅
+- 2026-10-02: verify: `код-ревью субагентом: блокеров и should-fix нет; нитпики (отдельный run, сообщения, guard в check-l10n.sh, комментарий shFlag) учтены в 6ed41c7` → exit 0 ✅
+- 2026-10-02: verify: `CI зелёный после правок ревью: https://github.com/8ui/SwitchFix/actions/runs/37027049646 (push 6ed41c7)` → exit 0 ✅
+- 2026-10-02: шаг 7 ✅ Ревью и CI — ревью учтено, CI зелёный
+- 2026-10-02: 6 долгов закрыто, CI 37027049646 зелёный; ветка claude/upbeat-fermi-bv13ag, PR не создавался
 
 ## Decisions
 
@@ -58,10 +62,8 @@ _Нетривиальные решения по ходу задачи. Одна 
 
 ## Debt
 
-_Отложенное, упрощения, известные пробелы. Формат — чекбоксы (их считают индекс и отчёты по долгам):_
-_- `- [ ] <что отложено> — <почему/контекст>` — открытый долг_
-_- `- [x] <что было> — закрыто YYYY-MM-DD: <причина/ссылка на task>` — закрытый_
-_Без `[ ]`/`[x]` пункт невидим для агрегатора и теряется через 2 недели._
+- [ ] bundle id Hyper/Tabby/Rio/Wave взяты по памяти, на Mac не сверены (NSRunningApplication.bundleIdentifier) — при ошибке терминал просто читается, как раньше
+- [ ] тест обучения покрывает чужую цель только через неустановленную раскладку; путь teaches:false (fallback-конвертация хоткея отката) с выученным правилом не проверен
 
 ## Verification
 
@@ -72,6 +74,18 @@ _Без `[ ]`/`[x]` пункт невидим для агрегатора и т�
   ```
 
 - 2026-10-02 · `CI зелёный: https://github.com/8ui/SwitchFix/actions/runs/37026412225 (push 80f9efb; build, TestRunner, sweep, InputPipelineTestRunner, build-app)` · exit 0 ✅
+
+  ```
+  (без вывода)
+  ```
+
+- 2026-10-02 · `код-ревью субагентом: блокеров и should-fix нет; нитпики (отдельный run, сообщения, guard в check-l10n.sh, комментарий shFlag) учтены в 6ed41c7` · exit 0 ✅
+
+  ```
+  (без вывода)
+  ```
+
+- 2026-10-02 · `CI зелёный после правок ревью: https://github.com/8ui/SwitchFix/actions/runs/37027049646 (push 6ed41c7)` · exit 0 ✅
 
   ```
   (без вывода)
