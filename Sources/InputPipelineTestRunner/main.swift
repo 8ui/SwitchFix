@@ -2089,6 +2089,77 @@ run("revert screen check: a hotkey correction (no boundary)") {
     check(harness.screen?.windows.last == "готово".utf16.count + 6, "reads the converted word only, got \(harness.screen?.windows ?? [])")
 }
 
+// MARK: - Key-down classification
+
+private let ctrl = CGEventFlags.maskControl
+private let defaultHotkeys = HotkeyConfiguration(hotkeyModifiers: CGEventFlags.maskControl.rawValue | CGEventFlags.maskShift.rawValue)
+
+private func keyDown(
+    _ keyCode: UInt16,
+    _ flags: CGEventFlags = [],
+    hotkeys: HotkeyConfiguration = defaultHotkeys,
+    shortcuts: Set<InputSourceShortcut> = KeyboardMonitor.defaultInputSourceShortcuts
+) -> CapturedInput.Kind? {
+    KeyboardMonitor.classifyKeyDown(keyCode: keyCode, flags: flags, hotkeys: hotkeys, inputSourceShortcuts: shortcuts)
+}
+
+run("key-down classification: input-source shortcuts act like the Globe key") {
+    check(keyDown(179) == .inputSourceKey, "Globe switches the input source")
+    check(keyDown(179, shortcuts: []) == .inputSourceKey, "Globe does not depend on the shortcuts")
+    check(keyDown(49, ctrl) == .inputSourceKey, "Ctrl+Space is the default previous-source shortcut")
+    check(keyDown(49, [ctrl, .maskAlternate]) == .inputSourceKey, "Ctrl+Option+Space is the default next-source shortcut")
+    check(keyDown(49, ctrl, shortcuts: []) == .navigation, "without the shortcut Ctrl+Space is a plain shortcut")
+    check(keyDown(49, [ctrl, .maskAlphaShift]) == .inputSourceKey, "Caps Lock does not change the match")
+    check(keyDown(49, [ctrl, .maskSecondaryFn]) == .inputSourceKey, "Fn does not change the match")
+    check(keyDown(49, [ctrl, .maskShift]) == .hotkey, "SwitchFix's default hotkey Ctrl+Shift+Space wins")
+    let otherHotkey = HotkeyConfiguration(hotkeyKeyCode: 2, hotkeyModifiers: ctrl.rawValue)
+    check(keyDown(49, [ctrl, .maskShift], hotkeys: otherHotkey) == .navigation, "Ctrl+Shift+Space is no input-source shortcut")
+    let ctrlSpaceHotkey = HotkeyConfiguration(hotkeyModifiers: ctrl.rawValue)
+    check(keyDown(49, ctrl, hotkeys: ctrlSpaceHotkey) == .hotkey, "a SwitchFix hotkey on Ctrl+Space keeps working")
+    check(keyDown(49, .maskCommand) == .navigation, "Cmd+Space (Spotlight) is a shortcut")
+    check(keyDown(49, [ctrl, .maskCommand]) == .navigation, "Ctrl+Cmd+Space (Character Viewer) is a shortcut")
+    let onF5: Set<InputSourceShortcut> = [InputSourceShortcut(keyCode: 96, modifiers: 0)]
+    check(keyDown(96, shortcuts: onF5) == .inputSourceKey, "a shortcut on a function key wins over the F-key rule")
+    check(keyDown(96) == .navigation, "a function key is navigation")
+}
+
+run("key-down classification: other keys as before") {
+    check(keyDown(49) == .boundary(" "), "Space")
+    check(keyDown(36) == .boundary("\n") && keyDown(76) == .boundary("\n"), "Return and keypad Enter")
+    check(keyDown(51) == .delete, "Delete")
+    check(keyDown(48) == .focusMayChange && keyDown(53) == .focusMayChange, "Tab and Esc")
+    check(keyDown(6, .maskCommand) == .undo, "Cmd+Z")
+    check(keyDown(6, [.maskCommand, .maskShift]) == .navigation, "Cmd+Shift+Z is not undo")
+    check(keyDown(9, .maskCommand) == .navigation && keyDown(8, ctrl) == .navigation, "Cmd+V, Ctrl+C")
+    check(keyDown(123) == .navigation && keyDown(117) == .navigation, "arrows and forward delete")
+    check(keyDown(0) == nil && keyDown(0, .maskShift) == nil, "a letter key types text")
+}
+
+run("input-source shortcuts from com.apple.symbolichotkeys") {
+    let defaults = KeyboardMonitor.defaultInputSourceShortcuts
+    let ctrlSpace = InputSourceShortcut(keyCode: 49, modifiers: ctrl.rawValue)
+    let ctrlOptionSpace = InputSourceShortcut(keyCode: 49, modifiers: ctrl.rawValue | CGEventFlags.maskAlternate.rawValue)
+    func parsed(_ hotKeys: [String: Any]?, sources: Int = 2) -> Set<InputSourceShortcut> {
+        KeyboardMonitor.inputSourceShortcuts(from: hotKeys, selectableSourceCount: sources)
+    }
+    func entry(_ enabled: Any, _ parameters: [Any]) -> [String: Any] {
+        ["enabled": enabled, "value": ["parameters": parameters, "type": "standard"]]
+    }
+    check(defaults == [ctrlSpace, ctrlOptionSpace], "the macOS defaults")
+    check(parsed(nil) == defaults, "a missing domain means the defaults")
+    check(parsed([:]) == defaults, "missing entries mean the defaults")
+    check(parsed(nil, sources: 1).isEmpty, "with one input source nothing switches")
+    check(parsed(["60": entry(0, [32, 49, 262144])]) == [ctrlOptionSpace], "a disabled entry (integer) is off")
+    check(parsed(["60": entry(false, [32, 49, 262144])]) == [ctrlOptionSpace], "a disabled entry (bool) is off")
+    check(parsed(["60": entry(true, [32, 49, 1048576])]) == [InputSourceShortcut(keyCode: 49, modifiers: CGEventFlags.maskCommand.rawValue), ctrlOptionSpace], "a remapped entry")
+    check(parsed(["61": entry(1, [65535, 96, 0])]) == [ctrlSpace, InputSourceShortcut(keyCode: 96, modifiers: 0)], "a function key without modifiers")
+    check(parsed(["60": entry(1, [65535, 65535, 0])]) == [ctrlOptionSpace], "a cleared shortcut is none")
+    check(parsed(["60": entry(1, [32, 49, 0x840000])]) == [ctrlSpace, ctrlOptionSpace], "Fn and other bits are dropped")
+    check(parsed(["60": entry("yes", [32, 49, 1048576])]) == defaults, "a malformed enabled value means the default")
+    check(parsed(["60": ["enabled": 1]]) == defaults, "a missing value means the default")
+    check(parsed(["60": entry(1, ["a", "b", "c"])]) == defaults, "non-numeric parameters mean the default")
+}
+
 if CommandLine.arguments.contains("--integration-smoke") {
     runIntegrationSmoke()
 }

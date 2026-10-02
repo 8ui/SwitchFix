@@ -3,13 +3,13 @@ id: 2026-10-02-layout-switch-shortcuts-not-navigation
 title: Ctrl-Space and other layout-switch shortcuts are classified as navigation
 type: bug
 pipeline: no-spec
-phase: plan-review
+phase: impl
 created: 2026-10-02
 updated: 2026-10-02
 blocked_by: null
-steps_done: 0
-steps_total: 0
-step_current: null
+steps_done: 2
+steps_total: 4
+step_current: 3
 artifacts:
   spec: null
   plan: docs/plans/layout-switch-shortcuts-not-navigation-plan.md
@@ -24,7 +24,10 @@ artifacts:
 
 ## Progress
 
-_Шаги не заданы. `rtp steps <id> --set "…"` или `--from-plan <файл>`._
+1. ✅ classifyKeyDown — чистая функция + тесты
+2. ✅ Чтение symbolichotkeys 60/61 + тесты парсера
+3. ▶ Ручная проверка на Mac (пользователь): ⌃Space, удержание ⌃, стрелка+⌃Space
+4. ⬜ Ревью и CI
 
 ## Log
 
@@ -32,6 +35,9 @@ _Шаги не заданы. `rtp steps <id> --set "…"` или `--from-plan <�
 - 2026-10-02: brainstorm: пользователь одобрил чтение symbolichotkeys 60/61 → .inputSourceKey и вынос ветки keyDown в чистую функцию
 - 2026-10-02: artifacts.plan = docs/plans/layout-switch-shortcuts-not-navigation-plan.md
 - 2026-10-02: plan drafted
+- 2026-10-02: plan-review: блокер — нужна ручная проверка на Mac (шаг 3, пользователь); should-fix S1–S6 в rev.2
+- 2026-10-02: шаг 1 ✅ classifyKeyDown — чистая функция + тесты — classifyKeyDown + тесты
+- 2026-10-02: шаг 2 ✅ Чтение symbolichotkeys 60/61 + тесты парсера — inputSourceShortcuts(from:selectableSourceCount:) + CFPreferences + тесты
 
 ## Decisions
 
@@ -39,10 +45,8 @@ _Нетривиальные решения по ходу задачи. Одна 
 
 ## Debt
 
-_Отложенное, упрощения, известные пробелы. Формат — чекбоксы (их считают индекс и отчёты по долгам):_
-_- `- [ ] <что отложено> — <почему/контекст>` — открытый долг_
-_- `- [x] <что было> — закрыто YYYY-MM-DD: <причина/ссылка на task>` — закрытый_
-_Без `[ ]`/`[x]` пункт невидим для агрегатора и теряется через 2 недели._
+- [ ] повторное нажатие ⌃⌥Space (перебор 3+ источников) или автоповтор теряет слово, как и Globe — безопасно (текст не меняется)
+- [ ] Caps Lock как переключатель раскладки (настройка macOS, flagsChanged) и сторонние переключатели (Karabiner, Punto) не распознаются
 
 ## Verification
 

@@ -5,6 +5,18 @@ import Foundation
 import os
 import Utils
 
+/// A key with modifiers that switches the input source (System Settings → Keyboard Shortcuts).
+public struct InputSourceShortcut: Hashable, Sendable {
+    public let keyCode: UInt16
+    /// The Cmd/Ctrl/Option/Shift subset of `CGEventFlags` (other bits are dropped).
+    public let modifiers: UInt64
+
+    public init(keyCode: UInt16, modifiers: UInt64) {
+        self.keyCode = keyCode
+        self.modifiers = modifiers & KeyboardMonitor.shortcutModifierMask.rawValue
+    }
+}
+
 public final class KeyboardMonitor {
     public var onInput: ((CapturedInput) -> Void)?
 
@@ -34,6 +46,10 @@ public final class KeyboardMonitor {
     private let captureState: CaptureStateStore
     private let lifecycle = OSAllocatedUnfairLock(initialState: TapLifecycle())
     private let translations = OSAllocatedUnfairLock(initialState: [TranslationKey: String]())
+    /// System shortcuts that switch the input source, refreshed with the translation table.
+    private let systemInputSourceShortcuts = OSAllocatedUnfairLock(
+        initialState: KeyboardMonitor.defaultInputSourceShortcuts
+    )
     private var diagnosticRing = [EventMetadata?](repeating: nil, count: 256)
     private var diagnosticRingIndex = 0
     // Tap-callback-thread confined: tracks caps lock toggle state for edge detection.
@@ -224,6 +240,7 @@ public final class KeyboardMonitor {
         }
         let preparedTable = table
         translations.withLock { $0 = preparedTable }
+        refreshInputSourceShortcuts()
     }
 
     public func stop() {
@@ -359,7 +376,7 @@ public final class KeyboardMonitor {
 
         if type == .flagsChanged {
             guard keyCode == KeyboardMonitor.capsLockKeyCode,
-                  isMatchingHotkey(
+                  Self.isMatchingHotkey(
                     keyCode: keyCode,
                     flags: flags,
                     configuredKeyCode: hotkeys.revertHotkeyKeyCode,
@@ -378,50 +395,13 @@ public final class KeyboardMonitor {
 
         guard type == .keyDown else { return nil }
 
-        if isMatchingHotkey(
+        if let kind = Self.classifyKeyDown(
             keyCode: keyCode,
             flags: flags,
-            configuredKeyCode: hotkeys.hotkeyKeyCode,
-            configuredModifiers: hotkeys.hotkeyModifiers
+            hotkeys: hotkeys,
+            inputSourceShortcuts: systemInputSourceShortcuts.withLock { $0 }
         ) {
-            return .hotkey
-        }
-        if isMatchingHotkey(
-            keyCode: keyCode,
-            flags: flags,
-            configuredKeyCode: hotkeys.revertHotkeyKeyCode,
-            configuredModifiers: hotkeys.revertHotkeyModifiers
-        ) {
-            return .revertHotkey
-        }
-
-        if keyCode == KeyboardMonitor.zKeyCode,
-           flags.contains(.maskCommand),
-           flags.intersection([.maskControl, .maskAlternate, .maskShift]).isEmpty {
-            return .undo
-        }
-
-        if !flags.intersection([.maskCommand, .maskControl, .maskAlternate]).isEmpty ||
-            KeyboardMonitor.functionKeyCodes.contains(keyCode) {
-            return .navigation
-        }
-        if KeyboardMonitor.navigationKeyCodes.contains(keyCode) {
-            return .navigation
-        }
-        if keyCode == KeyboardMonitor.globeKeyCode {
-            return .inputSourceKey
-        }
-        if keyCode == KeyboardMonitor.tabKeyCode || keyCode == KeyboardMonitor.escapeKeyCode {
-            return .focusMayChange
-        }
-        if keyCode == KeyboardMonitor.spaceKeyCode {
-            return .boundary(" ")
-        }
-        if keyCode == KeyboardMonitor.returnKeyCode || keyCode == KeyboardMonitor.keypadEnterKeyCode {
-            return .boundary("\n")
-        }
-        if keyCode == KeyboardMonitor.deleteKeyCode {
-            return .delete
+            return kind
         }
 
         let prefersTranslation = lifecycle.withLock { $0.prefersLayoutTranslation }
@@ -446,15 +426,149 @@ public final class KeyboardMonitor {
         return .character(text)
     }
 
-    private func isMatchingHotkey(
+    /// The Cmd/Ctrl/Option/Shift subset of the flags that hotkeys and shortcuts compare.
+    static let shortcutModifierMask: CGEventFlags = [.maskCommand, .maskControl, .maskAlternate, .maskShift]
+
+    private static func isMatchingHotkey(
         keyCode: UInt16,
         flags: CGEventFlags,
         configuredKeyCode: UInt16,
         configuredModifiers: UInt64
     ) -> Bool {
         guard keyCode == configuredKeyCode else { return false }
-        let relevantMask: CGEventFlags = [.maskCommand, .maskControl, .maskAlternate, .maskShift]
-        return flags.intersection(relevantMask) == CGEventFlags(rawValue: configuredModifiers).intersection(relevantMask)
+        return flags.intersection(shortcutModifierMask)
+            == CGEventFlags(rawValue: configuredModifiers).intersection(shortcutModifierMask)
+    }
+
+    /// The capture kind of a key-down, or nil for a key that types text (resolved from the
+    /// event by the caller). Pure: the hotkeys and the system input-source shortcuts are passed in.
+    public static func classifyKeyDown(
+        keyCode: UInt16,
+        flags: CGEventFlags,
+        hotkeys: HotkeyConfiguration,
+        inputSourceShortcuts: Set<InputSourceShortcut>
+    ) -> CapturedInput.Kind? {
+        if isMatchingHotkey(
+            keyCode: keyCode,
+            flags: flags,
+            configuredKeyCode: hotkeys.hotkeyKeyCode,
+            configuredModifiers: hotkeys.hotkeyModifiers
+        ) {
+            return .hotkey
+        }
+        if isMatchingHotkey(
+            keyCode: keyCode,
+            flags: flags,
+            configuredKeyCode: hotkeys.revertHotkeyKeyCode,
+            configuredModifiers: hotkeys.revertHotkeyModifiers
+        ) {
+            return .revertHotkey
+        }
+
+        if keyCode == zKeyCode,
+           flags.contains(.maskCommand),
+           flags.intersection([.maskControl, .maskAlternate, .maskShift]).isEmpty {
+            return .undo
+        }
+
+        // A system shortcut that switches the input source (Ctrl+Space by default) acts like
+        // the Globe key: layout-switch mode keeps the word typed before it.
+        let shortcut = InputSourceShortcut(keyCode: keyCode, modifiers: flags.rawValue)
+        if inputSourceShortcuts.contains(shortcut) {
+            return .inputSourceKey
+        }
+
+        if !flags.intersection([.maskCommand, .maskControl, .maskAlternate]).isEmpty ||
+            functionKeyCodes.contains(keyCode) {
+            return .navigation
+        }
+        if navigationKeyCodes.contains(keyCode) {
+            return .navigation
+        }
+        if keyCode == globeKeyCode {
+            return .inputSourceKey
+        }
+        if keyCode == tabKeyCode || keyCode == escapeKeyCode {
+            return .focusMayChange
+        }
+        if keyCode == spaceKeyCode {
+            return .boundary(" ")
+        }
+        if keyCode == returnKeyCode || keyCode == keypadEnterKeyCode {
+            return .boundary("\n")
+        }
+        if keyCode == deleteKeyCode {
+            return .delete
+        }
+        return nil
+    }
+
+    // MARK: - System input-source shortcuts
+
+    /// macOS defaults for "Select the previous input source" (Ctrl+Space) and "Select next
+    /// source in Input menu" (Ctrl+Option+Space).
+    public static let defaultInputSourceShortcuts: Set<InputSourceShortcut> = [
+        InputSourceShortcut(keyCode: spaceKeyCode, modifiers: CGEventFlags.maskControl.rawValue),
+        InputSourceShortcut(
+            keyCode: spaceKeyCode,
+            modifiers: CGEventFlags.maskControl.rawValue | CGEventFlags.maskAlternate.rawValue
+        ),
+    ]
+
+    /// `AppleSymbolicHotKeys` ids of the input-source shortcuts.
+    private static let inputSourceShortcutIDs = ["60", "61"]
+
+    /// The enabled input-source shortcuts in `symbolicHotKeys` (`AppleSymbolicHotKeys` of
+    /// `com.apple.symbolichotkeys`; nil: the domain is missing). An absent or malformed entry
+    /// means the macOS default; with fewer than two selectable input sources nothing switches,
+    /// so the keys stay ordinary shortcuts (IDE autocomplete).
+    public static func inputSourceShortcuts(
+        from symbolicHotKeys: [String: Any]?,
+        selectableSourceCount: Int
+    ) -> Set<InputSourceShortcut> {
+        guard selectableSourceCount >= 2 else { return [] }
+        let defaults = Array(defaultInputSourceShortcuts.sorted { $0.modifiers < $1.modifiers })
+        var result = Set<InputSourceShortcut>()
+        for (offset, id) in inputSourceShortcutIDs.enumerated() {
+            let fallback = defaults[offset]
+            guard let entry = symbolicHotKeys?[id] as? [String: Any],
+                  let enabled = (entry["enabled"] as? NSNumber)?.boolValue else {
+                result.insert(fallback)
+                continue
+            }
+            guard enabled else { continue }
+            guard let value = entry["value"] as? [String: Any],
+                  let parameters = value["parameters"] as? [NSNumber],
+                  parameters.count >= 3 else {
+                result.insert(fallback)
+                continue
+            }
+            // A cleared shortcut is stored as (65535, 65535, 0).
+            guard let keyCode = UInt16(exactly: parameters[1].intValue), keyCode != UInt16.max else { continue }
+            result.insert(InputSourceShortcut(keyCode: keyCode, modifiers: parameters[2].uint64Value))
+        }
+        return result
+    }
+
+    /// Re-reads the input-source shortcuts (on main, never inside the tap callback).
+    private func refreshInputSourceShortcuts() {
+        let domain = "com.apple.symbolichotkeys" as CFString
+        // Another process (System Settings) writes this domain: drop the cached copy.
+        CFPreferencesAppSynchronize(domain)
+        let symbolicHotKeys = CFPreferencesCopyAppValue("AppleSymbolicHotKeys" as CFString, domain) as? [String: Any]
+        let filter = [
+            kTISPropertyInputSourceCategory as String: kTISCategoryKeyboardInputSource as String,
+            kTISPropertyInputSourceIsSelectCapable as String: true,
+        ] as CFDictionary
+        let selectable = (TISCreateInputSourceList(filter, false)?.takeRetainedValue() as? [TISInputSource])?.count ?? 0
+        let shortcuts = Self.inputSourceShortcuts(from: symbolicHotKeys, selectableSourceCount: selectable)
+        let changed = systemInputSourceShortcuts.withLock { current -> Bool in
+            defer { current = shortcuts }
+            return current != shortcuts
+        }
+        if changed {
+            SwitchFixLog.monitor.notice("input-source shortcuts: \(shortcuts.count) (selectable sources: \(selectable))")
+        }
     }
 
     /// The text a key typed: the event's own text, or the current layout's (`translated`).

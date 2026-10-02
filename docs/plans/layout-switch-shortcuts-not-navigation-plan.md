@@ -91,3 +91,29 @@ extension KeyboardMonitor {
 - [ ] Close the debts in `2026-09-30-layout-switch-mode-loses-the-word-when-switching-with-the`
   (Ctrl-Space) and the "classify is private and untested" one; record new debts (Caps Lock switch).
 - [ ] Reviewer subagent, CI evidence.
+
+---
+
+## Rev. 2 — plan-review findings (override the tasks above where they differ)
+
+- **Manual check on a Mac (B1, cannot run in the cloud):** with "При смене раскладки" mode and
+  `log stream`, a quick ⌃Space / ⌃⌥Space must log `inputSourceKey` then `layout changed` (note the delay);
+  ⌃Space with ⌃ held ~1 s (the HUD may commit on release — beyond the 500 ms word lifetime the word is lost;
+  then refresh the word's uptime on the modifier release, separate task); arrow + ⌃Space → no correction.
+  Recorded as a task step for the user; the code change is safe either way (the word is only set aside).
+- **Parsing (S1):** `enabled` via `(entry["enabled"] as? NSNumber)?.boolValue` (Bool and Int both work, a
+  string is malformed → default); `parameters as? [NSNumber]`, keyCode `UInt16(exactly:)`, 65535 → no
+  shortcut; modifiers `& 0x1E0000` (drops Fn 0x800000 and others).
+- **Fresh read (S2):** `CFPreferencesAppSynchronize` + `CFPreferencesCopyAppValue("AppleSymbolicHotKeys",
+  "com.apple.symbolichotkeys")` on every refresh; staleness bound = until the next app activation or
+  input-source change. Read only in the refresh, never inside the tap callback (both run on main; the
+  callback is listen-only, so a few ms of cfprefsd per refresh do not delay input) (S5).
+- **One input source (S3):** fewer than 2 select-capable keyboard input sources → empty set (⌃Space stays
+  navigation for IDE autocomplete). The pure parser takes `selectableSourceCount`.
+- **Repeated press (S4):** cycling with ⌃⌥Space twice loses the word (as with Globe) — safe, recorded as debt.
+- **Tests (S6):** Ctrl+Shift+Space with the default SwitchFix hotkey → `.hotkey`; ⌃Space with Caps Lock or Fn
+  flags → `.inputSourceKey`; ⌃⇧Space without a SwitchFix hotkey on it → `.navigation`; a shortcut on an
+  F-key with no modifiers → `.inputSourceKey` (rule before the F-key rule); Ctrl+Cmd+Space → `.navigation`.
+  `classify` still turns "nil from `classifyKeyDown` and no typed text" into `.navigation`.
+- **Naming (N1, N2):** the instance lock is `systemInputSourceShortcuts`; `isMatchingHotkey` becomes a
+  static helper with the four-bit mask, shared by hotkeys and shortcuts.
