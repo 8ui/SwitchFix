@@ -28,6 +28,18 @@ jobs:
       - name: Show Swift version
         run: swift --version
 
+      # ci.yml runs only on claude/** branches, so a release must not rely on it.
+      - name: L10n has no duplicate keys
+        run: |
+          dups=$(grep -oE '^ *"([^"\\]|\\.)*":( |$)' Sources/UI/L10n.swift | sed -E 's/^ *//; s/ $//' | sort | uniq -d)
+          if [ -n "$dups" ]; then echo "Duplicate L10n keys:"; echo "$dups"; exit 1; fi
+
+      - name: TestRunner
+        run: swift run -c release TestRunner
+
+      - name: InputPipelineTestRunner
+        run: swift run -c release InputPipelineTestRunner
+
       - name: Determine architecture label
         run: |
           ARCH="$(uname -m)"
