@@ -17,59 +17,69 @@
    новый epoch события (`updateContext`), потом разрешение фокуса (`resolveFocus` →
    `engine.updateContext`). Каждая смена контекста делает `screenSuffix.unknownEdit()`.
 
-## Решение
+## Решение (после plan-review)
 
 ### Классификация (Core/CapturedInput, Core/KeyboardMonitor)
 
 Новый `CapturedInput.Kind.caretMove(byClick: Bool)` — «каретку поставили, текст не менялся»:
 
-- левый клик мышью → `.caretMove(byClick: true)`; правый/средний — `.focusMayChange` (контекстное
-  меню может вставить текст);
-- клавиши каретки (стрелки 123–126, Home 115, End 119, PgUp 116, PgDn 121; не forward delete 117)
-  → `.caretMove(byClick: false)`, если модификаторы (Cmd/Ctrl/Opt) пусты, либо Cmd или Opt (без Ctrl)
-  со стрелкой влево/вправо. Shift допустим везде (выделение — хоткей прочтёт выделение).
-  Opt/Cmd+↑↓ (VS Code переносит строку), Ctrl+что угодно, функциональные клавиши — `.navigation`.
-- Хоткей и системные сочетания проверяются раньше, как сейчас.
-
-`.caretMove` везде, где `.navigation`/`.focusMayChange`: `invalidatesFocus`, `isPhysicalEdit`
-(CapturedInput), `invalidatesCaptureContext`, `recordsUserEdit` (InputEngine) — epoch, staleness
-и отмена ожидающих коррекций не меняются.
+- левый клик без Cmd/Ctrl/Opt/Shift и с `mouseEventClickState <= 1` → `.caretMove(byClick: true)`;
+  правый/средний, клик с модификаторами (мультикурсор VS Code, Ctrl-клик = меню, Shift-клик =
+  выделение), двойной/тройной клик — `.focusMayChange`, как раньше;
+- ←/→/Home/End без Cmd/Ctrl/Opt/Shift, а также Cmd или Opt (без Ctrl/Shift) с ←/→ →
+  `.caretMove(byClick: false)`. ↑/↓/PgUp/PgDn (комбобоксы, омнибокс, история шелла подставляют
+  текст), Shift+что угодно, Ctrl+что угодно, forward delete, функциональные клавиши — `.navigation`.
+  Флаги сравниваются только по маске Cmd/Ctrl/Opt/Shift (стрелки несут NumericPad/SecondaryFn).
+- `.caretMove` везде рядом с `.navigation`/`.focusMayChange`: `invalidatesFocus`, `isPhysicalEdit`
+  (CapturedInput), `invalidatesCaptureContext`, `recordsUserEdit` (InputEngine), `consume`.
 
 ### Автомат (Core/InputStateMachine)
 
-- `.caretMove`: `invalidate(untilBoundary: false)`; `skipsAutomaticFlushUntilBoundary = true`,
-  только если `!byClick` (клик по-прежнему не мешает автокоррекции следующего слова);
-  `screenSuffix.caretPlaced()` — `text = ""`, `needsTyping = false`: экран не правился невидимо,
-  верификация — пустая строка.
-- `.navigation` и `.focusMayChange` — как сейчас (`unknownEdit`).
-- `updateContext`: суффикс сохраняется, если новый контекст отличается от текущего только
-  `secureFocus` (тот же epoch, PID, appAllowed, layout, inputSourceID) и он `.notSecure` — это
-  разрешение фокуса того же epoch. Любая другая смена (новый epoch от Secure Input/рестарта тапа,
-  смена приложения/раскладки) — `unknownEdit`. Буфер сбрасывается, как и раньше.
+- `.caretMove`: `invalidate(untilBoundary: false)`; `skipsAutomaticFlushUntilBoundary = true` только
+  для `!byClick`; `screenSuffix.caretPlaced()` (`text = ""`, `needsTyping = false`). В `process()`
+  `updateContext(input.context)` идёт до `consume`, поэтому `unknownEdit` → `caretPlaced` — порядок верный.
+- `updateContext` не меняется (любая смена — `unknownEdit`). Два явных входа:
+  - `focusResolved(context)` — `AppDelegate.publishFocusResolution`: суффикс сохраняется, если тот же
+    epoch/PID/appAllowed/layout/inputSourceID и новый `secureFocus == .notSecure`;
+  - `focusMoved(context)` — фокус AX сменился (`onFocusInvalidated` координатора, клик в другое поле):
+    суффикс сохраняется, только если он «каретка поставлена» (ничего не было после `caretMove`) и
+    PID/appAllowed/layout/inputSourceID те же. Secure Input и рестарт тапа идут прежним
+    `updateContext` (клавиши могли потеряться).
+  Буфер в обоих сбрасывается, как сейчас.
 
-### Отставание AX (Core/InputEngine)
+### Защита от отставания AX и терминалы (Core/InputEngine, AppDelegate)
 
-Пустой суффикс ничего не доказывает об актуальности AX (Chromium может ещё показывать старую
-каретку). Когда `screenSuffix == ""`, ответ `.caret` подтверждается вторым чтением через
-`caretConfirmDelay` (0.1 с) на `selectionQueue`; слово берётся, только если оба ответа равны
-(`CaretContext: Equatable`). Проверка staleness (sequence, editGeneration, correctionEpoch, context)
-— после второго ответа, как сейчас после первого. Выделение второго чтения не требует.
+Пустой суффикс (`screenSuffix == ""`) — экран не подтверждён набором, поэтому:
+
+1. Читать только при `screenCheckMode == .enforce` и наличии `screenTextRequest`, и только если
+   `readsScreenAfterCaretMove(pid)` (AppDelegate: не терминал из `fieldTextHidingBundleIdentifiers`
+   — там каретка AX не курсор шелла, а ↑/→ подставляют историю/подсказку).
+2. Первое чтение — не раньше `caretSettleNanoseconds` (200 мс) после последнего `caretMove`
+   (uptime фиксируется в `process`); ожидание через `selectionQueue.asyncAfter`, staleness после
+   ответа проверяется как сейчас.
+3. Слово идёт в коррекцию с `screenVerified: false` — перед удалением независимая сверка поля
+   (`verifyScreen`): выделение (`.selection`) и другое слово отменяют.
+
+Остаточный риск: AX, отстающий дольше 200 мс + время сверки, на одинаково старой каретке. Описать в долге.
 
 ## Тесты (InputPipelineTestRunner)
 
-- `classifyKeyDown`: стрелки/Home/End/PgUp/PgDn → `.caretMove(byClick: false)`; Shift+стрелка,
-  Cmd+←, Opt+→ → caretMove; Opt+↑, Cmd+↓, Ctrl+←, forward delete, Cmd+V, Opt+Backspace → `.navigation`.
-- Автомат: `.caretMove` → суффикс `""`; после него Backspace → nil; `.navigation` → nil;
-  `updateContext` с тем же epoch и `.notSecure` сохраняет суффикс, с новым epoch — нет; стрелка
-  ставит skip, клик — нет.
-- Пайплайн: клик → resolveFocus → хоткей конвертирует слово перед кареткой (2 текстовых запроса);
-  стрелка — так же; ответы двух чтений различаются → ничего; Tab/Esc (`.focusMayChange`) и Cmd+V
-  (`.navigation`) → экран не читается; Secure Input (новый epoch через `invalidateFocus`) после
+- `classifyKeyDown`: ←/→/Home/End, Cmd+←, Opt+→ → caretMove; ↑, PgDn, Shift+←, Opt+↑, Ctrl+←,
+  forward delete, Cmd+V, Opt+Backspace → `.navigation` (обновить утверждение `keyDown(123) == .navigation`).
+- Автомат: caretMove → `""`; Backspace после него → nil; `.navigation`/`.focusMayChange` → nil;
+  `focusResolved` сохраняет, `updateContext` с новым epoch — нет; `focusMoved` сохраняет только
+  «каретку поставлена»; стрелка ставит skip, клик — нет.
+- Пайплайн (с ScreenStub, enforce): клик → focusResolved → хоткей конвертирует; стрелка — так же;
+  клик → focusMoved → focusResolved → конвертирует; сверка видит другое слово/выделение → ничего;
+  `shadow`/без screenTextRequest → экран не читается; терминал (`readsScreenAfterCaretMove` false)
+  → не читается; Tab/Esc/Cmd+V → не читается; Secure Input (`updateContext` новый epoch) после
   клика → не читается; откат Caps Lock после клика экран не читает.
 
 ## Шаги
 
-### Step 1 Классификация caretMove (Core) + тесты classifyKeyDown
-### Step 2 ScreenSuffix.caretPlaced и updateContext в автомате + тесты
-### Step 3 Подтверждающее чтение AX в InputEngine + тесты пайплайна
+Шаги 1–3 — один коммит (без промежуточного состояния без защиты от отставания).
+
+### Step 1 Kind.caretMove + классификация + автомат (все exhaustive switch) + тесты
+### Step 2 InputEngine: focusResolved/focusMoved, задержка, enforce-сверка, терминалы; AppDelegate
+### Step 3 Тесты пайплайна
 ### Step 4 CI, ревью, документация (CLAUDE.md, долг исходной задачи)

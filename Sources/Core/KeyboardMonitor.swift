@@ -77,6 +77,14 @@ public final class KeyboardMonitor {
         105, 107, 113, 106, 64, 79, 80,
     ])
 
+    private static let leftArrowKeyCode: UInt16 = 123
+    private static let rightArrowKeyCode: UInt16 = 124
+
+    /// Left/Right/Home/End: keys that only move the caret in a text field. Up/Down and
+    /// Page Up/Down are left out: in a combobox, an address bar or a shell they put a
+    /// suggestion or a history entry into the field.
+    private static let caretKeyCodes: Set<UInt16> = [leftArrowKeyCode, rightArrowKeyCode, 115, 119]
+
     /// Arrows, Home/End, Page Up/Down and forward delete: keys that move the caret or edit
     /// around it. `InputStateMachine` uses them to tell caret moves from other shortcuts.
     static let navigationKeyCodes: Set<UInt16> = Set([
@@ -371,7 +379,11 @@ public final class KeyboardMonitor {
         }
 
         if type == .leftMouseDown || type == .rightMouseDown || type == .otherMouseDown {
-            return .focusMayChange
+            return Self.classifyMouseDown(
+                isLeftButton: type == .leftMouseDown,
+                flags: flags,
+                clickState: event.getIntegerValueField(.mouseEventClickState)
+            )
         }
 
         if type == .flagsChanged {
@@ -440,6 +452,29 @@ public final class KeyboardMonitor {
             == CGEventFlags(rawValue: configuredModifiers).intersection(shortcutModifierMask)
     }
 
+    /// A plain single left click only places the caret. Other buttons open menus that may
+    /// insert text; with modifiers a click adds a cursor (VS Code), opens the context menu
+    /// (Control) or extends the selection (Shift); a double or triple click selects.
+    public static func classifyMouseDown(isLeftButton: Bool, flags: CGEventFlags, clickState: Int64) -> CapturedInput.Kind {
+        guard isLeftButton,
+              flags.intersection(shortcutModifierMask).isEmpty,
+              clickState <= 1 else {
+            return .focusMayChange
+        }
+        return .caretMove(byClick: true)
+    }
+
+    /// Whether a key-down only moves the caret, leaving the text alone: Left/Right/Home/End
+    /// without modifiers, or Left/Right with Cmd or Option alone (line and word jumps).
+    /// Shift selects and Control belongs to system and app shortcuts; both stay navigation.
+    static func isCaretMove(keyCode: UInt16, flags: CGEventFlags) -> Bool {
+        guard caretKeyCodes.contains(keyCode) else { return false }
+        let modifiers = flags.intersection(shortcutModifierMask)
+        if modifiers.isEmpty { return true }
+        return (keyCode == leftArrowKeyCode || keyCode == rightArrowKeyCode)
+            && (modifiers == .maskCommand || modifiers == .maskAlternate)
+    }
+
     /// The capture kind of a key-down, or nil for a key that types text (resolved from the
     /// event by the caller). Pure: the hotkeys and the system input-source shortcuts are passed in.
     public static func classifyKeyDown(
@@ -478,6 +513,9 @@ public final class KeyboardMonitor {
             return .inputSourceKey
         }
 
+        if isCaretMove(keyCode: keyCode, flags: flags) {
+            return .caretMove(byClick: false)
+        }
         if !flags.intersection([.maskCommand, .maskControl, .maskAlternate]).isEmpty ||
             functionKeyCodes.contains(keyCode) {
             return .navigation

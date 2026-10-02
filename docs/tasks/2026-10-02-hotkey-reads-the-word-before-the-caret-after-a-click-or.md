@@ -3,13 +3,13 @@ id: 2026-10-02-hotkey-reads-the-word-before-the-caret-after-a-click-or
 title: Hotkey reads the word before the caret after a click or arrow key
 type: feature
 pipeline: no-spec
-phase: plan-review
+phase: impl
 created: 2026-10-02
 updated: 2026-10-02
 blocked_by: null
-steps_done: 0
-steps_total: 0
-step_current: null
+steps_done: 3
+steps_total: 4
+step_current: 4
 artifacts:
   spec: null
   plan: docs/plans/hotkey-after-click-plan.md
@@ -23,7 +23,10 @@ _2-5 строк: что делаем и зачем. Задача этой сек
 
 ## Progress
 
-_Шаги не заданы. `rtp steps <id> --set "…"` или `--from-plan <файл>`._
+1. ✅ Kind.caretMove + классификация + автомат (все exhaustive switch) + тесты
+2. ✅ InputEngine: focusResolved/focusMoved, задержка, enforce-сверка, терминалы; AppDelegate
+3. ✅ Тесты пайплайна
+4. ▶ CI, ревью, документация (CLAUDE.md, долг исходной задачи)
 
 ## Log
 
@@ -31,6 +34,11 @@ _Шаги не заданы. `rtp steps <id> --set "…"` или `--from-plan <�
 - 2026-10-02: brainstorm: пользователь отдал выбор долга; выбран «хоткей после клика/стрелки»; критерий — тесты пайплайна + CI
 - 2026-10-02: artifacts.plan = docs/plans/hotkey-after-click-plan.md
 - 2026-10-02: plan drafted
+- 2026-10-02: plan-review (Plan, opus): 3 blocker (терминалы, равные устаревшие чтения AX, Shift+стрелка) + should-fix учтены: сверка поля перед удалением вместо двойного чтения, пауза 200 мс от caretMove, только enforce, без Shift/↑↓/PgUp/PgDn/кликов с модификаторами, явные focusResolved/focusMoved
+- 2026-10-02: шаг 1 ✅ Kind.caretMove + классификация + автомат (все exhaustive switch) + тесты — Kind.caretMove, classifyMouseDown/isCaretMove, focusResolved/focusMoved
+- 2026-10-02: шаг 2 ✅ InputEngine: focusResolved/focusMoved, задержка, enforce-сверка, терминалы; AppDelegate — задержка 200 мс, enforce-сверка с requiresScreenMatch, терминалы через readsScreenAfterCaretMove
+- 2026-10-02: шаг 3 ✅ Тесты пайплайна — тесты классификации, автомата, пайплайна
+- 2026-10-02: шаг 4 ▶ CI, ревью, документация (CLAUDE.md, долг исходной задачи)
 
 ## Decisions
 

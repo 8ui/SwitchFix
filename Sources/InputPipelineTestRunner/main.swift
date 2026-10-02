@@ -1189,7 +1189,8 @@ private struct LearningHarness {
         revertReturnsNothing: Bool = false,
         layout: Layout = .english,
         screen: ScreenStub? = nil,
-        screenCheckMode: ScreenCheckMode = .enforce
+        screenCheckMode: ScreenCheckMode = .enforce,
+        readsScreenAfterCaretMove: Bool = true
     ) {
         self.screen = screen
         let current = context(layout: layout, sourceID: "com.test.\(layout.rawValue)")
@@ -1218,6 +1219,7 @@ private struct LearningHarness {
                 { _, _, window, completion in screen.answer(window: window, completion) }
             },
             screenCheckMode: screenCheckMode,
+            readsScreenAfterCaretMove: { _ in readsScreenAfterCaretMove },
             lexicon: lexicon,
             revertEmission: { revert in reverted.append(revert.recorded); return true }
         )
@@ -1245,8 +1247,25 @@ private struct LearningHarness {
         _ = drained.wait(timeout: .now() + 1)
         let current = store.snapshot().context
         if let resolved = store.resolveFocus(.notSecure, frontmostPID: current.frontmostPID, epoch: current.epoch) {
-            engine.updateContext(resolved)
+            engine.focusResolved(resolved)
         }
+    }
+
+    /// The focused element changes (a click into another field), as the coordinator's
+    /// focus-changed notification publishes it.
+    func moveFocus() {
+        let drained = DispatchSemaphore(value: 0)
+        engine.drain { drained.signal() }
+        _ = drained.wait(timeout: .now() + 1)
+        engine.focusMoved(store.invalidateFocus())
+    }
+
+    /// Secure Input toggled or the tap restarted: key presses may have been lost.
+    func loseFocusAndKeys() {
+        let drained = DispatchSemaphore(value: 0)
+        engine.drain { drained.signal() }
+        _ = drained.wait(timeout: .now() + 1)
+        engine.updateContext(store.invalidateFocus())
     }
 
     /// Cmd+A (navigation), then Backspace into unknown text: the buffer is invalid until a space.
@@ -1301,6 +1320,176 @@ run("state machine: screen suffix for the hotkey") {
     _ = send(.undo)
     type("x")
     check(hotkeySuffix() == .some("x"), "typing after an unseen change makes the suffix usable again")
+}
+
+run("state machine: a placed caret keeps the screen readable") {
+    var current = context(epoch: 1)
+    var machine = automaticMachine(current)
+    var sequence: UInt64 = 0
+    func send(_ kind: CapturedInput.Kind) {
+        sequence += 1
+        _ = machine.consume(input(sequence: sequence, kind: kind, context: current))
+    }
+    func type(_ text: String) { for character in text { send(.character(String(character))) } }
+    func hotkeySuffix() -> String?? {
+        sequence += 1
+        guard case .requestManualCorrection(_, let suffix, _, _) =
+                machine.consume(input(sequence: sequence, kind: .hotkey, context: current)).first else { return .none }
+        return .some(suffix)
+    }
+    /// A caret move in a new epoch with focus unknown, as `InputEngine.process` applies it.
+    func moveCaret(byClick: Bool) {
+        current = context(epoch: current.epoch + 1, focus: .unknown)
+        _ = machine.updateContext(current)
+        send(.caretMove(byClick: byClick))
+    }
+    func resolve(_ focus: SecureFocusState = .notSecure) {
+        current = context(epoch: current.epoch, pid: current.frontmostPID, focus: focus)
+        _ = machine.focusResolved(current)
+    }
+
+    moveCaret(byClick: true)
+    check(!machine.skipsAutomaticFlushUntilBoundary, "a click does not hold back the next word")
+    resolve()
+    check(hotkeySuffix() == .some(""), "a click only placed the caret")
+    moveCaret(byClick: false)
+    check(machine.skipsAutomaticFlushUntilBoundary, "an arrow may land inside a word")
+    resolve()
+    check(hotkeySuffix() == .some(""), "an arrow only moved the caret")
+
+    moveCaret(byClick: true)
+    resolve()
+    send(.delete)
+    check(hotkeySuffix() == .some(nil), "Backspace after a caret move deletes text SwitchFix did not see")
+    moveCaret(byClick: true)
+    resolve()
+    send(.navigation)
+    check(hotkeySuffix() == .some(nil), "a shortcut after a caret move may edit unseen")
+    moveCaret(byClick: true)
+    resolve()
+    send(.focusMayChange)
+    check(hotkeySuffix() == .some(nil), "Tab or Esc after a caret move may edit unseen")
+    moveCaret(byClick: true)
+    resolve()
+    type("ab")
+    check(hotkeySuffix() == .some("ab"), "typing after a caret move is the suffix")
+
+    moveCaret(byClick: true)
+    resolve(.unknown)
+    resolve()
+    check(hotkeySuffix() == .some(""), "an unresolved focus that resolves later keeps the placed caret")
+    moveCaret(byClick: true)
+    current = context(epoch: current.epoch + 1, focus: .unknown)
+    _ = machine.updateContext(current)
+    resolve()
+    check(hotkeySuffix() == .some(nil), "a new epoch without a focus move (Secure Input, tap restart) forgets it")
+    moveCaret(byClick: true)
+    resolve(.secure)
+    resolve()
+    check(hotkeySuffix() == .some(nil), "a secure field in between forgets it")
+
+    moveCaret(byClick: true)
+    current = context(epoch: current.epoch + 1, focus: .unknown)
+    _ = machine.focusMoved(current)
+    resolve()
+    check(hotkeySuffix() == .some(""), "a click into another field keeps the placed caret")
+    moveCaret(byClick: true)
+    resolve()
+    type("a")
+    current = context(epoch: current.epoch + 1, focus: .unknown)
+    _ = machine.focusMoved(current)
+    resolve()
+    check(hotkeySuffix() == .some(nil), "after typing, a focus move leaves the typed text behind")
+    moveCaret(byClick: true)
+    current = context(epoch: current.epoch + 1, pid: 200, focus: .unknown)
+    _ = machine.focusMoved(current)
+    resolve()
+    check(hotkeySuffix() == .some(nil), "another app is not the same field")
+}
+
+/// A click (or `caretKind`) with nothing typed, focus resolves, then the hotkey; the caret
+/// reads "старое ujnjdj" and the field check answers `screen`.
+private func hotkeyAfterCaretMove(
+    _ screen: [FieldTextProbe]? = [.text(before: "старое ujnjdj")],
+    caretKind: CapturedInput.Kind = .caretMove(byClick: true),
+    mode: ScreenCheckMode = .enforce,
+    readsScreenAfterCaretMove: Bool = true,
+    between: (inout LearningHarness) -> Void = { _ in }
+) -> LearningHarness {
+    var harness = LearningHarness(
+        screen: screen.map { ScreenStub(replies: $0) },
+        screenCheckMode: mode,
+        readsScreenAfterCaretMove: readsScreenAfterCaretMove
+    )
+    harness.caret.reply = .caret(textBefore: "старое ujnjdj", startsAtTextStart: false, next: " ")
+    harness.send(caretKind)
+    between(&harness)
+    harness.resolveFocus()
+    harness.send(.hotkey)
+    return harness
+}
+
+run("hotkey after a click or an arrow converts the word before the caret") {
+    let started = Date()
+    let clicked = hotkeyAfterCaretMove()
+    check(waitUntil { clicked.emitted.count == 1 }, "the word before a clicked caret is converted")
+    check(Date().timeIntervalSince(started) >= 0.19, "after the caret settles")
+    check(clicked.emitted.last?.originalText == "ujnjdj", "got \(clicked.emitted.last?.originalText ?? "nil")")
+    check(clicked.emitted.last?.correctedText == "готово", "got \(clicked.emitted.last?.correctedText ?? "nil")")
+    check(clicked.emitted.last?.provenance == .hotkey, "a screen word is not a forced lesson")
+    check(clicked.screen?.queries == 1, "the field is checked again before deleting, got \(clicked.screen?.queries ?? -1)")
+    check(!waitUntil(0.2) { !clicked.lexicon.entries.isEmpty }, "the lexicon stays empty")
+
+    let arrow = hotkeyAfterCaretMove(caretKind: .caretMove(byClick: false))
+    check(waitUntil { arrow.emitted.count == 1 }, "the word before the caret after an arrow is converted")
+
+    let otherField = hotkeyAfterCaretMove { harness in harness.moveFocus() }
+    check(waitUntil { otherField.emitted.count == 1 }, "a click into another field converts there too")
+}
+
+run("hotkey after a caret move cancels what the field check does not confirm") {
+    let replyCases: [(String, [FieldTextProbe])] = [
+        ("another word", [.text(before: "старое ujnjdjx")]),
+        ("a selection", [.selection(length: 3)]),
+        ("an unreadable field", [.unavailable(transient: false)]),
+    ]
+    for (label, replies) in replyCases {
+        let harness = hotkeyAfterCaretMove(replies)
+        check(!waitUntil(0.5) { harness.emitted.count > 0 }, "\(label) at the second read cancels")
+        check(harness.caret.textQueries == 1, "\(label): the caret was read")
+    }
+}
+
+run("hotkey after a caret move does not read the screen without a way to check it") {
+    let cases: [(String, LearningHarness)] = [
+        ("shadow mode", hotkeyAfterCaretMove(mode: .shadow)),
+        ("no field check", hotkeyAfterCaretMove(nil)),
+        ("a terminal", hotkeyAfterCaretMove(readsScreenAfterCaretMove: false)),
+        ("Backspace after the click", hotkeyAfterCaretMove { harness in harness.send(.delete) }),
+        ("Cmd+V after the click", hotkeyAfterCaretMove { harness in harness.send(.navigation) }),
+        ("lost keys after the click", hotkeyAfterCaretMove { harness in harness.loseFocusAndKeys() }),
+        ("Tab instead of a click", hotkeyAfterCaretMove(caretKind: .focusMayChange)),
+    ]
+    for (label, harness) in cases {
+        check(!waitUntil(0.4) { harness.emitted.count > 0 }, "\(label): nothing is converted")
+        check(harness.caret.textQueries == 0, "\(label): the text around the caret is not read")
+    }
+}
+
+run("hotkey after a caret move: typing while it waits cancels it") {
+    var harness = hotkeyAfterCaretMove()
+    harness.type("x", boundary: nil)
+    check(!waitUntil(0.5) { harness.emitted.count > 0 }, "a key pressed before the read makes it stale")
+}
+
+run("revert hotkey after a click does not read the screen") {
+    var harness = LearningHarness(revertReturnsNothing: true, screen: ScreenStub(.text(before: "Hello")))
+    harness.caret.reply = .caret(textBefore: "Hello", startsAtTextStart: true, next: nil)
+    harness.send(.caretMove(byClick: true))
+    harness.resolveFocus()
+    harness.send(.revertHotkey)
+    check(!waitUntil(0.4) { harness.emitted.count > 0 }, "Caps Lock must not convert the word before the caret")
+    check(harness.caret.textQueries == 0, "Caps Lock must not even read the text around the caret")
 }
 
 run("hotkey converts the word before the caret after Cmd+A, Backspace") {
@@ -2177,8 +2366,40 @@ run("key-down classification: other keys as before") {
     check(keyDown(6, .maskCommand) == .undo, "Cmd+Z")
     check(keyDown(6, [.maskCommand, .maskShift]) == .navigation, "Cmd+Shift+Z is not undo")
     check(keyDown(9, .maskCommand) == .navigation && keyDown(8, ctrl) == .navigation, "Cmd+V, Ctrl+C")
-    check(keyDown(123) == .navigation && keyDown(117) == .navigation, "arrows and forward delete")
+    check(keyDown(123) == .caretMove(byClick: false) && keyDown(117) == .navigation, "an arrow moves the caret, forward delete edits")
     check(keyDown(0) == nil && keyDown(0, .maskShift) == nil, "a letter key types text")
+}
+
+run("key-down classification: caret moves and unseen edits") {
+    let caret = CapturedInput.Kind.caretMove(byClick: false)
+    for keyCode: UInt16 in [123, 124, 115, 119] {
+        check(keyDown(keyCode) == caret, "key \(keyCode) only moves the caret")
+    }
+    check(keyDown(123, [.maskSecondaryFn, .maskNumericPad]) == caret, "the flags arrows carry are no modifiers")
+    check(keyDown(123, .maskCommand) == caret && keyDown(124, .maskAlternate) == caret, "Cmd+Left, Option+Right jump")
+    for keyCode: UInt16 in [125, 126, 116, 121] {
+        check(keyDown(keyCode) == .navigation, "key \(keyCode) may put a suggestion or history entry in the field")
+    }
+    check(keyDown(123, .maskShift) == .navigation, "Shift+Left selects")
+    check(keyDown(126, .maskAlternate) == .navigation, "Option+Up moves a line in VS Code")
+    check(keyDown(123, ctrl) == .navigation, "Ctrl+Left switches spaces")
+    check(keyDown(124, [.maskCommand, .maskAlternate]) == .navigation, "Cmd+Option+Right is an app shortcut")
+    check(keyDown(115, .maskCommand) == .navigation, "Cmd+Home is not a plain caret move")
+    check(keyDown(51, .maskAlternate) == .navigation, "Option+Backspace deletes a word")
+    check(keyDown(7, .maskCommand) == .navigation && keyDown(9, .maskCommand) == .navigation, "Cmd+X, Cmd+V")
+}
+
+run("mouse-down classification") {
+    func click(_ flags: CGEventFlags = [], left: Bool = true, clicks: Int64 = 1) -> CapturedInput.Kind {
+        KeyboardMonitor.classifyMouseDown(isLeftButton: left, flags: flags, clickState: clicks)
+    }
+    check(click() == .caretMove(byClick: true), "a plain left click places the caret")
+    check(click(.maskAlphaShift) == .caretMove(byClick: true), "Caps Lock is no modifier")
+    check(click(left: false) == .focusMayChange, "a right or middle click may open a menu that inserts text")
+    for flags in [CGEventFlags.maskCommand, .maskAlternate, .maskControl, .maskShift] {
+        check(click(flags) == .focusMayChange, "a modified click (\(flags.rawValue)) adds a cursor, opens a menu or selects")
+    }
+    check(click(clicks: 2) == .focusMayChange && click(clicks: 3) == .focusMayChange, "double and triple clicks select")
 }
 
 run("input-source shortcuts from com.apple.symbolichotkeys") {
