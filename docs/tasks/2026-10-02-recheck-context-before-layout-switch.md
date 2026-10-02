@@ -3,13 +3,13 @@ id: 2026-10-02-recheck-context-before-layout-switch
 title: Layout switch after a correction runs on main without rechecking the context
 type: bug
 pipeline: minimal
-phase: triage
+phase: impl
 created: 2026-10-02
 updated: 2026-10-02
 blocked_by: null
-steps_done: 0
-steps_total: 0
-step_current: null
+steps_done: 2
+steps_total: 3
+step_current: 3
 artifacts:
   spec: null
   plan: null
@@ -24,15 +24,20 @@ artifacts:
 
 ## Progress
 
-_Шаги не заданы. `rtp steps <id> --set "…"` или `--from-plan <файл>`._
+1. ✅ Чистый предикат + перепроверка на main в apply/postUndo
+2. ✅ Проверка frontmost в selection-пути
+3. ▶ Тесты предиката, CI и ревью
 
 ## Log
 
 - 2026-10-02: triage — pipeline `minimal`, reason: TextCorrector: apply/undo/selection — перепроверка isEligible и frontmost PID на main перед switchTo (upstream 0fe6b7d); один файл + тест
+- 2026-10-02: brainstorm: пользователь одобрил перепроверку на main (isEligible по свежему снимку + frontmost PID) и чистый предикат для тестов
+- 2026-10-02: шаг 1 ✅ Чистый предикат + перепроверка на main в apply/postUndo — mayFinishLayoutSwitch + finishLayoutSwitch на main
+- 2026-10-02: шаг 2 ✅ Проверка frontmost в selection-пути — frontmost перед вставкой и перед switch после вставки
 
 ## Decisions
 
-_Нетривиальные решения по ходу задачи. Одна строка на решение._
+- На main проверяется контекст (pid, эпоха фокуса, appAllowed, secure) и frontmost, но не sequence/editGeneration: набор после коррекции не должен отменять переключение — следующие клавиши уже в новой раскладке; upstream isPlanCurrent здесь был бы регрессом для быстрого набора
 
 ## Debt
 

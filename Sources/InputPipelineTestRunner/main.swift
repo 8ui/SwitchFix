@@ -2025,6 +2025,34 @@ run("revert: a prepared revert is claimed once and restored when not posted") {
     check(corrector.canUndo, "discarding an older revert keeps a newer correction")
 }
 
+run("layout switch after a correction: rechecked on main") {
+    let store = CaptureStateStore(context: context(), hotkeys: HotkeyConfiguration(hotkeyModifiers: 0))
+    let start = store.snapshot()
+    let plan = CorrectionPlan(
+        boundarySequence: start.latestPhysicalSequence, contextEpoch: start.context.epoch,
+        targetPID: start.context.frontmostPID, editGeneration: start.editGeneration,
+        correctionEpoch: start.correctionEpoch, deleteCount: 7, replacementText: "привет ",
+        originalText: "ghbdtn", correctedText: "привет", boundaryText: " ",
+        originalLayout: .english, targetLayout: .russian
+    )
+    let pid = plan.targetPID
+    check(TextCorrector.mayFinishLayoutSwitch(for: plan, latest: store.snapshot(), frontmostPID: pid), "nothing changed: switch")
+    check(!TextCorrector.mayFinishLayoutSwitch(for: plan, latest: store.snapshot(), frontmostPID: pid + 1), "another app in front: no switch")
+    check(!TextCorrector.mayFinishLayoutSwitch(for: plan, latest: store.snapshot(), frontmostPID: nil), "no app in front: no switch")
+    _ = store.capture(
+        timestamp: 1, kind: .character("g"), keyCode: 0, flagsRawValue: 0,
+        isAutorepeat: false, sourcePID: 1, sourceUserData: 0
+    )
+    check(TextCorrector.mayFinishLayoutSwitch(for: plan, latest: store.snapshot(), frontmostPID: pid), "typing on does not cancel the switch")
+    _ = store.capture(
+        timestamp: 2, kind: .focusMayChange, keyCode: 0, flagsRawValue: 0,
+        isAutorepeat: false, sourcePID: 1, sourceUserData: 0
+    )
+    check(!TextCorrector.mayFinishLayoutSwitch(for: plan, latest: store.snapshot(), frontmostPID: pid), "a click (new focus epoch): no switch")
+    let otherApp = CaptureStateStore(context: context(pid: pid + 1), hotkeys: HotkeyConfiguration(hotkeyModifiers: 0))
+    check(!TextCorrector.mayFinishLayoutSwitch(for: plan, latest: otherApp.snapshot(), frontmostPID: pid), "the capture state already moved to another app")
+}
+
 run("revert screen check: a hotkey correction (no boundary)") {
     var harness = LearningHarness(screen: ScreenStub(.text(before: "ujnjdj"), .text(before: "готово")))
     harness.type("ujnjdj", boundary: nil)

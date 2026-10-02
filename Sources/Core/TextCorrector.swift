@@ -171,6 +171,38 @@ public final class TextCorrector {
             latest.correctionAllowed
     }
 
+    /// Whether a layout switch queued on the main thread after `plan` reached the app may
+    /// still run: the focus and app it was made for are unchanged and that app is still in
+    /// front (`frontmostPID`, read on main). Typing after the correction does not cancel it:
+    /// the next keys belong to the new layout.
+    public static func mayFinishLayoutSwitch(
+        for plan: CorrectionPlan,
+        latest: CaptureStateSnapshot,
+        frontmostPID: pid_t?
+    ) -> Bool {
+        frontmostPID == plan.targetPID &&
+            latest.context.frontmostPID == plan.targetPID &&
+            latest.context.epoch == plan.contextEpoch &&
+            latest.context.appAllowed &&
+            latest.context.secureFocus == .notSecure
+    }
+
+    /// Runs on the main thread (TIS APIs are main-thread-only).
+    private func finishLayoutSwitch(
+        to layout: Layout,
+        after plan: CorrectionPlan,
+        latestCaptureState: @escaping () -> CaptureStateSnapshot
+    ) {
+        DispatchQueue.main.async { [inputSourceManager, logger] in
+            let frontmostPID = NSWorkspace.shared.frontmostApplication?.processIdentifier
+            guard Self.mayFinishLayoutSwitch(for: plan, latest: latestCaptureState(), frontmostPID: frontmostPID) else {
+                logger.notice("layout switch skipped: focus or app changed since the correction pid=\(plan.targetPID, privacy: .public) frontmost=\(frontmostPID ?? -1, privacy: .public)")
+                return
+            }
+            inputSourceManager.switchTo(layout)
+        }
+    }
+
     public static func eventDescriptors(for plan: CorrectionPlan) -> [CorrectionEventDescriptor] {
         guard plan.deleteCount >= 0, plan.deleteCount <= 128, !plan.replacementText.isEmpty else {
             return []
@@ -198,7 +230,7 @@ public final class TextCorrector {
     @discardableResult
     public func apply(
         _ plan: CorrectionPlan,
-        latestCaptureState: () -> CaptureStateSnapshot
+        latestCaptureState: @escaping () -> CaptureStateSnapshot
     ) -> Bool {
         guard plan.originalText.count <= 64,
               plan.deleteCount <= 128,
@@ -212,10 +244,7 @@ public final class TextCorrector {
         recordUndo(plan)
         if let layout = plan.targetLayout,
            plan.isEligible(using: latestCaptureState()) {
-            // TIS APIs are main-thread-only; apply() runs on the correction queue.
-            DispatchQueue.main.async { [inputSourceManager] in
-                inputSourceManager.switchTo(layout)
-            }
+            finishLayoutSwitch(to: layout, after: plan, latestCaptureState: latestCaptureState)
         }
         logger.notice(
             "correction APPLIED \(SwitchFixLog.text(plan.correctedText), privacy: .public) <- \(SwitchFixLog.text(plan.originalText), privacy: .public) deletes=\(plan.deleteCount) pid=\(plan.targetPID) layoutSwitch=\(plan.targetLayout?.rawValue ?? "none")"
@@ -364,7 +393,7 @@ public final class TextCorrector {
     @discardableResult
     public func postUndo(
         _ revert: RevertPlan,
-        latestCaptureState: () -> CaptureStateSnapshot
+        latestCaptureState: @escaping () -> CaptureStateSnapshot
     ) -> Bool {
         let inverse = revert.inverse
         guard let events = makeCorrectionEvents(plan: inverse),
@@ -377,11 +406,7 @@ public final class TextCorrector {
             "revert APPLIED \(SwitchFixLog.text(inverse.correctedText), privacy: .public) <- \(SwitchFixLog.text(inverse.originalText), privacy: .public) deletes=\(inverse.deleteCount) pid=\(inverse.targetPID)"
         )
         if inverse.isEligible(using: latestCaptureState()) {
-            let undoLayout = revert.recorded.originalLayout
-            // TIS APIs are main-thread-only; postUndo() runs on the correction queue.
-            DispatchQueue.main.async { [inputSourceManager] in
-                inputSourceManager.switchTo(undoLayout)
-            }
+            finishLayoutSwitch(to: revert.recorded.originalLayout, after: inverse, latestCaptureState: latestCaptureState)
         }
         return true
     }
@@ -408,7 +433,10 @@ public final class TextCorrector {
                   latest.context.frontmostPID == context.frontmostPID,
                   latest.context.secureFocus == .notSecure,
                   latest.context.appAllowed,
-                  latest.correctionAllowed else {
+                  latest.correctionAllowed,
+                  // Cmd+V goes to the process, but the pasteboard trick must not run for an
+                  // app that is no longer in front (the capture state learns of it later).
+                  NSWorkspace.shared.frontmostApplication?.processIdentifier == context.frontmostPID else {
                 logger.debug("selection correction skipped: state changed before paste")
                 return
             }
@@ -438,7 +466,8 @@ public final class TextCorrector {
                afterPaste.editGeneration == editGeneration,
                afterPaste.correctionEpoch == correctionEpoch,
                afterPaste.correctionAllowed,
-               afterPaste.context == context {
+               afterPaste.context == context,
+               NSWorkspace.shared.frontmostApplication?.processIdentifier == context.frontmostPID {
                 self.inputSourceManager.switchTo(targetLayout)
             }
 
