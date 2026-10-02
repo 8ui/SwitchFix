@@ -175,7 +175,7 @@ run("flush marks a word typed right after the previous flush") {
 /// Feeds a state machine between two words; `sequence` is the event's sequence number.
 private typealias Between = (inout InputStateMachine, _ sequence: UInt64) -> Void
 
-run("flush adjacency: any other event between the words breaks it") {
+run("flush adjacency: any other event between the words ends it") {
     let current = context()
     /// Flushes "ab ", runs `between`, types "cd " in `next`; whether that flush continues "ab"
     /// (nil: the second word was not flushed at all).
@@ -212,7 +212,7 @@ run("flush adjacency: any other event between the words breaks it") {
     ]
     for (name, between, expected) in cases {
         let continues = adjacency(typingIn: current, between)
-        check(continues == expected, "\(name) breaks adjacency: expected \(String(describing: expected)), got \(String(describing: continues))")
+        check(continues == expected, "after \(name) the next flush continues: expected \(String(describing: expected)), got \(String(describing: continues))")
     }
     let other = context(epoch: 2)
     let afterContextChange = adjacency(typingIn: other) { machine, _ in _ = machine.updateContext(other) }
@@ -1808,7 +1808,9 @@ run("learning: reverting a hotkey correction made by a learned rule forgets the 
     manual.send(.revertHotkey)
     check(waitUntil { manual.reverted.count == 1 }, "reverted")
     check(!waitUntil(0.3) { manual.lexicon.rule(for: "rehk", sourceLayout: .english) != .alwaysCorrect(to: .russian) }, "a manual rule stays")
+}
 
+run("learning: reverting a hotkey correction keeps a learned rule to another target") {
     // A learned rule to a layout that is not installed is skipped: the model converts the word
     // to Russian. Reverting that correction rejects the model's choice, not the rule.
     var other = LearningHarness()

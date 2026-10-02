@@ -793,8 +793,8 @@ export function shQuote(s) {
   return `'${String(s).replace(/'/g, `'\\''`)}'`;
 }
 
-// `--flag 'value'` for a printed hint; a value starting with `-` uses the `=` form,
-// which parseArgs() reads as a value instead of the next flag.
+// `--flag 'value'` for a printed hint. parseArgs() reads a following `--…` as the
+// next flag; a value starting with `-` uses the `=` form to stay clear of that.
 export function shFlag(flag, value) {
   return String(value).startsWith('-') ? `--${flag}=${shQuote(value)}` : `--${flag} ${shQuote(value)}`;
 }
