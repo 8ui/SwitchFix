@@ -3,17 +3,17 @@ id: 2026-10-02-debt-batch-skip-adjacency-suffix-tests
 title: "Debt batch: transparent token skip, adjacency on mode change, suffix after correction, revert and layout-switch tests"
 type: chore
 pipeline: minimal
-phase: review
+phase: done
 created: 2026-10-02
 updated: 2026-10-02
 blocked_by: null
-steps_done: 5
+steps_done: 6
 steps_total: 6
-step_current: 6
+step_current: null
 artifacts:
   spec: null
   plan: null
-  branch: null
+  branch: claude/elegant-lovelace-qzt32s
   pr: null
 ---
 
@@ -34,7 +34,7 @@ artifacts:
 3. ✅ ScreenSuffix после применённой автокоррекции
 4. ✅ Тест: откат без отмены с выученным правилом (teaches:false)
 5. ✅ Тест: layoutSwitch со сверкой поля
-6. ▶ Ревью и CI
+6. ✅ Ревью и CI
 
 ## Log
 
@@ -48,6 +48,10 @@ artifacts:
 - 2026-10-02: impl complete: 5 правок/тестов; Swift проверит CI
 - 2026-10-02: verify: `CI зелёный: https://github.com/8ui/SwitchFix/actions/runs/37065371507 (push a17f87d; build, TestRunner, sweep, InputPipelineTestRunner, build-app)` → exit 0 ✅
 - 2026-10-02: verify: `код-ревью субагентом: блокеров нет; should-fix (своё переключение раскладки после коррекции стирало суффикс через updateContext) исправлен — generatedLayoutSwitched; нитпики (serial у прозрачного пропуска, doc drainCorrection) учтены` → exit 0 ✅
+- 2026-10-02: verify: `CI зелёный после правок ревью: https://github.com/8ui/SwitchFix/actions/runs/37065872250 (push 93df46a)` → exit 0 ✅
+- 2026-10-02: шаг 6 ✅ Ревью и CI — ревью учтено, CI зелёный
+- 2026-10-02: artifacts.branch = claude/elegant-lovelace-qzt32s
+- 2026-10-02: 5 долгов закрыто, CI 37065872250 зелёный; ветка claude/elegant-lovelace-qzt32s, PR не создавался
 
 ## Decisions
 
@@ -67,6 +71,12 @@ _Нетривиальные решения по ходу задачи. Одна 
   ```
 
 - 2026-10-02 · `код-ревью субагентом: блокеров нет; should-fix (своё переключение раскладки после коррекции стирало суффикс через updateContext) исправлен — generatedLayoutSwitched; нитпики (serial у прозрачного пропуска, doc drainCorrection) учтены` · exit 0 ✅
+
+  ```
+  (без вывода)
+  ```
+
+- 2026-10-02 · `CI зелёный после правок ревью: https://github.com/8ui/SwitchFix/actions/runs/37065872250 (push 93df46a)` · exit 0 ✅
 
   ```
   (без вывода)
