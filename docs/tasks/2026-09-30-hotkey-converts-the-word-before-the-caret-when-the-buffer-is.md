@@ -5,7 +5,7 @@ type: feature
 pipeline: minimal
 phase: done
 created: 2026-09-30
-updated: 2026-09-30
+updated: 2026-10-02
 blocked_by: null
 steps_done: 6
 steps_total: 6
@@ -63,7 +63,7 @@ _Нетривиальные решения по ходу задачи. Одна 
 
 ## Debt
 
-- [ ] Хоткей после клика/стрелки без набора не читает экран: фокус заменяет контекст, а Cmd+V/Cmd+X/Opt+Backspace/Opt-буквы/forward delete классифицируются как navigation — нужно разделить «каретка поставлена» и «невидимая правка» в KeyboardMonitor.classify, тогда разрешить пустой суффикс после клика/стрелок
+- [x] Хоткей после клика/стрелки без набора не читает экран: фокус заменяет контекст, а Cmd+V/Cmd+X/Opt+Backspace/Opt-буквы/forward delete классифицируются как navigation — нужно разделить «каретка поставлена» и «невидимая правка» в KeyboardMonitor.classify, тогда разрешить пустой суффикс после клика/стрелок — закрыто 2026-10-02: 2026-10-02-hotkey-reads-the-word-before-the-caret-after-a-click-or
 - [ ] Автоматическая коррекция не сбрасывает ScreenSuffix (экран меняется вне потока событий): хоткей после неё просто не сработает (не портит текст) — ревью nit
 - [ ] Chromium/Electron не проверены вживую (первый хоткей в Chrome может прийти до построения AX-дерева); install.sh ждёт ответ на read при открытом stdin — запускать с < /dev/null
 
