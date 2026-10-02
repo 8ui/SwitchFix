@@ -43,6 +43,7 @@ _2-5 строк: что делаем и зачем. Задача этой сек
 - 2026-10-02: шаг 4 ✅ CI, ревью, документация (CLAUDE.md, долг исходной задачи) — CI зелёный d72a853; ревью кода учтено (mouse-up)
 - 2026-10-02: impl + ревью кода (opus): should-fix (клик на mouse-down) исправлен в d72a853; CI зелёный. Не done: ветка не влита (PR не просили), нужна проверка на Mac (TextEdit, Chrome/Electron)
 - 2026-10-02: artifacts.branch = claude/nice-allen-fv07al; artifacts.pr = https://github.com/8ui/SwitchFix/pull/14
+- 2026-10-02: verify: `ручная проверка на Mac (сборка d72a853, тестовое приложение + TextEdit, реальные клики/клавиши CGEvent, log stream): хоткей после клика/стрелки` → exit 0 ✅
 
 ## Decisions
 
@@ -61,6 +62,19 @@ _Нетривиальные решения по ходу задачи. Одна 
 
   ```
   Build and test (macos-15) success: build, TestRunner, threshold sweep, InputPipelineTestRunner, build-app.sh
+  ```
+
+- 2026-10-02 · `ручная проверка на Mac (сборка d72a853, тестовое приложение + TextEdit, реальные клики/клавиши CGEvent, log stream): хоткей после клика/стрелки` · exit 0 ✅
+
+  ```
+  до PR: клик после слова + Option → ничего
+  клик в конец слова: caretMove(byClick: true) → caretWordLen=6 → test привет
+  клик в середину: ghbdtn| test → привет test; Option+→: caretMove(byClick: false) → привет test
+  хоткей через 133 мс после клика: поле прочитано через ~206 мс после клика (пауза 200 мс соблюдена) → привет
+  TextEdit: клик после ghbdtn + Option → test привет vbh
+  Cmd+V + хоткей → без изменений; клик в Терминале → caretWordLen=-1, без изменений
+  Chrome/Electron не проверены (браузеры недоступны агенту для ввода) — за пользователем
+  TestRunner 632/0, InputPipelineTestRunner 1299/0 локально
   ```
 
 ## Handoff
