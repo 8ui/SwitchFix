@@ -14,7 +14,7 @@ artifacts:
   spec: null
   plan: docs/plans/inline-suggestion-hotkey-layout-switch-plan.md
   branch: claude/eloquent-fermat-ha8bro
-  pr: null
+  pr: "https://github.com/8ui/SwitchFix/pull/13"
 ---
 
 ## Context
@@ -55,6 +55,7 @@ Backspace и исправить слово из буфера, если текс�
 - 2026-10-02: шаг 5 ✅ Документация + ревью — CLAUDE.md, plan-review и code-review субагентами
 - 2026-10-02: impl complete; ждёт ручной проверки пользователем на Mac (шаг 6)
 - 2026-10-02: шаг 6 ▶ Ручная проверка пользователем на Mac
+- 2026-10-02: artifacts.pr = https://github.com/8ui/SwitchFix/pull/13
 
 ## Decisions
 
