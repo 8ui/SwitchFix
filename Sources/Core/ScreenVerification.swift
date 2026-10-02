@@ -23,6 +23,23 @@ public enum ScreenVerdict: Equatable, Sendable {
     case replaced(deleteCount: Int)
     /// The text cannot be read: correct as before (fail-open).
     case unknown
+    /// The field ends with the typed text followed by a selected inline suggestion: one more
+    /// Backspace than typed clears the suggestion first (`deleteCount` includes it).
+    case matchBeforeSelection(deleteCount: Int)
+}
+
+/// What a correction does with a selection the field shows after the caret.
+public enum ScreenSelectionHandling: Sendable {
+    /// Cancel: Backspace would delete the selection (automatic corrections, reverts).
+    case refuse
+    /// Clear an inline suggestion that follows the typed text, else cancel (the hotkey and
+    /// layout-switch mode: the user asked for this word to be converted). Without a selection
+    /// the verdict is the same as for `refuse`.
+    case accept
+    /// As `accept`, and only a suggestion is accepted: the engine saw a selection while a word
+    /// was buffered and ignored it, so a field that reads otherwise (unreadable, no selection)
+    /// cannot be trusted with the deletion.
+    case require
 }
 
 /// Decides whether the last characters of a field are the ones a correction is about to delete.
@@ -35,10 +52,39 @@ public enum ScreenVerification {
     ///   - word: the typed word (a merged pair includes its bridge).
     ///   - boundary: the typed boundary after it ("" for the hotkey).
     ///   - final: the retry deadline has passed; the verdict is never `retry`.
-    public static func verdict(word: String, boundary: String, probe: FieldTextProbe, final: Bool) -> ScreenVerdict {
+    ///   - selection: what a selection after the caret means (see `ScreenSelectionHandling`).
+    public static func verdict(
+        word: String,
+        boundary: String,
+        probe: FieldTextProbe,
+        final: Bool,
+        selection: ScreenSelectionHandling = .refuse
+    ) -> ScreenVerdict {
+        if selection == .require {
+            // Only a suggestion is trusted: anything else cancels instead of failing open.
+            let verdict = self.verdict(word: word, boundary: boundary, probe: probe, final: final, selection: .accept)
+            switch verdict {
+            case .matchBeforeSelection, .retry: return verdict
+            default: return .mismatch
+            }
+        }
         switch probe {
-        case .selection:
-            return .mismatch
+        case .selection(_, let before, let atTextStart):
+            guard selection == .accept else { return .mismatch }
+            // The text before it may have been unreadable for now (a timeout).
+            guard let before else { return final ? .mismatch : .retry }
+            switch verdict(word: word, boundary: boundary, probe: .text(before: before, atTextStart: atTextStart), final: final) {
+            case .match:
+                // Only the exact text: a word missing its trailing space at the deadline would
+                // make the extra Backspace delete the character before it.
+                guard folded(before).hasSuffix(folded(word + boundary)) else { return .mismatch }
+                return .matchBeforeSelection(deleteCount: word.count + boundary.count + 1)
+            case .retry:
+                return .retry
+            default:
+                // Unreadable or changed text before a suggestion is never deleted blindly.
+                return .mismatch
+            }
         case .unavailable(let transient):
             return transient && !final ? .retry : .unknown
         case .text(let before, let atTextStart):

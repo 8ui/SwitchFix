@@ -16,6 +16,8 @@ public struct DetectionRequest: Equatable {
     /// The field-text check must see the word: an unreadable field cancels instead of
     /// failing open (a word read after a bare caret move, which nothing typed confirms).
     public let requiresScreenMatch: Bool
+    /// What the field-text check does with a selection after the caret (an inline suggestion).
+    public let selectionHandling: ScreenSelectionHandling
 
     public init(
         word: String,
@@ -26,7 +28,8 @@ public struct DetectionRequest: Equatable {
         context: InputContextSnapshot,
         continuesPreviousWord: Bool = false,
         screenVerified: Bool = false,
-        requiresScreenMatch: Bool = false
+        requiresScreenMatch: Bool = false,
+        selectionHandling: ScreenSelectionHandling = .refuse
     ) {
         self.word = word
         self.boundary = boundary
@@ -37,6 +40,7 @@ public struct DetectionRequest: Equatable {
         self.continuesPreviousWord = continuesPreviousWord
         self.screenVerified = screenVerified
         self.requiresScreenMatch = requiresScreenMatch
+        self.selectionHandling = selectionHandling
     }
 }
 
@@ -53,6 +57,9 @@ public final class InputEngine {
     /// Posts a revert claimed from the corrector; returns whether it reached the app (tests
     /// replace `TextCorrector.postUndo`).
     public typealias RevertEmission = (RevertPlan) -> Bool
+    /// Replaces the selected text with its conversion (tests replace
+    /// `TextCorrector.performSelectionCorrection`): the selection and the converted text.
+    public typealias SelectionEmission = (String, String) -> Void
 
     public var onFocusMayChange: ((pid_t, UInt64) -> Void)?
 
@@ -77,7 +84,14 @@ public final class InputEngine {
     private let screenTextRequest: ScreenTextRequest?
     private let screenCheckMode: ScreenCheckMode
     private let readsScreenAfterCaretMove: ((pid_t) -> Bool)?
+    /// While a word is buffered the user has only typed since the caret last moved, so a
+    /// selection is the app's (an inline suggestion): the hotkey and layout-switch mode correct
+    /// the word instead. Only when the field check enforces: it alone clears the suggestion.
+    private var ignoresSelectionWithBufferedWord: Bool {
+        screenTextRequest != nil && screenCheckMode == .enforce
+    }
     private let revertEmission: RevertEmission?
+    private let selectionEmission: SelectionEmission?
     private let lexicon: PersonalLexicon?
     private let detectionConfiguration = OSAllocatedUnfairLock(initialState: DetectionConfiguration())
     private var correctionEpoch: UInt64
@@ -113,7 +127,8 @@ public final class InputEngine {
         screenCheckMode: ScreenCheckMode = .enforce,
         readsScreenAfterCaretMove: ((pid_t) -> Bool)? = nil,
         lexicon: PersonalLexicon? = nil,
-        revertEmission: RevertEmission? = nil
+        revertEmission: RevertEmission? = nil,
+        selectionEmission: SelectionEmission? = nil
     ) {
         self.captureState = captureState
         self.stateMachine = InputStateMachine(context: initialContext, preferences: preferences)
@@ -128,6 +143,7 @@ public final class InputEngine {
         self.readsScreenAfterCaretMove = readsScreenAfterCaretMove
         self.lexicon = lexicon
         self.revertEmission = revertEmission
+        self.selectionEmission = selectionEmission
         detector.lexicon = lexicon
         correctionEpoch = captureState.updateCorrectionEnabled(preferences.isEnabled)
     }
@@ -223,7 +239,7 @@ public final class InputEngine {
 
             let latest = self.captureState.snapshot()
             let requestCorrectionEpoch = self.correctionEpoch
-            let applyBufferedCorrection = {
+            let applyBufferedCorrection = { (selectionHandling: ScreenSelectionHandling) in
                 guard self.latestProcessedSequence == latest.latestPhysicalSequence,
                       !bufferedWord.isEmpty,
                       bufferedWord.count <= 64 else { return }
@@ -249,14 +265,15 @@ public final class InputEngine {
                         sequence: latest.latestPhysicalSequence,
                         editGeneration: latest.editGeneration,
                         correctionEpoch: requestCorrectionEpoch,
-                        context: context
+                        context: context,
+                        selectionHandling: selectionHandling
                     ),
                     provenance: .layoutSwitch
                 )
             }
 
             guard let selectedTextRequest = self.selectedTextRequest else {
-                applyBufferedCorrection()
+                applyBufferedCorrection(.accept)
                 return
             }
             self.selectionQueue.async {
@@ -270,7 +287,13 @@ public final class InputEngine {
                               current.context == context else {
                             return
                         }
-                        if let selectedText, !selectedText.isEmpty {
+                        if let selectedText, !selectedText.isEmpty,
+                           !bufferedWord.isEmpty, self.ignoresSelectionWithBufferedWord {
+                            // Typed since the caret last moved: the app selected this (an inline
+                            // suggestion). The field check clears it before the word.
+                            SwitchFixLog.engine.notice("layout switch: selection ignored, buffered word")
+                            applyBufferedCorrection(.require)
+                        } else if let selectedText, !selectedText.isEmpty {
                             guard ScriptAnalyzer.containsScript(for: oldLayout, in: selectedText) else {
                                 return
                             }
@@ -281,20 +304,24 @@ public final class InputEngine {
                                 tables: keyboardTables
                             )
                             guard converted != selectedText else { return }
-                            self.corrector.performSelectionCorrection(
-                                selectedText: selectedText,
-                                convertedText: converted,
-                                targetLayout: newLayout,
-                                shouldSwitchLayout: false,
-                                originalLayout: oldLayout,
-                                sequence: latest.latestPhysicalSequence,
-                                context: context,
-                                editGeneration: latest.editGeneration,
-                                correctionEpoch: requestCorrectionEpoch,
-                                latestCaptureState: self.captureState.snapshot
-                            )
+                            if let selectionEmission = self.selectionEmission {
+                                selectionEmission(selectedText, converted)
+                            } else {
+                                self.corrector.performSelectionCorrection(
+                                    selectedText: selectedText,
+                                    convertedText: converted,
+                                    targetLayout: newLayout,
+                                    shouldSwitchLayout: false,
+                                    originalLayout: oldLayout,
+                                    sequence: latest.latestPhysicalSequence,
+                                    context: context,
+                                    editGeneration: latest.editGeneration,
+                                    correctionEpoch: requestCorrectionEpoch,
+                                    latestCaptureState: self.captureState.snapshot
+                                )
+                            }
                         } else {
-                            applyBufferedCorrection()
+                            applyBufferedCorrection(.accept)
                         }
                     }
                 }
@@ -458,6 +485,7 @@ public final class InputEngine {
                     acceptsReplacement: false,
                     retriesMismatch: true,
                     requiresMatch: false,
+                    selectionHandling: .refuse,
                     isCurrent: { [weak self] in
                         guard let self else { return false }
                         return self.corrector.refreshedRevert(revert, latest: self.captureState.snapshot()) != nil
@@ -633,6 +661,7 @@ public final class InputEngine {
                 acceptsReplacement: true,
                 retriesMismatch: false,
                 requiresMatch: request.requiresScreenMatch,
+                selectionHandling: request.selectionHandling,
                 isCurrent: { [weak self] in self?.isCurrent(request) ?? false },
                 proceed: { [weak self] deleteCount in
                     self?.emit(deleteCount.map(plan.deleting) ?? plan, detectionID: result.detectionID)
@@ -681,6 +710,7 @@ public final class InputEngine {
         let retriesMismatch: Bool
         /// Whether an unreadable field (`.unknown`) cancels instead of proceeding.
         let requiresMatch: Bool
+        let selectionHandling: ScreenSelectionHandling
         /// Runs on the input queue before and after every read.
         let isCurrent: () -> Bool
         /// Runs on the input queue: nil deletes what was planned, a count the field's word instead.
@@ -731,7 +761,8 @@ public final class InputEngine {
                         word: check.word,
                         boundary: check.boundary,
                         probe: probe,
-                        final: final
+                        final: final,
+                        selection: check.selectionHandling
                     )
                     if case .replaced = verdict, !check.acceptsReplacement {
                         verdict = .mismatch
@@ -789,6 +820,10 @@ public final class InputEngine {
                         check.proceed(deleteCount)
                         return
                     }
+                    if case .matchBeforeSelection(let deleteCount) = verdict, !shadow {
+                        check.proceed(deleteCount)
+                        return
+                    }
                     check.proceed(nil)
                 }
             }
@@ -800,7 +835,9 @@ public final class InputEngine {
         switch probe {
         case .text(let before, let atTextStart):
             return "text(\(SwitchFixLog.text(before))\(atTextStart ? ", start" : ""))"
-        case .selection(let length): return "selection(\(length))"
+        case .selection(let length, let before, let atTextStart):
+            let text = before.map { ", before \(SwitchFixLog.text($0))\(atTextStart ? ", start" : "")" } ?? ""
+            return "selection(\(length)\(text))"
         case .unavailable(let transient): return transient ? "unavailable(transient)" : "unavailable"
         }
     }
@@ -974,7 +1011,8 @@ public final class InputEngine {
                     sequence: sequence,
                     editGeneration: generation,
                     correctionEpoch: requestCorrectionEpoch,
-                    context: context
+                    context: context,
+                    selectionHandling: .accept
                 ), forceConversion: true, teaches: teaches)
             }
             return
@@ -997,9 +1035,16 @@ public final class InputEngine {
                 let configuration = self.detectionConfiguration.withLock { $0 }
                 var selectedText: String?
                 var caretWord: String?
+                var selectionIgnored = false
                 switch caret {
                 case .selection(let text):
-                    selectedText = text
+                    if word != nil, self.ignoresSelectionWithBufferedWord {
+                        // Typed since the caret last moved: the app selected this (an inline
+                        // suggestion), not the user. The field check clears it before the word.
+                        selectionIgnored = true
+                    } else {
+                        selectedText = text
+                    }
                 case .caret(let before, let startsAtTextStart, let next):
                     if wantsCaretText, let suffix, before.hasSuffix(suffix) {
                         caretWord = CaretWordExtractor.word(
@@ -1013,7 +1058,7 @@ public final class InputEngine {
                     break
                 }
                 SwitchFixLog.engine.notice(
-                    "manual: selectionLen=\(selectedText?.count ?? -1) caretWordLen=\(caretWord?.count ?? -1) caretPlacedOnly=\(caretPlacedOnly)"
+                    "manual: selectionLen=\(selectedText?.count ?? -1) caretWordLen=\(caretWord?.count ?? -1) selectionIgnored=\(selectionIgnored) caretPlacedOnly=\(caretPlacedOnly)"
                 )
 
                 if let selectedText, !selectedText.isEmpty,
@@ -1022,18 +1067,22 @@ public final class InputEngine {
                     currentLayout: context.layout,
                     configuration: configuration
                    ) {
-                    self.corrector.performSelectionCorrection(
-                        selectedText: selectedText,
-                        convertedText: converted,
-                        targetLayout: targetLayout,
-                        shouldSwitchLayout: true,
-                        originalLayout: sourceLayout,
-                        sequence: sequence,
-                        context: context,
-                        editGeneration: generation,
-                        correctionEpoch: requestCorrectionEpoch,
-                        latestCaptureState: self.captureState.snapshot
-                    )
+                    if let selectionEmission = self.selectionEmission {
+                        selectionEmission(selectedText, converted)
+                    } else {
+                        self.corrector.performSelectionCorrection(
+                            selectedText: selectedText,
+                            convertedText: converted,
+                            targetLayout: targetLayout,
+                            shouldSwitchLayout: true,
+                            originalLayout: sourceLayout,
+                            sequence: sequence,
+                            context: context,
+                            editGeneration: generation,
+                            correctionEpoch: requestCorrectionEpoch,
+                            latestCaptureState: self.captureState.snapshot
+                        )
+                    }
                 } else if let target = word ?? caretWord {
                     // A word read from the screen may have been pasted or typed long ago:
                     // weak evidence of intent, so it never teaches the lexicon. A typed suffix
@@ -1047,7 +1096,9 @@ public final class InputEngine {
                         correctionEpoch: requestCorrectionEpoch,
                         context: context,
                         screenVerified: word == nil && !caretPlacedOnly,
-                        requiresScreenMatch: word == nil && caretPlacedOnly
+                        requiresScreenMatch: word == nil && caretPlacedOnly,
+                        // After a bare caret move nothing was typed for a suggestion to follow.
+                        selectionHandling: caretPlacedOnly ? ScreenSelectionHandling.refuse : (selectionIgnored ? .require : .accept)
                     ), forceConversion: true, teaches: teaches && word != nil)
                 }
                 }
