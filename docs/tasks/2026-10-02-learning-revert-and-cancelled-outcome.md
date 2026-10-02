@@ -50,7 +50,36 @@ _Доказательства, а не утверждения. Заполняе�
 
 ## Handoff
 
-_Передача контекста следующему агенту. Перезаписывается целиком через `rtp handoff <id>`._
+**Сгенерировано:** 2026-10-02 · `rtp handoff`
+
+- **Задача:** `2026-10-02-learning-revert-and-cancelled-outcome` — Learning gaps: hotkey revert keeps the learned rule, cancelled corrections count as corrected
+- **Фаза:** plan-review (pipeline `no-spec`, type `bug`)
+- **Worktree:** `/home/user/SwitchFix`
+- **Ветка:** `claude/eloquent-babbage-rfjo9l` — своих коммитов 14, отставание от origin/master 0
+- **Незакоммиченного:** 0 файл(ов)
+
+**Последние коммиты**
+
+- `e295188 fix(engine): reverting a hotkey correction forgets the learned rule`
+- `6edaeec docs(plan): learning gaps and layout-switch shortcuts`
+- `e476f83 docs(tasks): close the index-expression debt`
+
+**Последние записи лога**
+
+- 2026-10-02: triage — pipeline `no-spec`, reason: InputEngine learnFromReverted + LayoutDetector recordOutcome + PersonalLexicon; 3 файла, нужна схема хука отмены
+- 2026-10-02: brainstorm: пользователь одобрил (а) forgetAccepted при отмене .hotkey, (б) detectionID + noteCorrectionNotApplied во всех точках отмены, откат pendingSwitch только без новой детекции
+- 2026-10-02: artifacts.plan = docs/plans/learning-revert-and-cancelled-outcome-plan.md
+- 2026-10-02: plan drafted
+
+**Следующее действие**
+
+- дать план субагенту-архитектору, потом rtp phase 2026-10-02-learning-revert-and-cancelled-outcome --to impl
+
+**Заметки агента** (не выводятся из кода — грабли, тупики, договорённости)
+
+<!-- handoff-notes -->
+- 2026-10-02: Task 1 плана (а) сделан заранее (не зависит от ревью) в коммите выше; ждём plan-review для (б)
+<!-- /handoff-notes -->
 
 ## Blockers
 
