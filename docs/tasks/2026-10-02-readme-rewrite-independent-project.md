@@ -14,7 +14,7 @@ artifacts:
   spec: null
   plan: null
   branch: null
-  pr: null
+  pr: "https://github.com/8ui/SwitchFix/pull/18"
 ---
 
 ## Context
@@ -32,6 +32,7 @@ _Шаги не заданы. `rtp steps <id> --set "…"` или `--from-plan <�
 - 2026-10-02: только документация, CI не запускается (*.md)
 - 2026-10-02: долг: новое название
 - 2026-10-02: CLAUDE.md: убраны упоминания форка и upstream
+- 2026-10-02: artifacts.pr = https://github.com/8ui/SwitchFix/pull/18
 
 ## Decisions
 
