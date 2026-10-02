@@ -3,13 +3,13 @@ id: 2026-10-02-hotkey-and-layout-switch-convert-an-inline-autocomplete
 title: Hotkey and layout-switch convert an inline autocomplete suggestion instead of the typed word
 type: bug
 pipeline: no-spec
-phase: review
+phase: done
 created: 2026-10-02
 updated: 2026-10-02
 blocked_by: null
-steps_done: 5
+steps_done: 6
 steps_total: 6
-step_current: 6
+step_current: null
 artifacts:
   spec: null
   plan: docs/plans/inline-suggestion-hotkey-layout-switch-plan.md
@@ -33,7 +33,7 @@ Backspace и исправить слово из буфера, если текс�
 3. ✅ Тесты пайплайна и вердикта
 4. ✅ CI зелёный
 5. ✅ Документация + ревью
-6. ▶ Ручная проверка пользователем на Mac
+6. ✅ Ручная проверка пользователем на Mac
 
 ## Log
 
@@ -57,6 +57,8 @@ Backspace и исправить слово из буфера, если текс�
 - 2026-10-02: шаг 6 ▶ Ручная проверка пользователем на Mac
 - 2026-10-02: artifacts.pr = https://github.com/8ui/SwitchFix/pull/13
 - 2026-10-02: verify: `ручная проверка на Mac (сборка 0950868, тестовое приложение с inline-подсказкой как в омнибоксе, реальные CGEvent, log stream): хоткей и ⌃Space в layoutSwitch` → exit 0 ✅
+- 2026-10-02: шаг 6 ✅ Ручная проверка пользователем на Mac — тестовое поле-омнибокс на Mac; Safari/Chrome/Spotlight не проверены — закрыто по решению пользователя
+- 2026-10-02: закрыто по решению пользователя по проверке на тестовом поле-омнибоксе; PR 8ui/SwitchFix#13 ждёт слияния
 
 ## Decisions
 
@@ -68,6 +70,7 @@ Backspace и исправить слово из буфера, если текс�
 
 - [ ] Revert после коррекции с подсказкой: поле снова показывает подсказку → сверка revert видит выделение и отказывает (текст цел); можно принять с deleteCount+1
 - [ ] Автоматическая коррекция при выделенной подсказке по-прежнему отменяется — можно применить то же правило
+- [ ] Safari/Chrome-омнибокс и Spotlight вживую не проверены (только тестовое поле с подсказкой) — закрыто по решению пользователя 2026-10-02; риск: поле, снова предлагающее подсказку после Backspace
 
 ## Verification
 
