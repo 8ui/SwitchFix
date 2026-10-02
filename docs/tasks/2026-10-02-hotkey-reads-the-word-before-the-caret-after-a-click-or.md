@@ -3,7 +3,7 @@ id: 2026-10-02-hotkey-reads-the-word-before-the-caret-after-a-click-or
 title: Hotkey reads the word before the caret after a click or arrow key
 type: feature
 pipeline: no-spec
-phase: review
+phase: done
 created: 2026-10-02
 updated: 2026-10-02
 blocked_by: null
@@ -44,6 +44,8 @@ _2-5 строк: что делаем и зачем. Задача этой сек
 - 2026-10-02: impl + ревью кода (opus): should-fix (клик на mouse-down) исправлен в d72a853; CI зелёный. Не done: ветка не влита (PR не просили), нужна проверка на Mac (TextEdit, Chrome/Electron)
 - 2026-10-02: artifacts.branch = claude/nice-allen-fv07al; artifacts.pr = https://github.com/8ui/SwitchFix/pull/14
 - 2026-10-02: verify: `ручная проверка на Mac (сборка d72a853, тестовое приложение + TextEdit, реальные клики/клавиши CGEvent, log stream): хоткей после клика/стрелки` → exit 0 ✅
+- 2026-10-02: verify: `CI зелёный после слияния с master (PR 13): https://github.com/8ui/SwitchFix/actions/runs/37024075395 (8a6adbd)` → exit 0 ✅
+- 2026-10-02: PR 8ui/SwitchFix#14: конфликты с PR 13 (selectionHandling) разрешены, CI зелёный на 8a6adbd, проверено на Mac (TextEdit, тестовое приложение); Chrome/Electron — за пользователем; вливается
 
 ## Decisions
 
@@ -75,6 +77,12 @@ _Нетривиальные решения по ходу задачи. Одна 
   Cmd+V + хоткей → без изменений; клик в Терминале → caretWordLen=-1, без изменений
   Chrome/Electron не проверены (браузеры недоступны агенту для ввода) — за пользователем
   TestRunner 632/0, InputPipelineTestRunner 1299/0 локально
+  ```
+
+- 2026-10-02 · `CI зелёный после слияния с master (PR 13): https://github.com/8ui/SwitchFix/actions/runs/37024075395 (8a6adbd)` · exit 0 ✅
+
+  ```
+  Build and test (macos-15) success
   ```
 
 ## Handoff
