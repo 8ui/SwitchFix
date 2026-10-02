@@ -49,6 +49,8 @@ artifacts:
 - 2026-10-02: шаг 5 ✅ Тест: отмена hotkey сохраняет правило с другой целью
 - 2026-10-02: шаг 6 ✅ Тесты сброса смежности в InputStateMachine
 - 2026-10-02: impl complete: 6 правок, regress rtp 164/0; Swift проверит CI
+- 2026-10-02: verify: `sh .claude/skills/run-task-pipeline/scripts/regress.sh 2>&1 | tail -1` → exit 0 ✅
+- 2026-10-02: verify: `CI зелёный: https://github.com/8ui/SwitchFix/actions/runs/37026412225 (push 80f9efb; build, TestRunner, sweep, InputPipelineTestRunner, build-app)` → exit 0 ✅
 
 ## Decisions
 
@@ -63,7 +65,17 @@ _Без `[ ]`/`[x]` пункт невидим для агрегатора и т�
 
 ## Verification
 
-_Доказательства, а не утверждения. Заполняется `rtp verify <id> --run "<команда>"`: команда, exit code, хвост вывода._
+- 2026-10-02 · `sh .claude/skills/run-task-pipeline/scripts/regress.sh 2>&1 | tail -1` · exit 0 ✅
+
+  ```
+  итог (все секции): PASS=164 FAIL=0
+  ```
+
+- 2026-10-02 · `CI зелёный: https://github.com/8ui/SwitchFix/actions/runs/37026412225 (push 80f9efb; build, TestRunner, sweep, InputPipelineTestRunner, build-app)` · exit 0 ✅
+
+  ```
+  (без вывода)
+  ```
 
 ## Handoff
 
