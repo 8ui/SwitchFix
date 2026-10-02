@@ -2049,6 +2049,12 @@ run("layout switch after a correction: rechecked on main") {
         isAutorepeat: false, sourcePID: 1, sourceUserData: 0
     )
     check(!TextCorrector.mayFinishLayoutSwitch(for: plan, latest: store.snapshot(), frontmostPID: pid), "a click (new focus epoch): no switch")
+    let refocused = CaptureStateStore(context: context(), hotkeys: HotkeyConfiguration(hotkeyModifiers: 0))
+    _ = refocused.replaceContext(
+        frontmostPID: pid, appAllowed: true, layout: .english,
+        inputSourceID: "com.test.english", secureFocus: .notSecure
+    )
+    check(!TextCorrector.mayFinishLayoutSwitch(for: plan, latest: refocused.snapshot(), frontmostPID: pid), "only the epoch changed: no switch")
     let otherApp = CaptureStateStore(context: context(pid: pid + 1), hotkeys: HotkeyConfiguration(hotkeyModifiers: 0))
     check(!TextCorrector.mayFinishLayoutSwitch(for: plan, latest: otherApp.snapshot(), frontmostPID: pid), "the capture state already moved to another app")
 }

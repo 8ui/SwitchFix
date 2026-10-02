@@ -180,7 +180,7 @@ func runNgramDetectorSuites() {
     }
 
     runSuite("NgramDetector: index expressions stay") {
-        for words in [["obj[0]"], ["w[1]"], ["x[0]."], ["arr[12]"], ["m{1}"], ["print", "a[0],", "b[1]"], ["[0]"]] {
+        for words in [["obj[0]"], ["w[1]"], ["x[0]."], ["arr[12]"], ["m{1}"], ["print", "a[0],", "b[1]"], ["a[0]"]] {
             let detector = ngramDetector(current: .english, allowed: [.english, .russian])
             let recorder = MockDetectorDelegate()
             detector.delegate = recorder
@@ -190,8 +190,9 @@ func runNgramDetectorSuites() {
             }
             assert(recorder.results.isEmpty, "\(words.joined(separator: " ")) must stay, got \(recorder.results.map(\.convertedWord))")
         }
-        // Without a digit next to a bracket a word is still a word.
+        // Without a digit next to a bracket a word is still a word, bracket keys included.
         assertEqual(detectNgram("ghbdtn", current: .english, allowed: [.english, .russian])?.convertedWord, "привет")
+        assertEqual(detectNgram("[jhjij", current: .english, allowed: [.english, .russian])?.convertedWord, "хорошо")
         // The hotkey (no boundary) still converts an index expression.
         let hotkey = ngramDetector(current: .english, allowed: [.english, .russian])
         hotkey.addCharacter("w[1]")

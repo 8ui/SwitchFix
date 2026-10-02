@@ -130,6 +130,9 @@ public final class TextCorrector {
     private let eventSource: CGEventSource?
     private let undoState = OSAllocatedUnfairLock<UndoState?>(initialState: nil)
     private let lastUndoID = OSAllocatedUnfairLock<UInt64>(initialState: 0)
+    /// The most recently queued layout switch: an older one still waiting on main is
+    /// superseded (a revert queued before the correction's switch ran must win).
+    private let lastLayoutSwitch = OSAllocatedUnfairLock<UInt64>(initialState: 0)
     private let logger = Logger(subsystem: "com.switchfix", category: "correction")
 
     public init(inputSourceManager: InputSourceManager = .shared) {
@@ -193,7 +196,17 @@ public final class TextCorrector {
         after plan: CorrectionPlan,
         latestCaptureState: @escaping () -> CaptureStateSnapshot
     ) {
-        DispatchQueue.main.async { [inputSourceManager, logger] in
+        let token = lastLayoutSwitch.withLock { value -> UInt64 in
+            value &+= 1
+            return value
+        }
+        DispatchQueue.main.async { [inputSourceManager, logger, lastLayoutSwitch] in
+            // Every switch bumps the context epoch, so a newer queued switch would fail the
+            // epoch check after this one ran: run only the newest.
+            guard lastLayoutSwitch.withLock({ $0 }) == token else {
+                logger.notice("layout switch skipped: superseded by a newer one")
+                return
+            }
             let frontmostPID = NSWorkspace.shared.frontmostApplication?.processIdentifier
             guard Self.mayFinishLayoutSwitch(for: plan, latest: latestCaptureState(), frontmostPID: frontmostPID) else {
                 logger.notice("layout switch skipped: focus or app changed since the correction pid=\(plan.targetPID, privacy: .public) frontmost=\(frontmostPID ?? -1, privacy: .public)")
@@ -434,8 +447,7 @@ public final class TextCorrector {
                   latest.context.secureFocus == .notSecure,
                   latest.context.appAllowed,
                   latest.correctionAllowed,
-                  // Cmd+V goes to the process, but the pasteboard trick must not run for an
-                  // app that is no longer in front (the capture state learns of it later).
+                  // Cmd+V goes to the process; the pasteboard trick is only for the app in front.
                   NSWorkspace.shared.frontmostApplication?.processIdentifier == context.frontmostPID else {
                 logger.debug("selection correction skipped: state changed before paste")
                 return
