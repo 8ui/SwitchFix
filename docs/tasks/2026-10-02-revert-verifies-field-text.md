@@ -3,7 +3,7 @@ id: 2026-10-02-revert-verifies-field-text
 title: Revert deletes text without checking the field
 type: bug
 pipeline: no-spec
-phase: triage
+phase: plan-review
 created: 2026-10-02
 updated: 2026-10-02
 blocked_by: null
@@ -12,7 +12,7 @@ steps_total: 0
 step_current: null
 artifacts:
   spec: null
-  plan: null
+  plan: docs/plans/revert-verifies-field-text-plan.md
   branch: null
   pr: null
 ---
@@ -29,6 +29,9 @@ _Шаги не заданы. `rtp steps <id> --set "…"` или `--from-plan <�
 ## Log
 
 - 2026-10-02: triage — pipeline `no-spec`, reason: InputEngine + TextCorrector + тесты: переиспользовать verifyScreen для обратного плана; известная архитектура, 2-4 файла
+- 2026-10-02: brainstorm: дизайн одобрен пользователем (prepare/apply undo, общий ScreenCheck, replaced/mismatch → отказ без fallback-конвертации, unknown → fail-open)
+- 2026-10-02: artifacts.plan = docs/plans/revert-verifies-field-text-plan.md
+- 2026-10-02: plan drafted
 
 ## Decisions
 
