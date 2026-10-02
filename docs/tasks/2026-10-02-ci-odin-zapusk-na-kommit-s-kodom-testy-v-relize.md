@@ -3,13 +3,13 @@ id: 2026-10-02-ci-odin-zapusk-na-kommit-s-kodom-testy-v-relize
 title: "CI: один запуск на коммит с кодом, тесты в релизе"
 type: chore
 pipeline: minimal
-phase: review
+phase: done
 created: 2026-10-02
 updated: 2026-10-02
 blocked_by: null
-steps_done: 3
+steps_done: 4
 steps_total: 4
-step_current: 4
+step_current: null
 artifacts:
   spec: null
   plan: null
@@ -26,7 +26,7 @@ _2-5 строк: что делаем и зачем. Задача этой сек
 1. ✅ ci.yml: триггеры и paths-ignore
 2. ✅ release.yml: тесты перед сборкой
 3. ✅ CLAUDE.md
-4. ▶ Ревью и проверка CI
+4. ✅ Ревью и проверка CI
 
 ## Log
 
@@ -37,6 +37,10 @@ _2-5 строк: что делаем и зачем. Задача этой сек
 - 2026-10-02: шаг 3 ✅ CLAUDE.md
 - 2026-10-02: impl complete
 - 2026-10-02: review (general-purpose, opus): medium — PR с docs-only head без галочки, формулировка исправлена; low — тесты на Intel впервые в релизе, edge cases paths-filter приняты
+- 2026-10-02: PR https://github.com/8ui/SwitchFix/pull/15; master влит (конфликт только в index.md). На push ветки — только push-раны, pull_request-рана нет. Ждём зелёный CI 37024845906
+- 2026-10-02: verify: `CI зелёный: https://github.com/8ui/SwitchFix/actions/runs/37024845906 (push, 4319da1); pull_request-ранов нет, прогон 7f08632 отменён следующим push` → exit 0 ✅
+- 2026-10-02: шаг 4 ✅ Ревью и проверка CI
+- 2026-10-02: CI зелёный, PR #15 открыт, мёрж за пользователем
 
 ## Decisions
 
@@ -48,7 +52,11 @@ _Нетривиальные решения по ходу задачи. Одна 
 
 ## Verification
 
-_Доказательства, а не утверждения. Заполняется `rtp verify <id> --run "<команда>"`: команда, exit code, хвост вывода._
+- 2026-10-02 · `CI зелёный: https://github.com/8ui/SwitchFix/actions/runs/37024845906 (push, 4319da1); pull_request-ранов нет, прогон 7f08632 отменён следующим push` · exit 0 ✅
+
+  ```
+  (без вывода)
+  ```
 
 ## Handoff
 
