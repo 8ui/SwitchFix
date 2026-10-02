@@ -5,7 +5,7 @@ type: bug
 pipeline: minimal
 phase: done
 created: 2026-09-30
-updated: 2026-09-30
+updated: 2026-10-02
 blocked_by: null
 steps_done: 4
 steps_total: 4
@@ -65,7 +65,7 @@ _Нетривиальные решения по ходу задачи. Одна 
 ## Debt
 
 - [ ] en+ru+uk без истории раскладки: wrong conversion для uk 4-5 букв 169→207 (1157→1195 всего) вместе с ростом restored — слова с ї/є на краю (] ') теперь конвертируются, часть в русский; вторичный сценарий LayoutEval secondary, ru не изменился — переформулировано 2026-09-30
-- [ ] Индексы 'w[1]' конвертировались и до этой задачи (HEAD: 209/1105 слов en.txt на ru, 194 на uk; 'obj[0]', 'x[0]' → ...) — splitTokenForValidation считает цифры частью слова; отдельная задача
+- [x] Индексы 'w[1]' конвертировались и до этой задачи (HEAD: 209/1105 слов en.txt на ru, 194 на uk; 'obj[0]', 'x[0]' → ...) — splitTokenForValidation считает цифры частью слова; отдельная задача — закрыто 2026-10-02: 2026-10-02-digits-in-token-validation
 
 ## Verification
 
