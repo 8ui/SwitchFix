@@ -1,63 +1,67 @@
 # SwitchFix
 
-A macOS menu bar utility that automatically corrects keyboard layout mistakes. Type in the wrong layout (e.g., English instead of Ukrainian/Russian) and SwitchFix detects it, deletes the mistyped word, switches the layout, and retypes the correct text — like PuntoSwitcher, but native, lightweight, and modern.
+Утилита для строки меню macOS, которая исправляет текст, набранный не в той раскладке. Набрали
+`ghbdtn` вместо «привет» или `сщььше` вместо `commit` — SwitchFix сотрёт слово, переключит раскладку
+и наберёт его заново, уже правильно. Работает с английским, русским и украинским.
 
-![SwitchFix Demo](SwitchFix.gif)
-![SwitchFix App Icon](Resources/Assets.xcassets/AppIcon.svg)
+- Нативное приложение на Swift, без Electron и фоновых сервисов.
+- Не задерживает ввод: нажатия только наблюдаются, клавиатура никогда не ждёт SwitchFix.
+- Текст никуда не отправляется — всё определяется на устройстве.
 
-## Об этом форке
+## Как это работает
 
-Форк [rundax/SwitchFix](https://github.com/rundax/SwitchFix) (v0.0.9) с исправлениями для свежих macOS/Swift и доработками ручной коррекции. Проверено на macOS 27.0, Apple Silicon, Xcode 27 / Swift 6.4.
+Раскладку определяет не словарь, а символьная n-граммная модель каждого языка (~450 КБ на все
+три). Когда слово закончено, SwitchFix сравнивает, насколько правдоподобно набранное и как те же
+клавиши читаются в другой раскладке. Если другое чтение заметно убедительнее, слово исправляется.
 
-### Исправления
+Поэтому модель понимает словоформы (`hf,jnftn` → «работает», `сфеы` → `cats`), сленг и технические
+термины. Основной сценарий — родной текст с английскими вставками («создай новую worktree»).
+Конвертации между русским и украинским нет: исправляется только английский ↔ кириллица.
 
-- **Словари не находились при сборке на Swift 6.4** — `build-app.sh` клал `*.bin` в корень `SwitchFix_Dictionary.bundle`, а новый SwiftPM собирает бандл со структурой `Contents/Resources`. В итоге коррекция молча не работала совсем. ([#14](https://github.com/rundax/SwitchFix/issues/14))
-- **После переключения раскладки клавишей 🌐 (Globe) терялись нажатия** — отложенная проверка фокуса отбрасывалась как устаревшая, и до клика мышью все буквы выпадали из буфера (или терялась первая: `ghbdtn` → `gпривет`). ([#15](https://github.com/rundax/SwitchFix/issues/15))
-- **В Chromium/Electron (Claude, Chrome) хоткей стирал слова целиком** — синтетические Backspace доходили до приложения раньше отпускания модификатора и превращались в Option+Backspace. Теперь у синтетических нажатий модификаторы явно сброшены.
-- **Выделение в Electron-приложениях** — если без него поле ввода не видно через Accessibility, перед чтением выделения включается `AXManualAccessibility` и через 30 с после последнего запроса выключается обратно: оставленный включённым, он переводит VS Code в режим скринридера, а Telegram показывает баннер. Если его включил скринридер, SwitchFix его не трогает.
-- **Telegram (Qt) выбрасывал вставляемый текст** — для таких приложений есть режим отправки через системный поток событий (вкладка **Приложения** в настройках, см. ниже).
+Перед тем как стереть слово, SwitchFix через Accessibility читает текст перед курсором и сверяет
+его с набранным. Если поле успело что-то изменить само — автодополнение, предиктивный ввод,
+выделенная подсказка, — исправление отменяется, чтобы не стереть лишнее. Если поле автоисправило
+само слово (`руддщ` → «руда»), стирается то, что видно на экране.
 
-### Детекция без словарей
+## Возможности
 
-- **Словари удалены.** Раскладку определяет символьная n-граммная модель каждого языка
-  (~450 КБ вместо ~70 МБ словарей): набранное сравнивается с тем, как те же клавиши читаются в
-  другой раскладке. Модель понимает словоформы (`hf,jnftn` → `работает`, `сфеы` → `cats`), сленг
-  и техтермины, которых в словарях не было. Основной сценарий — родной текст с английскими
-  вставками («создай новую worktree»); автоконвертации между русским и украинским нет. Подробности и
-  замеры — `plan/005_ngram_layout_detection.md`, `plan/benchmarks/detector_005_phase2.md`.
-- **Учится на ваших действиях.** Отменили автоматическое исправление (**Отменить последнее**) — слово
-  больше не трогается; перевели горячей клавишей слово, которое SwitchFix не узнал, — дальше оно
-  исправляется само. Все правила видны и редактируются на вкладке настроек **Слова**: поиск, фильтр,
-  добавление, правка, удаление, сброс выученного. Ваши собственные записи обучение не меняет.
-- **Слово, законченное Enter, автоматически не исправляется.** В чатах и терминале Enter уже отправил
-  текст: исправление стёрло бы не то и отправило бы сообщение повторно.
-- **Сверка с текстом поля перед исправлением.** Автодополнение (адресная строка,
-  Spotlight), предиктивный ввод и автозамена меняют текст поля за спиной SwitchFix, и Backspace стирал не то
-  (`gпривет`). Перед удалением SwitchFix читает текст перед курсором через Accessibility: выделенная подсказка
-  или изменённое слово отменяют исправление, отставший текст перечитывается до 150 мс; где текст не читается,
-  всё как раньше. Если поле на пробеле автоисправило само слово (`руддщ` → «руда» в Safari и Заметках),
-  стирается то, что показывает поле, и вставляется конверсия — когда два чтения подряд это подтверждают.
-  Смена регистра, «умные» кавычки и неразрывный пробел не мешают. Адресная строка Chrome текст не отдаёт —
-  там всё как раньше. Только писать вердикт в лог — `defaults write com.switchfix.app SwitchFix_fieldTextCheck shadow`
-  (`off` — не читать поле), перезапуск. Терминалы не проверяются.
-- **Слова после переключения раскладки читаются в новой раскладке.** После того как SwitchFix сам
-  переключил раскладку, macOS ещё какое-то время присылает нажатия со старыми символами, хотя Safari и Заметки
-  печатают уже в новой, — слово не исправлялось. Теперь для физических клавиш, когда символ события и текущая
-  раскладка расходятся в кириллице, верится раскладке.
-- **Защищённый ввод виден в меню.** Пока какое-то приложение держит Secure Input (поле пароля, менеджер
-  паролей, «Защищённый ввод с клавиатуры» в Терминале), macOS не показывает SwitchFix нажатия. В меню
-  появляется «Пауза: защищённый ввод включён в <приложение>», а после выключения буфер слова сбрасывается,
-  чтобы не исправить текст по неполным нажатиям.
-- **Ползунок «Чувствительность»** (вкладка **Исправление**) — от «Осторожно» до «Смело». Каждое деление
-  откалибровано перебором порогов на отложенном наборе текстов (`plan/benchmarks/thresholds_005.md`).
+- **Три режима исправления:**
+  - **Автоматически** — слово исправляется на пробеле или знаке препинания. Слово, законченное
+    Enter, не трогается: в чате или терминале текст уже отправлен.
+  - **Только по горячей клавише** — по умолчанию `⌃⇧Space`; можно назначить одиночное нажатие
+    Option или Control. Хоткей переводит слово всегда, даже если модель не уверена (`rehk` → «курл»).
+  - **При смене раскладки** — слово (или выделение) переводится, когда вы сами переключаете раскладку.
+- **Конвертация выделения** — выделите текст и нажмите хоткей. Исходная раскладка определяется по
+  самому тексту, так что выделение можно гонять туда и обратно (`ghbdtn, vbh` ⇄ «привет, мир»).
+- **Отмена** — `Caps Lock` (настраивается) возвращает последнее исправление.
+- **Обучение** — если отменить автоматическое исправление, это слово больше не трогается. Если
+  перевести хоткеем слово, которое SwitchFix не узнал, дальше оно исправляется само. Все правила
+  видны и редактируются на вкладке **Слова**.
+- **Чувствительность** — ползунок от «Осторожно» до «Смело»; каждое деление откалибровано на
+  отложенном наборе реальных текстов.
+- **Настройки по приложениям** — в терминалах и редакторах кода SwitchFix выключен по умолчанию.
+  Для приложений, которые теряют вставляемый текст (Telegram и другие на Qt), есть отправка
+  через системный поток событий.
+- **Безопасность** — поля паролей, URL, e-mail, camelCase и смешанные алфавиты пропускаются. Пока
+  какое-то приложение держит Secure Input, в меню видно, какое именно.
+- **Раскладки** — английская (US, ABC, British, Dvorak, Colemak и другие), русская, украинская.
+  Таблицы клавиш строятся из раскладок, включённых в системе.
+- **Интерфейс** на русском и английском, запуск при входе в систему.
 
-### Доработки ручной коррекции
+## Требования
 
-- **Хоткей на одиночное нажатие модификатора** — Option или Control: нажал и отпустил, без других клавиш. Сочетания `Option+…`/`Ctrl+…` работают как обычно. Ничего не печатает, в отличие от Option+Space, который вставляет неразрывный пробел. ([#16](https://github.com/rundax/SwitchFix/issues/16))
-- **Хоткей переводит слово всегда** — даже если модель не уверена (опечатки, редкие слова): `rehk` → `курл`.
-- **Исходная раскладка определяется по тексту**, а не по активной раскладке системы: `пше` → `git` работает, даже если система считает раскладку английской. Выделение можно конвертировать туда и обратно сколько угодно раз, фраза с запятой не ломается (`ghbdtn, vbh` ⇄ `привет, мир`).
+macOS 13 или новее.
 
-### Установка и настройка форка
+## Установка
+
+### Готовая сборка
+
+Скачайте `.dmg` со [страницы релизов](https://github.com/8ui/SwitchFix/releases), откройте его и
+запустите **Install SwitchFix**.
+
+### Из исходников
+
+Нужны Xcode Command Line Tools (скрипт предложит их установить).
 
 ```bash
 git clone https://github.com/8ui/SwitchFix.git
@@ -66,145 +70,88 @@ cd SwitchFix
 ./install.sh
 ```
 
-Со стабильной подписью `install.sh` проводит через выдачу разрешений только при первой установке (когда SwitchFix ещё нет в `/Applications`) и не трогает уже выданные. Если разрешения всё же пропали, сбросьте их и выдайте заново: `./install.sh --reset-permissions`.
+`install.sh` соберёт приложение, установит его в `/Applications`, добавит в автозапуск и проведёт
+через выдачу разрешений **Универсальный доступ** и **Мониторинг ввода**. Уже выданные разрешения
+он не трогает; если они всё же пропали — `./install.sh --reset-permissions`.
 
-Если `setup-codesign.sh` не находит только что созданный сертификат, значит, macOS считает его недоверенным. Разрешите его для подписи кода (попросит пароль) и запустите скрипт ещё раз:
+Если `setup-codesign.sh` не находит только что созданный сертификат, macOS считает его
+недоверенным. Разрешите его для подписи кода (попросит пароль) и запустите скрипт ещё раз:
 
 ```bash
 security find-certificate -c "SwitchFix Development" -p > /tmp/switchfix.pem && security add-trusted-cert -r trustRoot -p codeSign -k ~/Library/Keychains/login.keychain-db /tmp/switchfix.pem
 ```
 
-Всё настраивается в окне настроек (значок SwitchFix в строке меню → Настройки…, `⌘,`). Окно разбито на вкладки:
+Без стабильной подписи каждая сборка подписывается заново, и разрешения приходится выдавать после
+каждой пересборки.
 
-- **Основные** — включение SwitchFix, запуск при входе в систему, язык интерфейса (русский или английский, по умолчанию как в системе; меняется сразу, без перезапуска) и состояние разрешений macOS с кнопками, которые открывают нужную страницу Системных настроек.
-- **Исправление** → **Режим исправления**: выберите **Только по горячей клавише**, если нужна только ручная коррекция.
-- **Исправление** → **Горячие клавиши** → **Исправить**: нажмите на поле, затем нажмите и отпустите Option (или Control). В поле появится `⌥ Option (одно нажатие)`. Обычные сочетания вроде `⌃⇧Space` записываются как раньше. Для **Отменить последнее** одиночный модификатор не поддерживается.
-- **Приложения** — одна таблица для всех настроек по приложениям. Флажок **Исправлять** снят — SwitchFix не трогает текст в этом приложении (терминалы и IDE выключены по умолчанию). Колонка **Ввод текста** задаёт способ отправки исправлений: **Обычный** — напрямую процессу, **Системный поток** (session event tap) — для приложений, которые теряют текст, как Telegram (он уже в списке), **Системный поток (HID)** — если не помог предыдущий. Приложения добавляются кнопкой «+» (новые сразу исключаются из исправления), изменения применяются сразу.
-- **О программе** — версия и установленные раскладки, которые видит SwitchFix.
+## Настройка
 
-В меню в строке меню остались только частые действия: включение/выключение, режим исправления, Настройки и Выход. Если не хватает разрешений или Caps Lock конфликтует с переключением раскладки macOS, сверху меню появляется предупреждение; нажатие на него ведёт туда, где это исправляется.
+Значок **Ab** в строке меню → **Настройки…** (`⌘,`):
 
-Не используйте одиночный Control, если включена диктовка macOS: её системный хоткей — двойное нажатие Control.
+- **Основные** — включение, запуск при входе, язык интерфейса (меняется сразу) и состояние
+  разрешений macOS с кнопками, ведущими в нужный раздел Системных настроек.
+- **Исправление** — режим, горячие клавиши и чувствительность. Чтобы назначить одиночный
+  модификатор, нажмите на поле хоткея, затем нажмите и отпустите Option или Control.
+- **Приложения** — где исправлять и как отправлять текст: **Обычный**, **Системный поток** или
+  **Системный поток (HID)**, если не помог предыдущий.
+- **Слова** — выученные и собственные правила: поиск, добавление, правка, удаление, сброс выученного.
+- **О программе** — версия и раскладки, которые видит SwitchFix.
 
-Альтернатива — те же настройки через Терминал (после этого перезапустите SwitchFix):
+В самом меню — включение, режим исправления, настройки и выход. Если не хватает разрешений или
+Caps Lock конфликтует с переключением раскладки macOS, сверху появляется предупреждение со ссылкой
+туда, где это исправляется.
+
+Не назначайте одиночный Control, если включена диктовка macOS: её хоткей — двойное нажатие Control.
+
+### Через Терминал
+
+Те же настройки можно задать через `defaults` (затем перезапустите SwitchFix):
 
 ```bash
+# Режим: automatic | hotkey | layoutSwitch
 defaults write com.switchfix.app SwitchFix_correctionMode -string hotkey
-defaults write com.switchfix.app SwitchFix_hotkeyKeyCode -int 58      # одиночный Option; Control — 59
-defaults write com.switchfix.app SwitchFix_hotkeyModifiers -int 0
-defaults write com.switchfix.app SwitchFix_postModeByApp -dict com.tdesktop.Telegram session
-```
 
-Обновиться с оригинального репозитория:
-
-```bash
-git remote add upstream https://github.com/rundax/SwitchFix.git   # один раз
-git pull upstream master
-```
-
----
-
-## Features
-
-- **Automatic correction** — detects wrong-layout words on space or punctuation and corrects them instantly (a word ended by Enter is left alone: the text may already be sent).
-- **Hotkey mode** — correct only when you press Ctrl+Shift+Space (configurable).
-- **Selection correction** — select text and press the hotkey to convert it.
-- **Permissions indicator** — missing macOS permissions show up at the top of the menu and in Settings → General.
-- **Undo** — `Cmd+Z` within 5 seconds reverts the last correction.
-- **Revert hotkey** — `CapsLock` reverts the last correction (configurable).
-- **Three layouts** — English (US/ABC/British/Dvorak/Colemak), Ukrainian, and Russian.
-- **Smart filtering** — skips password fields, URLs, emails, camelCase, mixed scripts.
-- **App blacklist** — disabled in terminals, IDEs, and code editors by default (toggle per app in Settings → Apps).
-- **Launch at Login** — optional auto-start.
-
-## Requirements
-
-- macOS 13.0 or later
-
-## Installation
-
-### From source
-
-```bash
-git clone https://github.com/rundax/SwitchFix.git
-cd SwitchFix
-./install.sh
-```
-
-The script builds the app, installs it to `/Applications`, sets it to run at startup, and guides you through the required **Accessibility** and **Input Monitoring** permissions.
-
-> **Note:** Requires Xcode Command Line Tools. The script will prompt you to install them if missing.
-
-### From DMG
-
-Download a pre-built `.dmg` from the [Releases page](https://github.com/rundax/SwitchFix/releases), open it, and double-click **Install SwitchFix**.
-
-## Development
-
-### Stable code signing (recommended)
-
-Ad-hoc signing (the default) changes the binary hash on every build, which forces you to re-grant Accessibility and Input Monitoring permissions each time. To avoid this, create a local code-signing certificate once:
-
-```bash
-./scripts/setup-codesign.sh
-```
-
-This creates a self-signed certificate in your Keychain and saves it to `.codesign-identity`. All subsequent builds via `build-app.sh` and `install.sh` will use it automatically — permissions survive rebuilds.
-
-### Build without installing
-
-```bash
-./scripts/build-app.sh          # → dist/SwitchFix.app
-```
-
-### Create a DMG
-
-```bash
-./scripts/create-dmg.sh         # → dist/SwitchFix.dmg
-```
-
-## Menu Bar Options
-
-SwitchFix lives in your menu bar with an **Ab** icon. The menu provides:
-- **Warnings** — missing permissions or a CapsLock conflict, each linking to where it is fixed
-- **SwitchFix Enabled** toggle
-- **Correction Mode** — Automatic, Hotkey Only (shows the current hotkey) or On Layout Switch
-- **Settings…** (`⌘,`) — tabs General, Correction, Apps and About (installed layouts, version)
-- **Quit**
-
-## Advanced Configuration
-
-SwitchFix stores hotkeys in `UserDefaults`. Customize via Terminal:
-
-```bash
-# Revert hotkey: CapsLock (no modifiers)
-defaults write com.switchfix.app SwitchFix_revertHotkeyKeyCode -int 57
-defaults write com.switchfix.app SwitchFix_revertHotkeyModifiers -int 0
-
-# Correction hotkey: Ctrl+Shift+Space
+# Хоткей исправления: ⌃⇧Space
 defaults write com.switchfix.app SwitchFix_hotkeyKeyCode -int 49
 defaults write com.switchfix.app SwitchFix_hotkeyModifiers -int $((262144+131072))
 
-# Correction hotkey: lone Option tap (fork; 59 = lone Control tap)
+# Хоткей исправления: одиночный Option (59 — одиночный Control)
 defaults write com.switchfix.app SwitchFix_hotkeyKeyCode -int 58
 defaults write com.switchfix.app SwitchFix_hotkeyModifiers -int 0
 
-# Check the field's text before a correction deletes (fork; read at launch)
-# values: off | shadow (log only) | enforce (default)
-defaults write com.switchfix.app SwitchFix_fieldTextCheck shadow
+# Хоткей отмены: Caps Lock
+defaults write com.switchfix.app SwitchFix_revertHotkeyKeyCode -int 57
+defaults write com.switchfix.app SwitchFix_revertHotkeyModifiers -int 0
 
-# Per-app event delivery for toolkits that drop Unicode events posted to the process (fork)
-# values: session | hid
+# Отправка текста для конкретного приложения: session | hid
 defaults write com.switchfix.app SwitchFix_postModeByApp -dict com.tdesktop.Telegram session
+
+# Сверка с текстом поля: enforce (по умолчанию) | shadow (только лог) | off
+defaults write com.switchfix.app SwitchFix_fieldTextCheck shadow
 ```
 
-## How It Works
+## Разработка
 
-1. **KeyboardMonitor** securely captures keystrokes without blocking them.
-2. Characters accumulate in a short-lived **LayoutDetector** word buffer.
-3. On a word boundary (space, enter, tab), character n-gram language models score how plausible the keystrokes are as typed versus read on the other layout (English ↔ Ukrainian/Russian).
-4. If the other reading is clearly more plausible, **TextCorrector** safely deletes the mistyped characters, switches your input layout, and retypes the correct word.
+```bash
+swift build -c release                         # сборка
+swift run -c release TestRunner                # тесты детектора и моделей + отчёт по реальным текстам
+swift run -c release InputPipelineTestRunner   # тесты цепочки ввода и исправления
+./scripts/build-app.sh                         # → dist/SwitchFix.app
+./scripts/create-dmg.sh                        # → dist/SwitchFix.dmg
+```
 
-## License
+Логи:
+
+```bash
+log stream --level debug --predicate 'subsystem == "com.switchfix"'
+```
+
+Набранный текст в лог не пишется (только длина), пока не включено
+`defaults write com.switchfix.app SwitchFix_logTypedText -bool YES`.
+
+Устройство детектора и замеры — `plan/005_ngram_layout_detection.md` и `plan/benchmarks/`;
+устройство цепочки ввода — `plan/003_zero_lag_input_pipeline.md`.
+
+## Лицензия
 
 MIT
