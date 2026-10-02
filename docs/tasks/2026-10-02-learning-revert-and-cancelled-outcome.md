@@ -3,13 +3,13 @@ id: 2026-10-02-learning-revert-and-cancelled-outcome
 title: "Learning gaps: hotkey revert keeps the learned rule, cancelled corrections count as corrected"
 type: bug
 pipeline: no-spec
-phase: plan-review
+phase: impl
 created: 2026-10-02
 updated: 2026-10-02
 blocked_by: null
-steps_done: 0
-steps_total: 0
-step_current: null
+steps_done: 3
+steps_total: 4
+step_current: 4
 artifacts:
   spec: null
   plan: docs/plans/learning-revert-and-cancelled-outcome-plan.md
@@ -24,7 +24,10 @@ artifacts:
 
 ## Progress
 
-_Шаги не заданы. `rtp steps <id> --set "…"` или `--from-plan <файл>`._
+1. ✅ (а) отмена hotkey забывает выученное правило
+2. ✅ (б) detectionID + noteCorrectionNotApplied в детекторе + тесты
+3. ✅ (б) движок зовёт хук во всех точках отмены + тесты
+4. ▶ Ревью и CI
 
 ## Log
 
@@ -32,10 +35,15 @@ _Шаги не заданы. `rtp steps <id> --set "…"` или `--from-plan <�
 - 2026-10-02: brainstorm: пользователь одобрил (а) forgetAccepted при отмене .hotkey, (б) detectionID + noteCorrectionNotApplied во всех точках отмены, откат pendingSwitch только без новой детекции
 - 2026-10-02: artifacts.plan = docs/plans/learning-revert-and-cancelled-outcome-plan.md
 - 2026-10-02: plan drafted
+- 2026-10-02: шаг 1 ✅ (а) отмена hotkey забывает выученное правило — e295188, CI зелёный 36992606419; условие rule == alwaysCorrect(to: target) добавлено по plan-review
+- 2026-10-02: plan-review: 3 блокера (слово рудщ→helo; reset не чистил lastCorrection; гонка в тесте движка) + should-fix; план rev.2
+- 2026-10-02: шаг 2 ✅ (б) detectionID + noteCorrectionNotApplied в детекторе + тесты
+- 2026-10-02: шаг 3 ✅ (б) движок зовёт хук во всех точках отмены + тесты — ждём CI
 
 ## Decisions
 
-_Нетривиальные решения по ходу задачи. Одна строка на решение._
+- Состояние подтверждения переключения восстанавливается целиком (как будто слова не было), не только при shouldSwitchLayout == true — согласовано с переводом исхода в .unknown
+- Исход переводится в .unknown для любой причины отмены (Enter, устаревание, экран); разделение по причине (Enter/stale — улики верны) не делаем — одобренный дизайн; при быстром наборе отмены stale-during-screen-check частые, и после них переключение обычно не восстанавливается (была новая детекция)
 
 ## Debt
 

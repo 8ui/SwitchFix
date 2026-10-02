@@ -94,3 +94,18 @@ copied by `deleting`; `inversePlan` uses 0), test in `Sources/InputPipelineTestR
 
 - [ ] Close the debt in `2026-09-30-automatic-correction-retypes-the-enter-that-ended-the-word`.
 - [ ] Reviewer subagent, CI evidence.
+
+---
+
+## Rev. 2 — plan-review findings (override the tasks above where they differ)
+
+- Test word `цщклы` (→ `world`), not `рудщ` (→ `helo`, not known to be corrected).
+- `reset()` clears the stored correction (a hook after a context reset must not restore anything).
+- No `CorrectionPlan` field: `prepareCorrection` captures `result.detectionID` in the `ScreenCheck` closures
+  (`cancelled`, called on every cancel return) and passes it to `emit(_:detectionID:)`.
+- id = `detectionSerial` (incremented per `checkBuffer`); "nothing detected since" = `id == detectionSerial`.
+  Tagging happens once in `checkBuffer` after a non-nil result (the finish paths stay untouched).
+- `pendingSuppressedShort` is never given back (the merged pair stays on screen; a later merge would
+  delete the wrong length). `consecutiveWrongCount`, `lastDetectionResult`, `lastCyrillicLayout` untouched.
+- `.hotkey` revert forgets only when `rule == .alwaysCorrect(to: plan.targetLayout)`.
+- Engine tests wait and drain between the cancelled word and the short word; a screen-refusal variant.

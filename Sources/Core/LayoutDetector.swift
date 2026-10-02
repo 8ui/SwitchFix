@@ -9,6 +9,9 @@ public struct DetectionResult {
     public let convertedWord: String
     public let originalWord: String
     public let shouldSwitchLayout: Bool
+    /// Set by `LayoutDetector` on results it produced (never 0 then); the engine passes it
+    /// back to `noteCorrectionNotApplied(_:)` when the correction never reached the field.
+    public internal(set) var detectionID: UInt64 = 0
 
     public init(
         sourceLayout: Layout,
@@ -64,7 +67,12 @@ public class LayoutDetector {
     private var pendingBoundaryCharacter: String?
     private var pendingSwitchLayout: Layout?
     private var pendingSwitchCount: Int = 0
-    private var recentOutcomes: [RecentOutcome] = []
+    /// Outcomes of recent words; `id` is the `detectionID` of a returned correction, else 0.
+    private var recentOutcomes: [(outcome: RecentOutcome, id: UInt64)] = []
+    /// Counts `checkBuffer` calls; a returned correction's `detectionID`.
+    private var detectionSerial: UInt64 = 0
+    /// The last returned correction and the layout-switch confirmation state before it.
+    private var lastCorrection: (id: UInt64, switchLayout: Layout?, switchCount: Int)?
     private var pendingSuppressedShort: SuppressedShort?
     private var isOutOfSync: Bool = false
 
@@ -211,8 +219,28 @@ public class LayoutDetector {
         pendingSwitchLayout = nil
         pendingSwitchCount = 0
         recentOutcomes = []
+        lastCorrection = nil
         pendingSuppressedShort = nil
         isOutOfSync = false
+    }
+
+    /// A correction this detector returned never reached the field (cancelled after detection:
+    /// Enter, stale state, the field-text check). Its word no longer counts as corrected in the
+    /// context, and when nothing was detected since, the layout-switch confirmation state is
+    /// as before it. A deferred short word it merged is not given back: the pair stays on
+    /// screen, so merging it into a later word would delete the wrong length.
+    public func noteCorrectionNotApplied(_ detectionID: UInt64) {
+        guard detectionID != 0 else { return }
+        if let index = recentOutcomes.firstIndex(where: { $0.id == detectionID }) {
+            recentOutcomes[index].outcome = .unknown
+        }
+        guard let last = lastCorrection, last.id == detectionID else { return }
+        if detectionID == detectionSerial {
+            pendingSwitchLayout = last.switchLayout
+            pendingSwitchCount = last.switchCount
+        }
+        lastCorrection = nil
+        SwitchFixLog.detector.debug("correction \(detectionID) not applied: context and switch state restored")
     }
 
     /// The current word buffer contents.
@@ -224,6 +252,8 @@ public class LayoutDetector {
 
     private func checkBuffer(suppressedShort: SuppressedShort?) -> DetectionResult? {
         state = .detecting
+        detectionSerial &+= 1
+        let switchBefore = (layout: pendingSwitchLayout, count: pendingSwitchCount)
 
         let word = wordBuffer
         let sourceLayout = resolvedSourceLayout(for: word)
@@ -235,7 +265,16 @@ public class LayoutDetector {
             return nil
         }
 
-        return checkLanguageModels(word: word, sourceLayout: sourceLayout, suppressedShort: suppressedShort)
+        guard var result = checkLanguageModels(word: word, sourceLayout: sourceLayout, suppressedShort: suppressedShort) else {
+            return nil
+        }
+        // Every path that returns a correction records `.corrected` last.
+        result.detectionID = detectionSerial
+        if let last = recentOutcomes.indices.last, case .corrected = recentOutcomes[last].outcome {
+            recentOutcomes[last].id = detectionSerial
+        }
+        lastCorrection = (id: detectionSerial, switchLayout: switchBefore.layout, switchCount: switchBefore.count)
+        return result
     }
 
     // MARK: - Language-model decision
@@ -672,7 +711,7 @@ public class LayoutDetector {
 
     private func hasStrongCurrentContext() -> Bool {
         let window = max(1, shortWordSuppressionContextWindow)
-        let recent = recentOutcomes.suffix(window)
+        let recent = recentOutcomes.suffix(window).map(\.outcome)
         let validCount = recent.reduce(0) { partial, outcome in
             if case .validCurrent = outcome {
                 return partial + 1
@@ -687,7 +726,7 @@ public class LayoutDetector {
     }
 
     private func recordOutcome(_ outcome: RecentOutcome) {
-        recentOutcomes.append(outcome)
+        recentOutcomes.append((outcome: outcome, id: 0))
         let window = max(1, shortWordSuppressionContextWindow)
         if recentOutcomes.count > window {
             recentOutcomes.removeFirst(recentOutcomes.count - window)

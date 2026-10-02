@@ -38,6 +38,7 @@ artifacts:
 - 2026-10-02: plan-review: блокер — нужна ручная проверка на Mac (шаг 3, пользователь); should-fix S1–S6 в rev.2
 - 2026-10-02: шаг 1 ✅ classifyKeyDown — чистая функция + тесты — classifyKeyDown + тесты
 - 2026-10-02: шаг 2 ✅ Чтение symbolichotkeys 60/61 + тесты парсера — inputSourceShortcuts(from:selectableSourceCount:) + CFPreferences + тесты
+- 2026-10-02: verify: `CI зелёный: https://github.com/8ui/SwitchFix/actions/runs/36993040417 (push bb9e34b; TestRunner 613/0, InputPipelineTestRunner 1215/0; 3 новых сьюта classifyKeyDown/парсер)` → exit 0 ✅
 
 ## Decisions
 
@@ -50,7 +51,11 @@ _Нетривиальные решения по ходу задачи. Одна 
 
 ## Verification
 
-_Доказательства, а не утверждения. Заполняется `rtp verify <id> --run "<команда>"`: команда, exit code, хвост вывода._
+- 2026-10-02 · `CI зелёный: https://github.com/8ui/SwitchFix/actions/runs/36993040417 (push bb9e34b; TestRunner 613/0, InputPipelineTestRunner 1215/0; 3 новых сьюта classifyKeyDown/парсер)` · exit 0 ✅
+
+  ```
+  (без вывода)
+  ```
 
 ## Handoff
 

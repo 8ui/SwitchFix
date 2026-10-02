@@ -419,7 +419,8 @@ public final class InputEngine {
                     reject: { [weak self] in
                         // The field no longer shows the corrected text: a later revert cannot be right.
                         self?.corrector.discardUndo(revert)
-                    }
+                    },
+                    cancelled: {}
                 )
                 self.inputQueue.async { [weak self] in
                     self?.verifyScreen(
@@ -546,6 +547,7 @@ public final class InputEngine {
             cancelReason = "word-ended-by-enter"
         }
         guard cancelReason == nil else {
+            noteNotApplied(result.detectionID)
             SwitchFixLog.engine.notice("correction cancelled reason=\(cancelReason!)")
             logger.debug("correction cancelled reason=\(cancelReason!) word=\(SwitchFixLog.text(result.originalWord), privacy: .public)")
             return
@@ -583,9 +585,10 @@ public final class InputEngine {
                 retriesMismatch: false,
                 isCurrent: { [weak self] in self?.isCurrent(request) ?? false },
                 proceed: { [weak self] deleteCount in
-                    self?.emit(deleteCount.map(plan.deleting) ?? plan)
+                    self?.emit(deleteCount.map(plan.deleting) ?? plan, detectionID: result.detectionID)
                 },
-                reject: {}
+                reject: {},
+                cancelled: { [weak self] in self?.noteNotApplied(result.detectionID) }
             )
             verifyScreen(
                 check,
@@ -594,7 +597,7 @@ public final class InputEngine {
                 attempt: 1
             )
         } else {
-            emit(plan)
+            emit(plan, detectionID: result.detectionID)
         }
     }
 
@@ -632,6 +635,8 @@ public final class InputEngine {
         let proceed: (Int?) -> Void
         /// Runs on the input queue when the field refuses the text in enforce mode (never on staleness).
         let reject: () -> Void
+        /// Runs on the input queue whenever the check ends without proceeding (refusal or staleness).
+        let cancelled: () -> Void
     }
 
     /// Reads the text before the caret and proceeds only if the field still ends with what
@@ -649,6 +654,7 @@ public final class InputEngine {
         let provenance = String(describing: check.provenance)
         guard check.isCurrent() else {
             SwitchFixLog.engine.notice("\(kind) cancelled reason=stale-during-screen-check attempts=\(attempt - 1) provenance=\(provenance)")
+            check.cancelled()
             return
         }
         // AX ranges are UTF-16. The margin: 2 for a decomposed accent in the field, 2 for an
@@ -661,6 +667,7 @@ public final class InputEngine {
                     guard let self else { return }
                     guard check.isCurrent() else {
                         SwitchFixLog.engine.notice("\(kind) cancelled reason=stale-during-screen-check attempts=\(attempt) provenance=\(provenance)")
+                        check.cancelled()
                         return
                     }
                     let elapsed = DispatchTime.now().uptimeNanoseconds &- startedAt
@@ -691,12 +698,14 @@ public final class InputEngine {
                     }
                     if unconfirmed != nil, final, sawReplacement, !shadow {
                         SwitchFixLog.engine.notice("\(kind) cancelled reason=screen-replacement-unconfirmed attempts=\(attempt)")
+                        check.cancelled()
                         return
                     }
                     // Once a replacement was seen (even before a retry), an unreadable field
                     // is no reason to delete the typed length.
                     if verdict == .unknown, sawReplacement, !shadow {
                         SwitchFixLog.engine.notice("\(kind) cancelled reason=screen-unreadable-after-replacement attempts=\(attempt)")
+                        check.cancelled()
                         return
                     }
                     if verdict == .retry || unconfirmed != nil, !shadow {
@@ -715,6 +724,7 @@ public final class InputEngine {
                     if verdict == .mismatch, !shadow {
                         SwitchFixLog.engine.notice("\(kind) cancelled reason=screen-mismatch")
                         check.reject()
+                        check.cancelled()
                         return
                     }
                     if case .replaced(let deleteCount) = verdict, !shadow {
@@ -737,18 +747,31 @@ public final class InputEngine {
         }
     }
 
-    private func emit(_ plan: CorrectionPlan) {
+    /// - Parameter detectionID: the detector's id of the result behind `plan` (0: none).
+    private func emit(_ plan: CorrectionPlan, detectionID: UInt64) {
         correctionQueue.async { [weak self] in
             guard let self else { return }
             guard plan.isEligible(using: self.captureState.snapshot()) else {
                 SwitchFixLog.corrector.debug("emission skipped: state changed before apply \(SwitchFixLog.text(plan.originalText))")
+                self.noteNotApplied(detectionID)
                 return
             }
             let applied = self.customEmission.map { $0(plan) }
                 ?? self.corrector.apply(plan, latestCaptureState: self.captureState.snapshot)
             if applied {
                 self.learnFromApplied(plan)
+            } else {
+                self.noteNotApplied(detectionID)
             }
+        }
+    }
+
+    /// Tells the detector that the correction it detected as `detectionID` never reached the
+    /// field, so it does not count as corrected (any queue).
+    private func noteNotApplied(_ detectionID: UInt64) {
+        guard detectionID != 0 else { return }
+        detectionQueue.async { [weak self] in
+            self?.detector.noteCorrectionNotApplied(detectionID)
         }
     }
 
@@ -826,9 +849,13 @@ public final class InputEngine {
         case .hotkeyForced:
             lexicon.forgetAccepted(word: word, sourceLayout: plan.originalLayout)
         case .hotkey:
-            // The detector checks the lexicon first: if the word has a rule learned from the
-            // hotkey, that rule made this conversion, and reverting it rejects the rule.
-            lexicon.forgetAccepted(word: word, sourceLayout: plan.originalLayout)
+            // A rule converting the word to this target is what the detector applied (it
+            // checks the lexicon before the model); reverting rejects a rule learned from the
+            // hotkey (`forgetAccepted` leaves manual ones).
+            if let target = plan.targetLayout,
+               lexicon.rule(for: word, sourceLayout: plan.originalLayout) == .alwaysCorrect(to: target) {
+                lexicon.forgetAccepted(word: word, sourceLayout: plan.originalLayout)
+            }
         case .selection, .layoutSwitch:
             break
         }

@@ -1544,7 +1544,49 @@ run("learning: reverting a hotkey correction made by a learned rule forgets the 
     check(waitUntil { manual.emitted.count == 1 }, "the hotkey applies the manual rule")
     manual.send(.revertHotkey)
     check(waitUntil { manual.reverted.count == 1 }, "reverted")
-    check(manual.lexicon.rule(for: "rehk", sourceLayout: .english) == .alwaysCorrect(to: .russian), "a manual rule stays")
+    check(!waitUntil(0.3) { manual.lexicon.rule(for: "rehk", sourceLayout: .english) != .alwaysCorrect(to: .russian) }, "a manual rule stays")
+}
+
+run("learning: a cancelled correction does not count as corrected") {
+    func drain(_ harness: LearningHarness) {
+        let drained = DispatchSemaphore(value: 0)
+        harness.engine.drain { drained.signal() }
+        _ = drained.wait(timeout: .now() + 1)
+    }
+    // Russian context, then an English word typed on Russian that is not corrected
+    // (ended by Enter), then a short word: still kept by the strong context.
+    var cancelled = LearningHarness(layout: .russian)
+    cancelled.type("сейчас")
+    cancelled.type("на")
+    cancelled.type("цщклы", boundary: "\n")
+    check(!waitUntil(0.3) { cancelled.emitted.count > 0 }, "a word ended by Enter is not corrected")
+    drain(cancelled)
+    cancelled.type("ше")
+    check(!waitUntil(0.4) { cancelled.emitted.count > 0 }, "the short word stays in the strong context, got \(cancelled.emitted.all.map(\.correctedText))")
+
+    // Control: the same word corrected for real weakens the context, so the short word is corrected.
+    var applied = LearningHarness(layout: .russian)
+    applied.type("сейчас")
+    applied.type("на")
+    applied.type("цщклы")
+    check(waitUntil { applied.emitted.count == 1 }, "the word ended by a space is corrected")
+    drain(applied)
+    applied.type("ше")
+    check(waitUntil { applied.emitted.count == 2 }, "after a real correction the short word is corrected")
+
+    // A correction refused by the field-text check is reported back too.
+    var refused = LearningHarness(
+        layout: .russian,
+        screen: ScreenStub(.text(before: "сейчас на что-то другое "), .text(before: "сейчас на цщклы ше "))
+    )
+    refused.type("сейчас")
+    refused.type("на")
+    refused.type("цщклы")
+    check(waitUntil { refused.screen?.queries == 1 }, "the correction reads the field")
+    check(!waitUntil(0.4) { refused.emitted.count > 0 }, "a changed field cancels the correction")
+    drain(refused)
+    refused.type("ше")
+    check(!waitUntil(0.4) { refused.emitted.count > 0 }, "the short word stays after a refused correction")
 }
 
 run("learning: manual entries are not overwritten by reverts") {
