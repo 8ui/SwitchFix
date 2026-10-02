@@ -105,7 +105,9 @@ public final class InputEngine {
     static let layoutSwitchWordLifetimeNanoseconds: UInt64 = 500_000_000
     /// How long a correction waits for the field to show the typed text before deciding.
     /// Soft: checked when an answer arrives, and one read of a busy app can take ~250 ms.
-    static let screenCheckDeadlineNanoseconds: UInt64 = 150_000_000
+    public static let screenCheckDeadlineNanoseconds: UInt64 = 150_000_000
+    /// `screenCheckDeadlineNanoseconds` unless injected (tests on a slow runner).
+    private let screenCheckDeadline: UInt64
     static let screenCheckRetryInterval: DispatchTimeInterval = .milliseconds(20)
     /// How long after a caret move the hotkey waits before reading the word before the caret:
     /// Accessibility (Chromium) may still report the previous caret position.
@@ -125,6 +127,7 @@ public final class InputEngine {
         caretContextRequest: CaretContextRequest? = nil,
         screenTextRequest: ScreenTextRequest? = nil,
         screenCheckMode: ScreenCheckMode = .enforce,
+        screenCheckDeadline: UInt64 = InputEngine.screenCheckDeadlineNanoseconds,
         readsScreenAfterCaretMove: ((pid_t) -> Bool)? = nil,
         lexicon: PersonalLexicon? = nil,
         revertEmission: RevertEmission? = nil,
@@ -140,6 +143,7 @@ public final class InputEngine {
         self.caretContextRequest = caretContextRequest
         self.screenTextRequest = screenCheckMode == .off ? nil : screenTextRequest
         self.screenCheckMode = screenCheckMode
+        self.screenCheckDeadline = screenCheckDeadline
         self.readsScreenAfterCaretMove = readsScreenAfterCaretMove
         self.lexicon = lexicon
         self.revertEmission = revertEmission
@@ -753,7 +757,7 @@ public final class InputEngine {
                         return
                     }
                     let elapsed = DispatchTime.now().uptimeNanoseconds &- startedAt
-                    let final = elapsed >= Self.screenCheckDeadlineNanoseconds
+                    let final = elapsed >= self.screenCheckDeadline
                     // Shadow reads once and corrects as before: waiting for a lagging field
                     // would delay corrections and lose them to the next keystroke.
                     let shadow = self.screenCheckMode == .shadow

@@ -715,7 +715,9 @@ const defaultWarn = (m) => process.stderr.write(`${m}\n`);
 // continuation lines, corrupting the quoted value) — reject it.
 const oneLine = (s) => typeof s === 'string' && s.trim() !== '' && !/[\r\n]/.test(s);
 
-function normalizeVerifyEntry(v) {
+// `badTimeout` is told about a timeout that is not a positive integer: the command
+// itself is kept (with the default timeout) — dropping it would hide a check.
+function normalizeVerifyEntry(v, badTimeout = () => {}) {
   if (typeof v === 'string') return oneLine(v) ? { run: v.trim() } : null;
   if (!v || typeof v !== 'object' || Array.isArray(v)) return null;
   if ((v.run !== undefined && !oneLine(v.run)) || (v.record !== undefined && !oneLine(v.record))) return null;
@@ -724,7 +726,9 @@ function normalizeVerifyEntry(v) {
   const scope = v.only ? { only: v.only } : {};
   if (typeof v.run === 'string' && v.run.trim() && v.record === undefined) {
     if (v.timeout === undefined) return { run: v.run.trim(), ...scope };
-    return Number.isInteger(v.timeout) && v.timeout > 0 ? { run: v.run.trim(), timeout: v.timeout, ...scope } : null;
+    if (Number.isInteger(v.timeout) && v.timeout > 0) return { run: v.run.trim(), timeout: v.timeout, ...scope };
+    badTimeout();
+    return { run: v.run.trim(), ...scope };
   }
   if (typeof v.record === 'string' && v.record.trim() && v.run === undefined) return { record: v.record.trim(), ...scope };
   return null;
@@ -764,7 +768,8 @@ export async function loadProjectConfig(tasksDir, warn = defaultWarn) {
   if (raw.verify !== undefined) {
     if (!Array.isArray(raw.verify)) say('verify не массив');
     else raw.verify.forEach((v, i) => {
-      const n = normalizeVerifyEntry(v);
+      const n = normalizeVerifyEntry(v, () =>
+        warn(`rtp: ${path}: verify[${i}].timeout не положительное целое — команда оставлена с timeout по умолчанию`));
       if (n) cfg.verify.push(n);
       else say(`verify[${i}] неверной формы`);
     });
@@ -786,6 +791,12 @@ export async function loadProjectConfig(tasksDir, warn = defaultWarn) {
 // POSIX single-quote escaping: the printed hint can be pasted into sh as is.
 export function shQuote(s) {
   return `'${String(s).replace(/'/g, `'\\''`)}'`;
+}
+
+// `--flag 'value'` for a printed hint; a value starting with `-` uses the `=` form,
+// which parseArgs() reads as a value instead of the next flag.
+export function shFlag(flag, value) {
+  return String(value).startsWith('-') ? `--${flag}=${shQuote(value)}` : `--${flag} ${shQuote(value)}`;
 }
 
 async function refExists(ref, cwd) {

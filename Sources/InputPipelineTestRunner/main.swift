@@ -172,6 +172,53 @@ run("flush marks a word typed right after the previous flush") {
     check(adjacency(after: [.hotkey]) == false, "a hotkey breaks adjacency")
 }
 
+/// Feeds a state machine between two words; `sequence` is the event's sequence number.
+private typealias Between = (inout InputStateMachine, _ sequence: UInt64) -> Void
+
+run("flush adjacency: any other event between the words breaks it") {
+    let current = context()
+    /// Flushes "ab ", runs `between`, types "cd " in `next`; whether that flush continues "ab"
+    /// (nil: the second word was not flushed at all).
+    func adjacency(typingIn next: InputContextSnapshot, _ between: Between) -> Bool? {
+        var machine = automaticMachine(current)
+        _ = machine.consume(input(sequence: 1, kind: .character("a"), context: current))
+        _ = machine.consume(input(sequence: 2, kind: .character("b"), context: current))
+        let first = machine.consume(input(sequence: 3, kind: .boundary(" "), context: current))
+        guard first.contains(where: { if case .flush = $0 { return true } else { return false } }) else { return nil }
+        between(&machine, 4)
+        _ = machine.consume(input(sequence: 5, kind: .character("c"), context: next))
+        _ = machine.consume(input(sequence: 6, kind: .character("d"), context: next))
+        for command in machine.consume(input(sequence: 7, kind: .boundary(" "), context: next)) {
+            if case .flush(_, _, _, _, let continues) = command { return continues }
+        }
+        return nil
+    }
+    func event(_ kind: CapturedInput.Kind, in value: InputContextSnapshot) -> Between {
+        { machine, sequence in _ = machine.consume(input(sequence: sequence, kind: kind, context: value)) }
+    }
+    check(adjacency(typingIn: current) { _, _ in } == true, "nothing between: the second word continues the first")
+    // false: flushed as a fresh word; nil: the buffer stays invalid until the boundary.
+    let cases: [(String, Between, Bool?)] = [
+        ("a punctuation boundary", event(.boundary(","), in: current), false),
+        ("a shortcut", event(.navigation, in: current), false),
+        ("a click", event(.caretMove(byClick: true), in: current), false),
+        ("focusMayChange", event(.focusMayChange, in: current), false),
+        ("the revert hotkey", event(.revertHotkey, in: current), false),
+        ("an input source key", event(.inputSourceKey, in: current), false),
+        ("an event from a stale context", event(.character("x"), in: context(epoch: 2)), false),
+        ("a tap reset", event(.tapReset, in: current), nil),
+        ("a queue overflow", event(.queueOverflow, in: current), nil),
+        ("a delete on the empty buffer", event(.delete, in: current), nil),
+    ]
+    for (name, between, expected) in cases {
+        let continues = adjacency(typingIn: current, between)
+        check(continues == expected, "\(name) breaks adjacency: expected \(String(describing: expected)), got \(String(describing: continues))")
+    }
+    let other = context(epoch: 2)
+    let afterContextChange = adjacency(typingIn: other) { machine, _ in _ = machine.updateContext(other) }
+    check(afterContextChange == false, "a context change breaks adjacency, got \(String(describing: afterContextChange))")
+}
+
 run("autorepeat preserved") {
     let current = context()
     var machine = automaticMachine(current)
@@ -1218,6 +1265,7 @@ private struct LearningHarness {
         layout: Layout = .english,
         screen: ScreenStub? = nil,
         screenCheckMode: ScreenCheckMode = .enforce,
+        screenCheckDeadline: UInt64 = InputEngine.screenCheckDeadlineNanoseconds,
         readsScreenAfterCaretMove: Bool = true
     ) {
         self.screen = screen
@@ -1247,6 +1295,7 @@ private struct LearningHarness {
                 { _, _, window, completion in screen.answer(window: window, completion) }
             },
             screenCheckMode: screenCheckMode,
+            screenCheckDeadline: screenCheckDeadline,
             readsScreenAfterCaretMove: { _ in readsScreenAfterCaretMove },
             lexicon: lexicon,
             revertEmission: { revert in reverted.append(revert.recorded); return true },
@@ -1759,6 +1808,20 @@ run("learning: reverting a hotkey correction made by a learned rule forgets the 
     manual.send(.revertHotkey)
     check(waitUntil { manual.reverted.count == 1 }, "reverted")
     check(!waitUntil(0.3) { manual.lexicon.rule(for: "rehk", sourceLayout: .english) != .alwaysCorrect(to: .russian) }, "a manual rule stays")
+
+    // A learned rule to a layout that is not installed is skipped: the model converts the word
+    // to Russian. Reverting that correction rejects the model's choice, not the rule.
+    var other = LearningHarness()
+    other.lexicon.recordAccepted(word: "ghbdtn", sourceLayout: .english, target: .ukrainian)
+    other.type("ghbdtn", boundary: nil)
+    other.send(.hotkey)
+    check(waitUntil { other.emitted.count == 1 }, "the hotkey converts the word")
+    check(other.emitted.last?.targetLayout == .russian, "to the installed layout, got \(String(describing: other.emitted.last?.targetLayout))")
+    check(other.emitted.last?.provenance == .hotkey, "recognized by the model, got \(String(describing: other.emitted.last?.provenance))")
+    other.send(.revertHotkey)
+    check(waitUntil { other.reverted.count == 1 }, "reverted")
+    check(!waitUntil(0.3) { other.lexicon.rule(for: "ghbdtn", sourceLayout: .english) != .alwaysCorrect(to: .ukrainian) },
+          "a learned rule to another target stays")
 }
 
 run("learning: a cancelled correction does not count as corrected") {
@@ -2300,10 +2363,17 @@ run("layout switch: an inline suggestion after the word") {
 }
 
 /// Corrects "ghbdtn " (the field shows it), then answers the revert's reads with `revertReplies`.
-private func revertHarness(_ revertReplies: [FieldTextProbe], mode: ScreenCheckMode = .enforce) -> LearningHarness {
+/// `deadline`: a test that needs several reads before giving up passes a long one, so a slow
+/// runner does not reach the deadline between them.
+private func revertHarness(
+    _ revertReplies: [FieldTextProbe],
+    mode: ScreenCheckMode = .enforce,
+    deadline: UInt64 = InputEngine.screenCheckDeadlineNanoseconds
+) -> LearningHarness {
     var harness = LearningHarness(
         screen: ScreenStub(replies: [.text(before: "ghbdtn ")] + revertReplies),
-        screenCheckMode: mode
+        screenCheckMode: mode,
+        screenCheckDeadline: deadline
     )
     harness.type("ghbdtn")
     check(waitUntil { harness.emitted.count == 1 }, "the word is corrected before the revert")
@@ -2339,13 +2409,18 @@ run("revert screen check: a changed field is not deleted and not converted") {
 }
 
 run("revert screen check: a field still applying the correction is read again") {
-    var harness = revertHarness([.text(before: "ghbdtn "), .text(before: "ghbd"), .text(before: "привет ")])
+    // Three reads (two 20 ms retries) fit the 150 ms deadline in the app; a long one here keeps
+    // a slow runner from reaching it between the reads (the mismatch would then cancel).
+    let longDeadline: UInt64 = 2_000_000_000
+    var harness = revertHarness(
+        [.text(before: "ghbdtn "), .text(before: "ghbd"), .text(before: "привет ")],
+        deadline: longDeadline
+    )
     harness.send(.revertHotkey)
     check(waitUntil { harness.reverted.count == 1 }, "reverted once the field shows the correction")
-    // Three reads within the 150 ms deadline (two 20 ms retries).
     check(harness.screen?.queries == 4, "after three reads, got \(harness.screen?.queries ?? -1)")
 
-    var lagging = revertHarness([.text(before: "прив"), .text(before: "привет ")])
+    var lagging = revertHarness([.text(before: "прив"), .text(before: "привет ")], deadline: longDeadline)
     lagging.send(.revertHotkey)
     check(waitUntil { lagging.reverted.count == 1 }, "a lagging field is re-read")
 }

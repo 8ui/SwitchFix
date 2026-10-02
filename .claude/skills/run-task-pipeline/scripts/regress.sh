@@ -669,9 +669,10 @@ process.stdout.write(JSON.stringify(c));
 " "$CFGD"; }
 [ "$(lc 2>/dev/null)" = '{"verify":[],"reviewers":[]}' ] && ok "нет файла → пустой конфиг" || bad "нет файла: $(lc 2>&1)"
 printf '%s' '{"baseBranch":"dev","verify":["make a",{"run":"make b","timeout":60},{"record":"CI: x"},{"bogus":1},{"run":"make c","timeout":-1}],"reviewers":["r1","",3],"extra":true}' > "$CFGD/.rtp.json"
-[ "$(lc 2>/dev/null)" = '{"verify":[{"run":"make a"},{"run":"make b","timeout":60},{"record":"CI: x"}],"reviewers":["r1"],"baseBranch":"dev"}' ] \
-  && ok "поля нормализованы, мусор отброшен" || bad "нормализация: $(lc 2>/dev/null)"
+[ "$(lc 2>/dev/null)" = '{"verify":[{"run":"make a"},{"run":"make b","timeout":60},{"record":"CI: x"},{"run":"make c"}],"reviewers":["r1"],"baseBranch":"dev"}' ] \
+  && ok "поля нормализованы, мусор отброшен, команда с битым timeout оставлена" || bad "нормализация: $(lc 2>/dev/null)"
 lc 2>&1 >/dev/null | grep -q 'verify\[3\]' && ok "предупреждение про verify[3]" || bad "нет предупреждения про verify[3]"
+lc 2>&1 >/dev/null | grep -q 'verify\[4\].timeout' && ok "предупреждение только про timeout verify[4]" || bad "нет предупреждения про verify[4].timeout"
 printf '%s' '{bad' > "$CFGD/.rtp.json"
 OUT=$(lc 2>"$ROOT/c1.err"); RC=$?
 [ $RC -eq 0 ] && [ "$OUT" = '{"verify":[],"reviewers":[]}' ] && grep -q '.rtp.json: битый JSON' "$ROOT/c1.err" \
@@ -728,6 +729,17 @@ printf '%s' '{"verify":["echo \"q\" $X"]}' > "$CT/.rtp.json"
 LINE=$(rtp next "$CID" --tasks-dir "$CT" 2>/dev/null | grep -- '--run' | head -1)
 ARG=${LINE#*--run }
 [ "$(sh -c "printf '%s' $ARG")" = 'echo "q" $X' ] && ok "команда с \" и \$ вставляется как есть" || bad "экранирование: $LINE"
+printf '%s' '{"verify":["--version check",{"record":"-x отчёт"}]}' > "$CT/.rtp.json"
+OUT=$(rtp next "$CID" --tasks-dir "$CT" 2>/dev/null)
+echo "$OUT" | grep -qF -- "--run='--version check'" && echo "$OUT" | grep -qF -- "--record='-x отчёт'" \
+  && ok "значение с '-' печатается в форме --flag=" || bad "форма = для '-': $OUT"
+LINE=$(echo "$OUT" | grep -- '--run=' | head -1)
+eval "set -- ${LINE#*verify $CID }"
+RUNARG=$(node --input-type=module -e "
+import { parseArgs } from '$LIB';
+process.stdout.write(String(parseArgs(process.argv.slice(1)).flags.run));
+" -- "$@")
+[ "$RUNARG" = '--version check' ] && ok "parseArgs читает --run=… обратно" || bad "parseArgs: $RUNARG"
 printf '%s' '{bad' > "$CT/.rtp.json"
 rtp status "$CID" --tasks-dir "$CT" >/dev/null 2>"$ROOT/c3b.err" && rtp next "$CID" --tasks-dir "$CT" >/dev/null 2>&1 \
   && grep -q '.rtp.json' "$ROOT/c3b.err" && ok "битый JSON: status/next exit 0 + предупреждение" || bad "битый JSON валит status/next"

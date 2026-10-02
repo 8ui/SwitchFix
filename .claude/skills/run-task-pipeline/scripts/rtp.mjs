@@ -49,6 +49,7 @@ import {
   loadProjectConfig,
   verifyForEnv,
   shQuote,
+  shFlag,
   EMPTY_CONFIG,
   projectRootOf,
   lastLogEntries,
@@ -1158,8 +1159,8 @@ function reviewAction(id, cfg, verbose) {
   const lines = verify.length
     ? verify.map((v) =>
         v.record !== undefined
-          ? `rtp verify ${id} --record ${shQuote(v.record)}`
-          : `rtp verify ${id} --run ${shQuote(v.run)}${v.timeout ? ` --timeout ${v.timeout}` : ''}`,
+          ? `rtp verify ${id} ${shFlag('record', v.record)}`
+          : `rtp verify ${id} ${shFlag('run', v.run)}${v.timeout ? ` --timeout ${v.timeout}` : ''}`,
       )
     : [`rtp verify ${id} --run ${shQuote(NEUTRAL_VERIFY)}`];
   lines.push(

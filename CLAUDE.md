@@ -24,7 +24,7 @@ swift run -c release TestRunner --layout-eval-only   # real-text eval of the cur
 swift run -c release TestRunner --threshold-sweep    # threshold/sensitivity calibration rows (SWEEP\t…), report-only
 ```
 
-CI (`.github/workflows/ci.yml`) runs exactly: a duplicate-key check of `Sources/UI/L10n.swift`, release build, `TestRunner`, the threshold sweep (report-only), `InputPipelineTestRunner`, then `build-app.sh` ad-hoc signed. It runs only on push to `claude/**` (not on PRs or master; a PR whose head is a docs-only commit shows no checks, the run is on its last code commit) and skips docs-only pushes (`docs/**`, `plan/**`, `.claude/**`, `*.md`); otherwise start it by hand: `gh workflow run CI --ref <branch>`. Releases are built on `v*` tags and run the L10n check, `TestRunner` and `InputPipelineTestRunner` first; the version lives in `Resources/Info.plist` (`CFBundleShortVersionString` / `CFBundleVersion`).
+CI (`.github/workflows/ci.yml`) runs exactly: a duplicate-key check of `Sources/UI/L10n.swift` (`scripts/check-l10n.sh`, also run by the release), release build, `TestRunner`, the threshold sweep (report-only), `InputPipelineTestRunner`, then `build-app.sh` ad-hoc signed. It runs only on push to `claude/**` (not on PRs or master; a PR whose head is a docs-only commit shows no checks, the run is on its last code commit) and skips docs-only pushes (`docs/**`, `plan/**`, `.claude/**`, `*.md`); otherwise start it by hand: `gh workflow run CI --ref <branch>`. Releases are built on `v*` tags and run the L10n check, `TestRunner` and `InputPipelineTestRunner` first; the version lives in `Resources/Info.plist` (`CFBundleShortVersionString` / `CFBundleVersion`).
 
 ### Tests
 
