@@ -165,6 +165,19 @@ public struct InputStateMachine {
         return commands
     }
 
+    /// SwitchFix switched the input source itself (after a correction): the text was not
+    /// edited, so the screen suffix survives in the same app. Focus is re-resolved after the
+    /// switch (unknown until then); `focusResolved` keeps the suffix when the field is plain.
+    public mutating func generatedLayoutSwitched(_ context: InputContextSnapshot) -> [InputStateCommand] {
+        let keepsSuffix = context.frontmostPID == self.context.frontmostPID
+            && context.appAllowed == self.context.appAllowed
+            && context.secureFocus != .secure
+        let suffix = screenSuffix
+        let commands = updateContext(context)
+        if keepsSuffix { screenSuffix = suffix }
+        return commands
+    }
+
     /// Same app, permissions and input source; epoch and focus may differ.
     private func sameField(_ context: InputContextSnapshot) -> Bool {
         context.frontmostPID == self.context.frontmostPID

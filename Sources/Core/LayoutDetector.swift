@@ -316,6 +316,8 @@ public class LayoutDetector {
             // Transparent: a flag or an index is neither native-language context nor a
             // correction, so the words around it keep their series and switch confirmation
             // (checked before the acronym rule, which would count '-R' as context).
+            // Not a detection either: a late not-applied report still restores the switch.
+            detectionSerial &-= 1
             state = .buffering
             return nil
         }

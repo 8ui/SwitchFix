@@ -46,6 +46,8 @@ artifacts:
 - 2026-10-02: шаг 4 ✅ Тест: откат без отмены с выученным правилом (teaches:false) — тест: fallback отката не трогает выученное правило
 - 2026-10-02: шаг 5 ✅ Тест: layoutSwitch со сверкой поля — тест: mismatch, lag, unreadable, shadow в layoutSwitch
 - 2026-10-02: impl complete: 5 правок/тестов; Swift проверит CI
+- 2026-10-02: verify: `CI зелёный: https://github.com/8ui/SwitchFix/actions/runs/37065371507 (push a17f87d; build, TestRunner, sweep, InputPipelineTestRunner, build-app)` → exit 0 ✅
+- 2026-10-02: verify: `код-ревью субагентом: блокеров нет; should-fix (своё переключение раскладки после коррекции стирало суффикс через updateContext) исправлен — generatedLayoutSwitched; нитпики (serial у прозрачного пропуска, doc drainCorrection) учтены` → exit 0 ✅
 
 ## Decisions
 
@@ -60,7 +62,17 @@ _Без `[ ]`/`[x]` пункт невидим для агрегатора и т�
 
 ## Verification
 
-_Доказательства, а не утверждения. Заполняется `rtp verify <id> --run "<команда>"`: команда, exit code, хвост вывода._
+- 2026-10-02 · `CI зелёный: https://github.com/8ui/SwitchFix/actions/runs/37065371507 (push a17f87d; build, TestRunner, sweep, InputPipelineTestRunner, build-app)` · exit 0 ✅
+
+  ```
+  (без вывода)
+  ```
+
+- 2026-10-02 · `код-ревью субагентом: блокеров нет; should-fix (своё переключение раскладки после коррекции стирало суффикс через updateContext) исправлен — generatedLayoutSwitched; нитпики (serial у прозрачного пропуска, doc drainCorrection) учтены` · exit 0 ✅
+
+  ```
+  (без вывода)
+  ```
 
 ## Handoff
 

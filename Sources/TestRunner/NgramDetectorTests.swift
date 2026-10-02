@@ -208,6 +208,19 @@ func runNgramDetectorSuites() {
             assertEqual(flush("yf")?.shouldSwitchLayout, false, "the first short word waits for a confirmation")
             assert(flush(neutral) == nil, "\(neutral) stays")
             assertEqual(flush("yf")?.shouldSwitchLayout, true, "\(neutral) does not spend the confirmation")
+
+            // A switch cancelled after the neutral word was flushed still gives the confirmation back.
+            let late = ngramDetector(current: .english, allowed: [.english, .russian])
+            func flushLate(_ word: String) -> DetectionResult? {
+                late.addCharacter(word)
+                return late.flushBuffer(boundaryCharacter: " ")
+            }
+            _ = flushLate("yf")
+            let second = flushLate("yf")
+            assertEqual(second?.shouldSwitchLayout, true, "the second short word confirms the switch")
+            assert(flushLate(neutral) == nil, "\(neutral) stays")
+            if let second { late.noteCorrectionNotApplied(second.detectionID) }
+            assertEqual(flushLate("yf")?.shouldSwitchLayout, true, "after \(neutral) the cancelled switch is restored")
         }
     }
 

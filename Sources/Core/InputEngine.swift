@@ -210,7 +210,7 @@ public final class InputEngine {
     public func handleGeneratedLayoutContext(_ context: InputContextSnapshot) {
         let generation = captureState.snapshot().editGeneration
         inputQueue.async { [weak self] in
-            _ = self?.stateMachine.updateContext(context)
+            _ = self?.stateMachine.generatedLayoutSwitched(context)
             self?.resetDetectorState()
         }
         correctionQueue.async { [weak self] in
@@ -361,7 +361,8 @@ public final class InputEngine {
     }
 
     /// Runs `completion` once queued emissions and the input work they posted are done
-    /// (tests: the screen suffix has followed an applied correction).
+    /// (tests: the screen suffix has followed an applied correction). Only emissions already
+    /// queued: wait for the emission itself first.
     public func drainCorrection(completion: @escaping () -> Void) {
         correctionQueue.async { [weak self] in
             guard let self else { return completion() }

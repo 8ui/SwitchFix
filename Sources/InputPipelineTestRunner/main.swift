@@ -1607,9 +1607,9 @@ run("arrow keys skip automatic correction, the hotkey still converts from the bu
 }
 
 run("hotkey after an automatic correction reads the corrected word") {
-    /// "ghbdtn " is corrected to "привет ", Backspace removes the space, then the hotkey with
-    /// nothing buffered reads `screen` before the caret.
-    func hotkeyAfterCorrection(screen: String) -> LearningHarness {
+    /// "ghbdtn " is corrected to "привет " (SwitchFix switches the layout when `switches`),
+    /// Backspace removes the space, then the hotkey with nothing buffered reads `screen`.
+    func hotkeyAfterCorrection(screen: String, switches: Bool = false) -> LearningHarness {
         var harness = LearningHarness()
         harness.caret.reply = .caret(textBefore: screen, startsAtTextStart: true, next: nil)
         harness.type("ghbdtn")
@@ -1617,6 +1617,14 @@ run("hotkey after an automatic correction reads the corrected word") {
         let applied = DispatchSemaphore(value: 0)
         harness.engine.drainCorrection { applied.signal() }
         _ = applied.wait(timeout: .now() + 1)
+        if switches {
+            // As AppDelegate publishes SwitchFix's own switch: focus unknown, then resolved.
+            harness.engine.handleGeneratedLayoutContext(harness.store.replaceContext(
+                frontmostPID: 100, appAllowed: true, layout: .russian,
+                inputSourceID: "com.test.russian", secureFocus: .unknown
+            ))
+            harness.resolveFocus()
+        }
         harness.send(.delete)
         harness.send(.hotkey)
         return harness
@@ -1625,6 +1633,10 @@ run("hotkey after an automatic correction reads the corrected word") {
     check(waitUntil { corrected.emitted.count == 2 }, "the screen suffix follows the correction, so the hotkey reads привет")
     check(corrected.emitted.last?.originalText == "привет", "got \(corrected.emitted.last?.originalText ?? "nil")")
     check(corrected.emitted.last?.correctedText == "ghbdtn", "got \(corrected.emitted.last?.correctedText ?? "nil")")
+
+    let switched = hotkeyAfterCorrection(screen: "привет", switches: true)
+    check(waitUntil { switched.emitted.count == 2 }, "SwitchFix's own layout switch keeps the screen suffix")
+    check(switched.emitted.last?.correctedText == "ghbdtn", "got \(switched.emitted.last?.correctedText ?? "nil")")
 
     // The typed word is no longer on screen: a field still showing it is not trusted.
     let stale = hotkeyAfterCorrection(screen: "ghbdtn")
