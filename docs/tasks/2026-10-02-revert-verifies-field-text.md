@@ -3,13 +3,13 @@ id: 2026-10-02-revert-verifies-field-text
 title: Revert deletes text without checking the field
 type: bug
 pipeline: no-spec
-phase: impl
+phase: review
 created: 2026-10-02
 updated: 2026-10-02
 blocked_by: null
-steps_done: 3
+steps_done: 4
 steps_total: 4
-step_current: 4
+step_current: null
 artifacts:
   spec: null
   plan: docs/plans/revert-verifies-field-text-plan.md
@@ -27,7 +27,7 @@ artifacts:
 1. ✅ TextCorrector: prepareUndo/takeUndo/postUndo/discardUndo/recordUndo + undo id
 2. ✅ InputEngine: ScreenCheck (retriesMismatch, acceptsReplacement, reject)
 3. ✅ Revert через проверку поля + тесты
-4. ▶ Docs + ревью
+4. ✅ Docs + ревью
 
 ## Log
 
@@ -41,6 +41,11 @@ artifacts:
 - 2026-10-02: шаг 2 ✅ InputEngine: ScreenCheck (retriesMismatch, acceptsReplacement, reject) — ScreenCheck: retriesMismatch, acceptsReplacement, reject; weak self
 - 2026-10-02: шаг 3 ✅ Revert через проверку поля + тесты — requestRevert: prepareUndo → ScreenCheck → applyRevert(takeUndo/postUndo); 6 новых тест-сьютов; ждём CI
 - 2026-10-02: шаг 4 ▶ Docs + ревью
+- 2026-10-02: impl complete: 71d3a8a + e9bbeab (правки по код-ревью: refreshedRevert под rebase, restoreUndo, без ретрая для selection/replaced, тесты takeUndo и новой коррекции)
+- 2026-10-02: verify: `CI зелёный: https://github.com/8ui/SwitchFix/actions/runs/36990249513 (push e9bbeab; TestRunner 603/0, InputPipelineTestRunner 1166/0, 9 новых revert-сьютов)` → exit 0 ✅
+- 2026-10-02: verify: `код-ревью субагентом: блокеров нет; 4 should-fix исправлены в e9bbeab` → exit 0 ✅
+- 2026-10-02: шаг 4 ✅ Docs + ревью — ревью + CI
+- 2026-10-02: CI зелёный, ревью пройдено; остаётся в review до merge ветки claude/eloquent-babbage-rfjo9l в master (PR — по решению пользователя)
 
 ## Decisions
 
@@ -48,14 +53,22 @@ _Нетривиальные решения по ходу задачи. Одна 
 
 ## Debt
 
-_Отложенное, упрощения, известные пробелы. Формат — чекбоксы (их считают индекс и отчёты по долгам):_
-_- `- [ ] <что отложено> — <почему/контекст>` — открытый долг_
-_- `- [x] <что было> — закрыто YYYY-MM-DD: <причина/ссылка на task>` — закрытый_
-_Без `[ ]`/`[x]` пункт невидим для агрегатора и теряется через 2 недели._
+- [ ] между replaceContext и rebaseUndoContext (своё переключение раскладки) отмена во время чтения поля всё ещё отменяется как устаревшая — окно сузилось до промежутка в AppDelegate; нажатие можно повторить
+- [ ] тест 'staleness during the read' проверяет исход, не механизм: повторную проверку после чтения дублирует applyRevert
 
 ## Verification
 
-_Доказательства, а не утверждения. Заполняется `rtp verify <id> --run "<команда>"`: команда, exit code, хвост вывода._
+- 2026-10-02 · `CI зелёный: https://github.com/8ui/SwitchFix/actions/runs/36990249513 (push e9bbeab; TestRunner 603/0, InputPipelineTestRunner 1166/0, 9 новых revert-сьютов)` · exit 0 ✅
+
+  ```
+  (без вывода)
+  ```
+
+- 2026-10-02 · `код-ревью субагентом: блокеров нет; 4 should-fix исправлены в e9bbeab` · exit 0 ✅
+
+  ```
+  (без вывода)
+  ```
 
 ## Handoff
 
