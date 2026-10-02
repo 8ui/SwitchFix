@@ -56,6 +56,7 @@ Backspace и исправить слово из буфера, если текс�
 - 2026-10-02: impl complete; ждёт ручной проверки пользователем на Mac (шаг 6)
 - 2026-10-02: шаг 6 ▶ Ручная проверка пользователем на Mac
 - 2026-10-02: artifacts.pr = https://github.com/8ui/SwitchFix/pull/13
+- 2026-10-02: verify: `ручная проверка на Mac (сборка 0950868, тестовое приложение с inline-подсказкой как в омнибоксе, реальные CGEvent, log stream): хоткей и ⌃Space в layoutSwitch` → exit 0 ✅
 
 ## Decisions
 
@@ -74,6 +75,17 @@ Backspace и исправить слово из буфера, если текс�
 
   ```
   (без вывода)
+  ```
+
+- 2026-10-02 · `ручная проверка на Mac (сборка 0950868, тестовое приложение с inline-подсказкой как в омнибоксе, реальные CGEvent, log stream): хоткей и ⌃Space в layoutSwitch` · exit 0 ✅
+
+  ```
+  до PR: Option в поле ghbdtn[.ru] → ghbdtnюкг (баг воспроизведён)
+  хоткей: verdict=matchBeforeSelection(deleteCount: 7) → привет, раскладка RussianWin
+  layoutSwitch + ⌃Space: с подсказкой → привет (deleteCount 7), без подсказки → привет (match); каждый сценарий ×2
+  регрессии нет: обычное слово → привет; Cmd+A при пустом буфере → selection paste → привет; Cmd+V + хоткей → без изменений
+  Safari/Chrome/Spotlight не проверены (браузеры недоступны агенту для ввода) — за пользователем
+  TestRunner 632/0, InputPipelineTestRunner 1284/0 локально
   ```
 
 ## Handoff
