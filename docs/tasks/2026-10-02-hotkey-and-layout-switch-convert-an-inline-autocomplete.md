@@ -3,13 +3,13 @@ id: 2026-10-02-hotkey-and-layout-switch-convert-an-inline-autocomplete
 title: Hotkey and layout-switch convert an inline autocomplete suggestion instead of the typed word
 type: bug
 pipeline: no-spec
-phase: impl
+phase: review
 created: 2026-10-02
 updated: 2026-10-02
 blocked_by: null
-steps_done: 3
+steps_done: 5
 steps_total: 6
-step_current: 4
+step_current: 6
 artifacts:
   spec: null
   plan: docs/plans/inline-suggestion-hotkey-layout-switch-plan.md
@@ -31,9 +31,9 @@ Backspace и исправить слово из буфера, если текс�
 1. ✅ Probe и вердикт (Utils, ScreenVerification)
 2. ✅ InputEngine: режим выделения, хоткей, layoutSwitch
 3. ✅ Тесты пайплайна и вердикта
-4. ▶ CI зелёный
-5. ⬜ Документация + ревью
-6. ⬜ Ручная проверка пользователем на Mac
+4. ✅ CI зелёный
+5. ✅ Документация + ревью
+6. ▶ Ручная проверка пользователем на Mac
 
 ## Log
 
@@ -50,6 +50,11 @@ Backspace и исправить слово из буфера, если текс�
 - 2026-10-02: шаг 3 ✅ Тесты пайплайна и вердикта — вердикт (20 проверок), хоткей (7 сценариев), автоматика, layoutSwitch через layoutSwitchPlans (5)
 - 2026-10-02: шаг 4 ▶ CI зелёный
 - 2026-10-02: code-review (субагент, opus): блокеров нет; взято — строгий суффикс перед выделением (без фолбэка пропавшего пробела), selectionEmission для тестов ветки selection, waitUntil в layoutSwitchPlans, doc accept, имя теста; терминал и require без выделения — отмена, решения записаны
+- 2026-10-02: verify: `CI зелёный: https://github.com/8ui/SwitchFix/actions/runs/37014978012 (0950868)` → exit 0 ✅
+- 2026-10-02: шаг 4 ✅ CI зелёный — CI 37014978012 зелёный
+- 2026-10-02: шаг 5 ✅ Документация + ревью — CLAUDE.md, plan-review и code-review субагентами
+- 2026-10-02: impl complete; ждёт ручной проверки пользователем на Mac (шаг 6)
+- 2026-10-02: шаг 6 ▶ Ручная проверка пользователем на Mac
 
 ## Decisions
 
@@ -64,7 +69,11 @@ Backspace и исправить слово из буфера, если текс�
 
 ## Verification
 
-_Доказательства, а не утверждения. Заполняется `rtp verify <id> --run "<команда>"`: команда, exit code, хвост вывода._
+- 2026-10-02 · `CI зелёный: https://github.com/8ui/SwitchFix/actions/runs/37014978012 (0950868)` · exit 0 ✅
+
+  ```
+  (без вывода)
+  ```
 
 ## Handoff
 
