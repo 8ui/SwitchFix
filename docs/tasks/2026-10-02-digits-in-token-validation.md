@@ -7,9 +7,9 @@ phase: impl
 created: 2026-10-02
 updated: 2026-10-02
 blocked_by: null
-steps_done: 0
+steps_done: 2
 steps_total: 3
-step_current: 1
+step_current: 3
 artifacts:
   spec: null
   plan: null
@@ -24,14 +24,17 @@ artifacts:
 
 ## Progress
 
-1. ▶ Тест: индексы остаются (до фикса FAIL в CI)
-2. ⬜ Правило: латинский токен с цифрой у скобки — нейтрально пропускать автоисправление
-3. ⬜ Eval-сравнение и ревью
+1. ✅ Тест: индексы остаются (до фикса FAIL в CI)
+2. ✅ Правило: латинский токен с цифрой у скобки — нейтрально пропускать автоисправление
+3. ▶ Eval-сравнение и ревью
 
 ## Log
 
 - 2026-10-02: triage — pipeline `minimal`, reason: одна функция splitTokenForValidation в LayoutDetector + тест; eval проверит FP
 - 2026-10-02: brainstorm: пользователь одобрил узкое нейтральное правило по образцу флагов вместо правки splitTokenForValidation
+- 2026-10-02: verify: `до фикса: CI https://github.com/8ui/SwitchFix/actions/runs/36990742397 — 5 FAIL (obj[0]→щиох0ъ, w[1]→цх1ъ, x[0].→чх0ъю, arr[12]→фккх12ъ, a[0],/b[1]); m{1}, [0] уже оставались` → exit 1 ❌
+- 2026-10-02: шаг 1 ✅ Тест: индексы остаются (до фикса FAIL в CI)
+- 2026-10-02: шаг 2 ✅ Правило: латинский токен с цифрой у скобки — нейтрально пропускать автоисправление — shouldSkipAutomaticIndexExpression рядом с правилом флагов
 
 ## Decisions
 
@@ -46,7 +49,11 @@ _Без `[ ]`/`[x]` пункт невидим для агрегатора и т�
 
 ## Verification
 
-_Доказательства, а не утверждения. Заполняется `rtp verify <id> --run "<команда>"`: команда, exit code, хвост вывода._
+- 2026-10-02 · `до фикса: CI https://github.com/8ui/SwitchFix/actions/runs/36990742397 — 5 FAIL (obj[0]→щиох0ъ, w[1]→цх1ъ, x[0].→чх0ъю, arr[12]→фккх12ъ, a[0],/b[1]); m{1}, [0] уже оставались` · exit 1 ❌
+
+  ```
+  (без вывода)
+  ```
 
 ## Handoff
 

@@ -268,8 +268,9 @@ public class LayoutDetector {
             }
         }
 
-        if shouldSkipAutomaticCommandLineFlag(word: word, sourceLayout: sourceLayout) {
-            // Neutral: a flag is neither native-language context nor a correction
+        if shouldSkipAutomaticCommandLineFlag(word: word, sourceLayout: sourceLayout)
+            || shouldSkipAutomaticIndexExpression(word: word, sourceLayout: sourceLayout) {
+            // Neutral: a flag or an index is neither native-language context nor a correction
             // (checked before the acronym rule, which would count '-R' as context).
             consecutiveWrongCount = 0
             lastDetectionResult = nil
@@ -757,6 +758,22 @@ public class LayoutDetector {
               parts.prefix.allSatisfy({ $0 == "-" }) else { return false }
         return parts.core.count == 1 && parts.core.allSatisfy(\.isLetter)
     }
+
+    /// Code with an index (`obj[0]`, `w[1].`, `m{2}`) is never rewritten automatically: its
+    /// bracket keys are Cyrillic letters (х ъ), so `w[1]` would become `цх1ъ`. A digit next
+    /// to a bracket is the sign; words without digits go through the model as usual.
+    private func shouldSkipAutomaticIndexExpression(word: String, sourceLayout: Layout) -> Bool {
+        guard sourceLayout == .english else { return false }
+        // Keep manual/hotkey correction available; suppress only automatic boundary-triggered rewrites.
+        guard pendingBoundaryCharacter != nil else { return false }
+        let chars = Array(word)
+        return zip(chars, chars.dropFirst()).contains { left, right in
+            (Self.indexBrackets.contains(left) && right.isNumber)
+                || (left.isNumber && Self.indexBrackets.contains(right))
+        }
+    }
+
+    private static let indexBrackets: Set<Character> = ["[", "]", "{", "}"]
 
     private func containsVowel(_ text: String, layout: Layout) -> Bool {
         let vowels: CharacterSet
