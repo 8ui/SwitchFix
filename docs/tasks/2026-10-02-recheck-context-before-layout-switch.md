@@ -3,13 +3,13 @@ id: 2026-10-02-recheck-context-before-layout-switch
 title: Layout switch after a correction runs on main without rechecking the context
 type: bug
 pipeline: minimal
-phase: impl
+phase: review
 created: 2026-10-02
 updated: 2026-10-02
 blocked_by: null
-steps_done: 2
+steps_done: 3
 steps_total: 3
-step_current: 3
+step_current: null
 artifacts:
   spec: null
   plan: null
@@ -26,7 +26,7 @@ artifacts:
 
 1. ✅ Чистый предикат + перепроверка на main в apply/postUndo
 2. ✅ Проверка frontmost в selection-пути
-3. ▶ Тесты предиката, CI и ревью
+3. ✅ Тесты предиката, CI и ревью
 
 ## Log
 
@@ -35,6 +35,10 @@ artifacts:
 - 2026-10-02: шаг 1 ✅ Чистый предикат + перепроверка на main в apply/postUndo — mayFinishLayoutSwitch + finishLayoutSwitch на main
 - 2026-10-02: шаг 2 ✅ Проверка frontmost в selection-пути — frontmost перед вставкой и перед switch после вставки
 - 2026-10-02: verify: `CI зелёный: https://github.com/8ui/SwitchFix/actions/runs/36991085388 (push dd11ce7 включает ba1f61a; новый сьют 'layout switch after a correction: rechecked on main')` → exit 0 ✅
+- 2026-10-02: verify: `CI зелёный после правок ревью: https://github.com/8ui/SwitchFix/actions/runs/36991541543 (push 7f18ea8; TestRunner 613/0, InputPipelineTestRunner 1173/0)` → exit 0 ✅
+- 2026-10-02: verify: `код-ревью субагентом: блокеров нет; should-fix (вытеснение старого переключения) и тестовые замечания исправлены в 7f18ea8` → exit 0 ✅
+- 2026-10-02: шаг 3 ✅ Тесты предиката, CI и ревью
+- 2026-10-02: impl + ревью + CI; остаётся в review до merge ветки
 
 ## Decisions
 
@@ -47,6 +51,18 @@ artifacts:
 ## Verification
 
 - 2026-10-02 · `CI зелёный: https://github.com/8ui/SwitchFix/actions/runs/36991085388 (push dd11ce7 включает ba1f61a; новый сьют 'layout switch after a correction: rechecked on main')` · exit 0 ✅
+
+  ```
+  (без вывода)
+  ```
+
+- 2026-10-02 · `CI зелёный после правок ревью: https://github.com/8ui/SwitchFix/actions/runs/36991541543 (push 7f18ea8; TestRunner 613/0, InputPipelineTestRunner 1173/0)` · exit 0 ✅
+
+  ```
+  (без вывода)
+  ```
+
+- 2026-10-02 · `код-ревью субагентом: блокеров нет; should-fix (вытеснение старого переключения) и тестовые замечания исправлены в 7f18ea8` · exit 0 ✅
 
   ```
   (без вывода)

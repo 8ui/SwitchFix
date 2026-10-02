@@ -3,13 +3,13 @@ id: 2026-10-02-digits-in-token-validation
 title: "Index expressions like obj[0] and w[1] are converted"
 type: bug
 pipeline: minimal
-phase: impl
+phase: review
 created: 2026-10-02
 updated: 2026-10-02
 blocked_by: null
-steps_done: 2
+steps_done: 3
 steps_total: 3
-step_current: 3
+step_current: null
 artifacts:
   spec: null
   plan: null
@@ -26,7 +26,7 @@ artifacts:
 
 1. ✅ Тест: индексы остаются (до фикса FAIL в CI)
 2. ✅ Правило: латинский токен с цифрой у скобки — нейтрально пропускать автоисправление
-3. ▶ Eval-сравнение и ревью
+3. ✅ Eval-сравнение и ревью
 
 ## Log
 
@@ -36,6 +36,10 @@ artifacts:
 - 2026-10-02: шаг 1 ✅ Тест: индексы остаются (до фикса FAIL в CI)
 - 2026-10-02: шаг 2 ✅ Правило: латинский токен с цифрой у скобки — нейтрально пропускать автоисправление — shouldSkipAutomaticIndexExpression рядом с правилом флагов
 - 2026-10-02: verify: `CI зелёный: https://github.com/8ui/SwitchFix/actions/runs/36991085388 (push dd11ce7; TestRunner 612/0, InputPipelineTestRunner 1172/0); LayoutEval и threshold sweep побайтно совпадают с базой 36990249513` → exit 0 ✅
+- 2026-10-02: verify: `CI зелёный после правок ревью: https://github.com/8ui/SwitchFix/actions/runs/36991541543 (push 7f18ea8; TestRunner 613/0, InputPipelineTestRunner 1173/0)` → exit 0 ✅
+- 2026-10-02: verify: `код-ревью субагентом: блокеров нет; should-fix (вытеснение старого переключения) и тестовые замечания исправлены в 7f18ea8` → exit 0 ✅
+- 2026-10-02: шаг 3 ✅ Eval-сравнение и ревью
+- 2026-10-02: impl + ревью + CI; остаётся в review до merge ветки
 
 ## Decisions
 
@@ -55,6 +59,18 @@ _Нетривиальные решения по ходу задачи. Одна 
   ```
 
 - 2026-10-02 · `CI зелёный: https://github.com/8ui/SwitchFix/actions/runs/36991085388 (push dd11ce7; TestRunner 612/0, InputPipelineTestRunner 1172/0); LayoutEval и threshold sweep побайтно совпадают с базой 36990249513` · exit 0 ✅
+
+  ```
+  (без вывода)
+  ```
+
+- 2026-10-02 · `CI зелёный после правок ревью: https://github.com/8ui/SwitchFix/actions/runs/36991541543 (push 7f18ea8; TestRunner 613/0, InputPipelineTestRunner 1173/0)` · exit 0 ✅
+
+  ```
+  (без вывода)
+  ```
+
+- 2026-10-02 · `код-ревью субагентом: блокеров нет; should-fix (вытеснение старого переключения) и тестовые замечания исправлены в 7f18ea8` · exit 0 ✅
 
   ```
   (без вывода)
