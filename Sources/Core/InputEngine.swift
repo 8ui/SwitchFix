@@ -779,14 +779,14 @@ public final class InputEngine {
     /// Shortest word a forced hotkey conversion may teach.
     static let minimumLearnedLength = 3
 
-    /// Only single-token automatic corrections and forced hotkey conversions teach the
-    /// personal lexicon; selection, layout-switch and merged multi-word corrections don't.
+    /// Only single-token automatic and hotkey corrections teach the personal lexicon;
+    /// selection, layout-switch and merged multi-word corrections don't.
     public static func isLearnable(_ plan: CorrectionPlan) -> Bool {
         guard !plan.originalText.isEmpty,
               !plan.originalText.contains(where: \.isWhitespace) else { return false }
         switch plan.provenance {
-        case .automatic, .hotkeyForced: return true
-        case .hotkey, .selection, .layoutSwitch: return false
+        case .automatic, .hotkey, .hotkeyForced: return true
+        case .selection, .layoutSwitch: return false
         }
     }
 
@@ -825,7 +825,11 @@ public final class InputEngine {
             lexicon.recordRejected(word: word, sourceLayout: plan.originalLayout)
         case .hotkeyForced:
             lexicon.forgetAccepted(word: word, sourceLayout: plan.originalLayout)
-        case .hotkey, .selection, .layoutSwitch:
+        case .hotkey:
+            // The detector checks the lexicon first: if the word has a rule learned from the
+            // hotkey, that rule made this conversion, and reverting it rejects the rule.
+            lexicon.forgetAccepted(word: word, sourceLayout: plan.originalLayout)
+        case .selection, .layoutSwitch:
             break
         }
     }

@@ -1527,6 +1527,26 @@ run("learning: reverting a forced hotkey conversion forgets the lesson") {
     check(waitUntil { harness.lexicon.rule(for: "rehk", sourceLayout: .english) == nil }, "revert of a hotkey fix forgets, never adds neverCorrect")
 }
 
+run("learning: reverting a hotkey correction made by a learned rule forgets the rule") {
+    var harness = LearningHarness()
+    harness.lexicon.recordAccepted(word: "rehk", sourceLayout: .english, target: .russian)
+    harness.type("rehk", boundary: nil)
+    harness.send(.hotkey)
+    check(waitUntil { harness.emitted.count == 1 }, "the hotkey applies the learned rule")
+    check(harness.emitted.last?.provenance == .hotkey, "the detector recognized it through the rule, got \(String(describing: harness.emitted.last?.provenance))")
+    harness.send(.revertHotkey)
+    check(waitUntil { harness.lexicon.rule(for: "rehk", sourceLayout: .english) == nil }, "the reverted rule is forgotten")
+
+    var manual = LearningHarness()
+    _ = manual.lexicon.add(word: "rehk", sourceLayout: .english, rule: .alwaysCorrect(to: .russian))
+    manual.type("rehk", boundary: nil)
+    manual.send(.hotkey)
+    check(waitUntil { manual.emitted.count == 1 }, "the hotkey applies the manual rule")
+    manual.send(.revertHotkey)
+    check(waitUntil { manual.reverted.count == 1 }, "reverted")
+    check(manual.lexicon.rule(for: "rehk", sourceLayout: .english) == .alwaysCorrect(to: .russian), "a manual rule stays")
+}
+
 run("learning: manual entries are not overwritten by reverts") {
     var harness = LearningHarness()
     _ = harness.lexicon.add(word: "ghbdtn", sourceLayout: .english, rule: .alwaysCorrect(to: .russian))
