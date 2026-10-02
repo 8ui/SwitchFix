@@ -39,6 +39,7 @@ artifacts:
 - 2026-10-02: plan-review: 3 блокера (слово рудщ→helo; reset не чистил lastCorrection; гонка в тесте движка) + should-fix; план rev.2
 - 2026-10-02: шаг 2 ✅ (б) detectionID + noteCorrectionNotApplied в детекторе + тесты
 - 2026-10-02: шаг 3 ✅ (б) движок зовёт хук во всех точках отмены + тесты — ждём CI
+- 2026-10-02: verify: `CI зелёный: https://github.com/8ui/SwitchFix/actions/runs/36993289377 (push 5bf3102; TestRunner 632/0, InputPipelineTestRunner 1222/0); LayoutEval и sweep идентичны базе` → exit 0 ✅
 
 ## Decisions
 
@@ -54,7 +55,11 @@ _Без `[ ]`/`[x]` пункт невидим для агрегатора и т�
 
 ## Verification
 
-_Доказательства, а не утверждения. Заполняется `rtp verify <id> --run "<команда>"`: команда, exit code, хвост вывода._
+- 2026-10-02 · `CI зелёный: https://github.com/8ui/SwitchFix/actions/runs/36993289377 (push 5bf3102; TestRunner 632/0, InputPipelineTestRunner 1222/0); LayoutEval и sweep идентичны базе` · exit 0 ✅
+
+  ```
+  (без вывода)
+  ```
 
 ## Handoff
 
