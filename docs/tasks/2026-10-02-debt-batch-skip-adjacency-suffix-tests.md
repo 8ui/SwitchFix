@@ -14,7 +14,7 @@ artifacts:
   spec: null
   plan: null
   branch: claude/elegant-lovelace-qzt32s
-  pr: null
+  pr: "https://github.com/8ui/SwitchFix/pull/17"
 ---
 
 ## Context
@@ -52,6 +52,7 @@ artifacts:
 - 2026-10-02: шаг 6 ✅ Ревью и CI — ревью учтено, CI зелёный
 - 2026-10-02: artifacts.branch = claude/elegant-lovelace-qzt32s
 - 2026-10-02: 5 долгов закрыто, CI 37065872250 зелёный; ветка claude/elegant-lovelace-qzt32s, PR не создавался
+- 2026-10-02: artifacts.pr = https://github.com/8ui/SwitchFix/pull/17
 
 ## Decisions
 
