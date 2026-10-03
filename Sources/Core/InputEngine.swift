@@ -453,7 +453,9 @@ public final class InputEngine {
                 editGeneration: latest.editGeneration,
                 correctionEpoch: correctionEpoch,
                 context: context,
-                continuesPreviousWord: continuesPreviousWord
+                continuesPreviousWord: continuesPreviousWord,
+                // Typed since the caret last moved: a selection is the app's inline suggestion.
+                selectionHandling: .accept
             ))
         case .requestManualCorrection(let word, let screenSuffix, let sequence, let context):
             logger.notice("hotkey correction requested word=\(SwitchFixLog.text(word), privacy: .public) seq=\(sequence)")
@@ -499,13 +501,15 @@ public final class InputEngine {
                     acceptsReplacement: false,
                     retriesMismatch: true,
                     requiresMatch: false,
-                    selectionHandling: .refuse,
+                    // Nothing was typed since the correction: a selection after the corrected
+                    // text is the app's inline suggestion, cleared by one more Backspace.
+                    selectionHandling: .accept,
                     isCurrent: { [weak self] in
                         guard let self else { return false }
                         return self.corrector.refreshedRevert(revert, latest: self.captureState.snapshot()) != nil
                     },
-                    proceed: { [weak self] _ in
-                        self?.correctionQueue.async { self?.applyRevert(revert) }
+                    proceed: { [weak self] deleteCount in
+                        self?.correctionQueue.async { self?.applyRevert(revert, deleteCount: deleteCount) }
                     },
                     reject: { [weak self] in
                         // The field no longer shows the corrected text: a later revert cannot be right.
@@ -744,7 +748,8 @@ public final class InputEngine {
         startedAt: UInt64,
         attempt: Int,
         replacedBefore: Int? = nil,
-        sawReplacement: Bool = false
+        sawReplacement: Bool = false,
+        sawSelection: Bool = false
     ) {
         let kind = check.kind.rawValue
         let provenance = String(describing: check.provenance)
@@ -781,9 +786,11 @@ public final class InputEngine {
                     if case .replaced = verdict, !check.acceptsReplacement {
                         verdict = .mismatch
                     }
-                    // Only differing text: a selection or a changed word will not turn back into it.
-                    if case .text = probe, verdict == .mismatch, check.retriesMismatch, !final, !shadow,
-                       ScreenVerification.verdict(word: check.word, boundary: check.boundary, probe: probe, final: true) == .mismatch {
+                    // Only differing text (before an accepted suggestion too): a refused
+                    // selection or a changed word will not turn back into it.
+                    if verdict == .mismatch, check.retriesMismatch, !final, !shadow,
+                       let shown = Self.textBefore(probe, selection: check.selectionHandling),
+                       ScreenVerification.verdict(word: check.word, boundary: check.boundary, probe: shown, final: true) == .mismatch {
                         verdict = .retry
                     }
                     // A field a whole word behind can look autocorrected (its previous word):
@@ -805,12 +812,21 @@ public final class InputEngine {
                         check.cancelled()
                         return
                     }
+                    // Nor once a selection was seen: Backspace would delete it first.
+                    var selectionSeen = sawSelection
+                    if case .selection = probe { selectionSeen = true }
+                    if verdict == .unknown, selectionSeen, !shadow {
+                        SwitchFixLog.engine.notice("\(kind) cancelled reason=screen-unreadable-after-selection attempts=\(attempt)")
+                        check.cancelled()
+                        return
+                    }
                     if verdict == .retry || unconfirmed != nil, !shadow {
                         self.inputQueue.asyncAfter(deadline: .now() + Self.screenCheckRetryInterval) { [weak self] in
                             self?.verifyScreen(
                                 check, query: query, startedAt: startedAt,
                                 attempt: attempt + 1, replacedBefore: unconfirmed,
-                                sawReplacement: sawReplacement || unconfirmed != nil
+                                sawReplacement: sawReplacement || unconfirmed != nil,
+                                sawSelection: selectionSeen
                             )
                         }
                         return
@@ -841,6 +857,18 @@ public final class InputEngine {
                     check.proceed(nil)
                 }
             }
+        }
+    }
+
+    /// The text before the caret, or before a selection `selection` may clear; nil otherwise.
+    private static func textBefore(_ probe: FieldTextProbe, selection: ScreenSelectionHandling) -> FieldTextProbe? {
+        switch probe {
+        case .text:
+            return probe
+        case .selection(_, let before?, let atTextStart) where selection != .refuse:
+            return .text(before: before, atTextStart: atTextStart)
+        case .selection, .unavailable:
+            return nil
         }
     }
 
@@ -898,12 +926,15 @@ public final class InputEngine {
 
     /// Runs on the correction queue: posts `revert` unless the state changed or another
     /// correction replaced it, then learns from it.
-    private func applyRevert(_ prepared: RevertPlan) {
-        guard let revert = corrector.refreshedRevert(prepared, latest: captureState.snapshot()),
-              revert.inverse.isEligible(using: captureState.snapshot()) else {
+    /// - Parameter deleteCount: what the field check found to delete instead (an inline
+    ///   suggestion after the corrected text); nil deletes the corrected text.
+    private func applyRevert(_ prepared: RevertPlan, deleteCount: Int? = nil) {
+        guard let refreshed = corrector.refreshedRevert(prepared, latest: captureState.snapshot()),
+              refreshed.inverse.isEligible(using: captureState.snapshot()) else {
             SwitchFixLog.corrector.debug("revert skipped: stale \(SwitchFixLog.text(prepared.recorded.correctedText))")
             return
         }
+        let revert = deleteCount.map(refreshed.deleting) ?? refreshed
         guard corrector.takeUndo(revert) else {
             SwitchFixLog.corrector.debug("revert skipped: the recorded correction changed")
             return

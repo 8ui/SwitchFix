@@ -105,6 +105,11 @@ public struct RevertPlan: Equatable {
     public let inverse: CorrectionPlan
     /// Which recorded correction this is: the undo state may be replaced while the field is read.
     let undoID: UInt64
+
+    /// The same revert deleting `count` characters (an inline suggestion follows the corrected text).
+    func deleting(_ count: Int) -> RevertPlan {
+        RevertPlan(recorded: recorded, inverse: inverse.deleting(count), undoID: undoID)
+    }
 }
 
 public struct CorrectionEventDescriptor: Equatable {
