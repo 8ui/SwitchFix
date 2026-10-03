@@ -5,7 +5,7 @@ type: chore
 pipeline: minimal
 phase: done
 created: 2026-10-02
-updated: 2026-10-02
+updated: 2026-10-03
 blocked_by: null
 steps_done: 7
 steps_total: 7
@@ -64,7 +64,7 @@ _Нетривиальные решения по ходу задачи. Одна 
 ## Debt
 
 - [ ] bundle id Hyper/Tabby/Rio/Wave взяты по памяти, на Mac не сверены (NSRunningApplication.bundleIdentifier) — при ошибке терминал просто читается, как раньше
-- [ ] тест обучения покрывает чужую цель только через неустановленную раскладку; путь teaches:false (fallback-конвертация хоткея отката) с выученным правилом не проверен
+- [x] тест обучения покрывает чужую цель только через неустановленную раскладку; путь teaches:false (fallback-конвертация хоткея отката) с выученным правилом не проверен — закрыто 2026-10-03: 2026-10-03-debt-batch-flags-counters-adjacency
 
 ## Verification
 
