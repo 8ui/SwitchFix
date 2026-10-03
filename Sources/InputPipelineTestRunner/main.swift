@@ -217,6 +217,18 @@ run("flush adjacency: any other event between the words ends it") {
     let other = context(epoch: 2)
     let afterContextChange = adjacency(typingIn: other) { machine, _ in _ = machine.updateContext(other) }
     check(afterContextChange == false, "a context change breaks adjacency, got \(String(describing: afterContextChange))")
+    func preferences(_ mode: InputCorrectionMode) -> InputPreferencesSnapshot {
+        InputPreferencesSnapshot(isEnabled: true, correctionMode: mode)
+    }
+    let afterModeChange = adjacency(typingIn: current) { machine, _ in
+        _ = machine.updatePreferences(preferences(.hotkey))
+        _ = machine.updatePreferences(preferences(.automatic))
+    }
+    check(afterModeChange == false, "a correction mode change breaks adjacency, got \(String(describing: afterModeChange))")
+    let afterSamePreferences = adjacency(typingIn: current) { machine, _ in
+        _ = machine.updatePreferences(preferences(.automatic))
+    }
+    check(afterSamePreferences == true, "unchanged preferences keep adjacency, got \(String(describing: afterSamePreferences))")
 }
 
 run("autorepeat preserved") {
@@ -1594,6 +1606,43 @@ run("arrow keys skip automatic correction, the hotkey still converts from the bu
     check(harness.emitted.last?.originalText == "ghbdtn", "got \(harness.emitted.last?.originalText ?? "nil")")
 }
 
+run("hotkey after an automatic correction reads the corrected word") {
+    /// "ghbdtn " is corrected to "привет " (SwitchFix switches the layout when `switches`),
+    /// Backspace removes the space, then the hotkey with nothing buffered reads `screen`.
+    func hotkeyAfterCorrection(screen: String, switches: Bool = false) -> LearningHarness {
+        var harness = LearningHarness()
+        harness.caret.reply = .caret(textBefore: screen, startsAtTextStart: true, next: nil)
+        harness.type("ghbdtn")
+        check(waitUntil { harness.emitted.count == 1 }, "ghbdtn is corrected automatically")
+        let applied = DispatchSemaphore(value: 0)
+        harness.engine.drainCorrection { applied.signal() }
+        _ = applied.wait(timeout: .now() + 1)
+        if switches {
+            // As AppDelegate publishes SwitchFix's own switch: focus unknown, then resolved.
+            harness.engine.handleGeneratedLayoutContext(harness.store.replaceContext(
+                frontmostPID: 100, appAllowed: true, layout: .russian,
+                inputSourceID: "com.test.russian", secureFocus: .unknown
+            ))
+            harness.resolveFocus()
+        }
+        harness.send(.delete)
+        harness.send(.hotkey)
+        return harness
+    }
+    let corrected = hotkeyAfterCorrection(screen: "привет")
+    check(waitUntil { corrected.emitted.count == 2 }, "the screen suffix follows the correction, so the hotkey reads привет")
+    check(corrected.emitted.last?.originalText == "привет", "got \(corrected.emitted.last?.originalText ?? "nil")")
+    check(corrected.emitted.last?.correctedText == "ghbdtn", "got \(corrected.emitted.last?.correctedText ?? "nil")")
+
+    let switched = hotkeyAfterCorrection(screen: "привет", switches: true)
+    check(waitUntil { switched.emitted.count == 2 }, "SwitchFix's own layout switch keeps the screen suffix")
+    check(switched.emitted.last?.correctedText == "ghbdtn", "got \(switched.emitted.last?.correctedText ?? "nil")")
+
+    // The typed word is no longer on screen: a field still showing it is not trusted.
+    let stale = hotkeyAfterCorrection(screen: "ghbdtn")
+    check(!waitUntil(0.3) { stale.emitted.count > 1 }, "the replaced typed text no longer matches the suffix")
+}
+
 /// Strong Russian context, then the short 'ше' ('it' typed on the Russian layout), which the
 /// detector defers and merges with a confirming next word ('цщклы' = 'works').
 private func shortWordHarness(screen: ScreenStub? = nil) -> LearningHarness {
@@ -1824,6 +1873,22 @@ run("learning: reverting a hotkey correction keeps a learned rule to another tar
     check(waitUntil { other.reverted.count == 1 }, "reverted")
     check(!waitUntil(0.3) { other.lexicon.rule(for: "ghbdtn", sourceLayout: .english) != .alwaysCorrect(to: .ukrainian) },
           "a learned rule to another target stays")
+}
+
+run("learning: the revert hotkey's fallback conversion leaves a learned rule alone") {
+    // Nothing to revert: the revert hotkey converts the buffered word (teaches: false), and the
+    // detector applies the learned rule. That conversion neither forgets nor credits the rule.
+    var harness = LearningHarness(revertReturnsNothing: true)
+    harness.lexicon.recordAccepted(word: "rehk", sourceLayout: .english, target: .russian)
+    harness.type("rehk", boundary: nil)
+    harness.send(.revertHotkey)
+    check(waitUntil { harness.emitted.count == 1 }, "with nothing to revert the word is converted")
+    check(harness.emitted.last?.targetLayout == .russian, "through the rule, got \(String(describing: harness.emitted.last?.targetLayout))")
+    check(harness.emitted.last?.provenance == .hotkey, "the fallback is not a forced lesson, got \(String(describing: harness.emitted.last?.provenance))")
+    check(!waitUntil(0.3) { harness.lexicon.rule(for: "rehk", sourceLayout: .english) != .alwaysCorrect(to: .russian) },
+          "the learned rule stays")
+    check(harness.lexicon.entries.count == 1 && harness.lexicon.entries.first?.matchCount == 0,
+          "and is not credited, got \(harness.lexicon.entries.map(\.matchCount))")
 }
 
 run("learning: a cancelled correction does not count as corrected") {
@@ -2362,6 +2427,27 @@ run("layout switch: an inline suggestion after the word") {
     )
     check(plans.isEmpty, "with the check off the word is not corrected")
     check(selections.converted == ["твуч"], "the selection is converted as before, got \(selections.converted)")
+}
+
+run("layout switch: the field check guards the buffered word") {
+    let changed = ScreenStub(.text(before: "ghbdtnx"))
+    var plans = layoutSwitchPlans(typing: "ghbdtn", then: .inputSourceKey, screen: changed)
+    check(plans.isEmpty, "a field that no longer ends with the word cancels, got \(plans.count) plans")
+    check(changed.queries == 1, "a changed field is read once, got \(changed.queries)")
+
+    let lagging = ScreenStub(.text(before: "ghbdt"), .text(before: "ghbdtn"))
+    plans = layoutSwitchPlans(typing: "ghbdtn", then: .inputSourceKey, screen: lagging, expectedPlans: 1)
+    check(plans.count == 1 && plans.first?.deleteCount == 6, "a lagging field is read again until it shows the word, got \(plans.map(\.deleteCount))")
+    check(lagging.queries == 2, "read twice, got \(lagging.queries)")
+
+    plans = layoutSwitchPlans(
+        typing: "ghbdtn", then: .inputSourceKey, screen: ScreenStub(.unavailable(transient: false)), expectedPlans: 1
+    )
+    check(plans.count == 1 && plans.first?.correctedText == "привет", "an unreadable field without a selection fails open, got \(plans.count) plans")
+
+    let shadow = ScreenStub(.text(before: "ghbdtnx"))
+    plans = layoutSwitchPlans(typing: "ghbdtn", then: .inputSourceKey, screen: shadow, screenCheckMode: .shadow, expectedPlans: 1)
+    check(plans.count == 1, "shadow mode only logs the verdict, got \(plans.count) plans")
 }
 
 /// Corrects "ghbdtn " (the field shows it), then answers the revert's reads with `revertReplies`.

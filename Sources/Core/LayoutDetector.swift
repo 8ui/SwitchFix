@@ -313,12 +313,11 @@ public class LayoutDetector {
 
         if shouldSkipAutomaticCommandLineFlag(word: word, sourceLayout: sourceLayout)
             || shouldSkipAutomaticIndexExpression(word: word, sourceLayout: sourceLayout) {
-            // Neutral: a flag or an index is neither native-language context nor a correction
+            // Transparent: a flag or an index is neither native-language context nor a
+            // correction, so the words around it keep their series and switch confirmation
             // (checked before the acronym rule, which would count '-R' as context).
-            consecutiveWrongCount = 0
-            lastDetectionResult = nil
-            pendingSwitchLayout = nil
-            pendingSwitchCount = 0
+            // Not a detection either: a late not-applied report still restores the switch.
+            detectionSerial &-= 1
             state = .buffering
             return nil
         }

@@ -50,7 +50,7 @@ _Нетривиальные решения по ходу задачи. Одна 
 ## Debt
 
 - [ ] arr[i], dict["k"] без цифры правилом не покрыты (идут через модель)
-- [ ] нейтральный пропуск (флаг и индекс) обнуляет consecutiveWrongCount/pendingSwitch — в прозе 'cnhjrf 2[ rjvyfnyfz' разрывает серию; прозрачный пропуск (только state=.buffering) — решение для обоих правил
+- [x] нейтральный пропуск (флаг и индекс) обнуляет consecutiveWrongCount/pendingSwitch — в прозе 'cnhjrf 2[ rjvyfnyfz' разрывает серию; прозрачный пропуск (только state=.buffering) — решение для обоих правил — закрыто 2026-10-02: 2026-10-02-debt-batch-skip-adjacency-suffix-tests
 
 ## Verification
 
