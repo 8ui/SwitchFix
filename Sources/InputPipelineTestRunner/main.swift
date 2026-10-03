@@ -2018,6 +2018,19 @@ run("learning: the revert hotkey's fallback conversion does not teach") {
     check(!waitUntil(0.3) { harness.lexicon.rule(for: "rehk", sourceLayout: .english) != nil }, "pressing Revert never teaches 'always correct'")
 }
 
+run("learning: the revert hotkey's fallback conversion keeps a learned 'never correct'") {
+    // The fallback converts the word anyway (forced), but pressing Revert is no lesson, so the
+    // rule is not replaced by "always correct".
+    var harness = LearningHarness(revertReturnsNothing: true)
+    harness.lexicon.recordRejected(word: "ghbdtn", sourceLayout: .english)
+    harness.type("ghbdtn", boundary: nil)
+    harness.send(.revertHotkey)
+    check(waitUntil { harness.emitted.count == 1 }, "with nothing to revert the word is converted")
+    check(harness.emitted.last?.provenance == .hotkey, "not a forced lesson, got \(String(describing: harness.emitted.last?.provenance))")
+    check(!waitUntil(0.3) { harness.lexicon.rule(for: "ghbdtn", sourceLayout: .english) != .neverCorrect },
+          "the learned 'never correct' stays")
+}
+
 run("learning: one- and two-key hotkey conversions are not learned") {
     var harness = LearningHarness()
     harness.type("b", boundary: nil)

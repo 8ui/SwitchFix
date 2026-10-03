@@ -161,7 +161,10 @@ func runNgramDetectorSuites() {
     }
 
     runSuite("NgramDetector: command-line flags stay") {
-        for words in [["ls", "-r"], ["rm", "-r", "-f"], ["tar", "-c", "-z", "-f"], ["cp", "-r", "-d"], ["grep", "-r"], ["-r"], ["--x"], ["ls", "-R"]] {
+        for words in [["ls", "-r"], ["rm", "-r", "-f"], ["tar", "-c", "-z", "-f"], ["cp", "-r", "-d"], ["grep", "-r"], ["-r"], ["--x"], ["ls", "-R"],
+                      // Longer flags are not a rule: the model keeps them.
+                      ["rm", "-rf"], ["ls", "-la"], ["ls", "-ltr"], ["tar", "-xzf"], ["tar", "-xvzf"], ["rsync", "-avz"],
+                      ["git", "commit", "--amend"], ["--force"], ["git", "push", "--force-with-lease"]] {
             let detector = ngramDetector(current: .english, allowed: [.english, .russian])
             let recorder = MockDetectorDelegate()
             detector.delegate = recorder
@@ -173,6 +176,8 @@ func runNgramDetectorSuites() {
         }
         // A bare letter is still corrected: a preposition at the start of a sentence.
         assertEqual(detectNgram("r", current: .english, allowed: [.english, .russian])?.convertedWord, "к")
+        // A dash before a longer word is a dialogue line, not a flag.
+        assertEqual(detectNgram("-ghbdtn", current: .english, allowed: [.english, .russian])?.convertedWord, "-привет")
         // The hotkey (no boundary) still converts a flag.
         let hotkey = ngramDetector(current: .english, allowed: [.english, .russian])
         hotkey.addCharacter("-r")

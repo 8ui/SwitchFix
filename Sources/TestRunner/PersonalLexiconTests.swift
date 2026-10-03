@@ -174,6 +174,26 @@ func runPersonalLexiconSuites() {
         assertEqual(notifications, 2, "a match after the delivered notification notifies again")
     }
 
+    runSuite("PersonalLexicon: an edit keeps matches counted while the form was open") {
+        let lexicon = makeLexicon()
+        guard case .added(let entry) = lexicon.add(word: "rehk", sourceLayout: .english, rule: .neverCorrect) else {
+            return assert(false, "add should succeed")
+        }
+        // The form holds this snapshot (0 matches); a match comes in before Save.
+        lexicon.noteMatch(word: "rehk", sourceLayout: .english)
+        var edited = entry
+        edited.rule = .alwaysCorrect(to: .russian)
+        assert(lexicon.update(edited) == nil, "update should succeed")
+        assertEqual(lexicon.entries.first?.rule, .alwaysCorrect(to: .russian), "the edit is applied")
+        assertEqual(lexicon.entries.first?.matchCount, 1, "the match counted meanwhile stays")
+        assert(lexicon.entries.first?.lastMatchedAt != nil, "and so does its time")
+        var renamed = edited
+        renamed.word = "rehkf"
+        assert(lexicon.update(renamed) == nil, "rename should succeed")
+        assertEqual(lexicon.entries.first?.matchCount, 0, "another word starts from zero")
+        assert(lexicon.entries.first?.lastMatchedAt == nil, "and has never been used")
+    }
+
     runSuite("PersonalLexicon: a recently matched entry survives eviction") {
         var tick = 0.0
         let lexicon = makeLexicon(saveDelay: 3600, clock: { tick += 1; return Date(timeIntervalSince1970: tick) })
