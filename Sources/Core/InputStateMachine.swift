@@ -171,6 +171,11 @@ public struct InputStateMachine {
 
     public mutating func updatePreferences(_ preferences: InputPreferencesSnapshot) -> [InputStateCommand] {
         let wasEnabled = self.preferences.isEnabled
+        // Another mode in between (hotkey, layout switch) may have converted text the
+        // automatic detector never saw: the next word does not continue the last flush.
+        if preferences.correctionMode != self.preferences.correctionMode {
+            wordFollowsFlush = false
+        }
         self.preferences = preferences
         guard wasEnabled && !preferences.isEnabled else { return [] }
         wordFollowsFlush = false

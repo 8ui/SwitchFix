@@ -217,6 +217,17 @@ run("flush adjacency: any other event between the words ends it") {
     let other = context(epoch: 2)
     let afterContextChange = adjacency(typingIn: other) { machine, _ in _ = machine.updateContext(other) }
     check(afterContextChange == false, "a context change breaks adjacency, got \(String(describing: afterContextChange))")
+    // A mode change and back between the words: the deferred short word belongs to the
+    // detector state before it, so the next word must not merge with it.
+    let afterModeChange = adjacency(typingIn: current) { machine, _ in
+        _ = machine.updatePreferences(InputPreferencesSnapshot(isEnabled: true, correctionMode: .hotkey))
+        _ = machine.updatePreferences(InputPreferencesSnapshot(isEnabled: true, correctionMode: .automatic))
+    }
+    check(afterModeChange == false, "a correction-mode change breaks adjacency, got \(String(describing: afterModeChange))")
+    let afterSamePreferences = adjacency(typingIn: current) { machine, _ in
+        _ = machine.updatePreferences(InputPreferencesSnapshot(isEnabled: true, correctionMode: .automatic))
+    }
+    check(afterSamePreferences == true, "unchanged preferences keep adjacency, got \(String(describing: afterSamePreferences))")
 }
 
 run("autorepeat preserved") {
@@ -1951,6 +1962,30 @@ run("learning: the revert hotkey's fallback conversion does not teach") {
     check(waitUntil { harness.emitted.count == 1 }, "with nothing to revert the word is converted")
     check(harness.emitted.last?.provenance == .hotkey, "the fallback is not a forced lesson")
     check(!waitUntil(0.3) { harness.lexicon.rule(for: "rehk", sourceLayout: .english) != nil }, "pressing Revert never teaches 'always correct'")
+}
+
+run("learning: the revert hotkey's fallback conversion leaves learned rules alone") {
+    // A learned "never correct": the fallback converts the word anyway (forced), but pressing
+    // Revert is no lesson, so the rule is not replaced by "always correct".
+    var never = LearningHarness(revertReturnsNothing: true)
+    never.lexicon.recordRejected(word: "ghbdtn", sourceLayout: .english)
+    never.type("ghbdtn", boundary: nil)
+    never.send(.revertHotkey)
+    check(waitUntil { never.emitted.count == 1 }, "with nothing to revert the word is converted")
+    check(never.emitted.last?.provenance == .hotkey, "not a forced lesson, got \(String(describing: never.emitted.last?.provenance))")
+    check(!waitUntil(0.3) { never.lexicon.rule(for: "ghbdtn", sourceLayout: .english) != .neverCorrect },
+          "the learned 'never correct' stays")
+
+    // A learned "always correct": the fallback applies it; the rule and its origin stay.
+    var always = LearningHarness(revertReturnsNothing: true)
+    always.lexicon.recordAccepted(word: "rehk", sourceLayout: .english, target: .russian)
+    always.type("rehk", boundary: nil)
+    always.send(.revertHotkey)
+    check(waitUntil { always.emitted.count == 1 }, "the fallback applies the learned rule")
+    check(always.emitted.last?.correctedText == "курл", "got \(always.emitted.last?.correctedText ?? "nil")")
+    check(!waitUntil(0.3) { always.lexicon.rule(for: "rehk", sourceLayout: .english) != .alwaysCorrect(to: .russian) },
+          "the learned rule stays")
+    check(always.lexicon.entries.first?.origin == .learnedFromHotkey, "and stays learned, not manual")
 }
 
 run("learning: one- and two-key hotkey conversions are not learned") {

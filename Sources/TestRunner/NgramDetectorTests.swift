@@ -161,7 +161,9 @@ func runNgramDetectorSuites() {
     }
 
     runSuite("NgramDetector: command-line flags stay") {
-        for words in [["ls", "-r"], ["rm", "-r", "-f"], ["tar", "-c", "-z", "-f"], ["cp", "-r", "-d"], ["grep", "-r"], ["-r"], ["--x"], ["ls", "-R"]] {
+        for words in [["ls", "-r"], ["rm", "-r", "-f"], ["tar", "-c", "-z", "-f"], ["cp", "-r", "-d"], ["grep", "-r"], ["-r"], ["--x"], ["ls", "-R"],
+                      ["rm", "-rf"], ["ls", "-la"], ["ls", "-ltr"], ["tar", "-xzf"], ["tar", "-xvzf"], ["rsync", "-avz"],
+                      ["git", "commit", "--amend"], ["--force"], ["git", "push", "--force-with-lease"]] {
             let detector = ngramDetector(current: .english, allowed: [.english, .russian])
             let recorder = MockDetectorDelegate()
             detector.delegate = recorder
@@ -173,6 +175,8 @@ func runNgramDetectorSuites() {
         }
         // A bare letter is still corrected: a preposition at the start of a sentence.
         assertEqual(detectNgram("r", current: .english, allowed: [.english, .russian])?.convertedWord, "к")
+        // A dash before a longer word is a dialogue line, not a flag.
+        assertEqual(detectNgram("-ghbdtn", current: .english, allowed: [.english, .russian])?.convertedWord, "-привет")
         // The hotkey (no boundary) still converts a flag.
         let hotkey = ngramDetector(current: .english, allowed: [.english, .russian])
         hotkey.addCharacter("-r")
@@ -197,6 +201,26 @@ func runNgramDetectorSuites() {
         let hotkey = ngramDetector(current: .english, allowed: [.english, .russian])
         hotkey.addCharacter("w[1]")
         assert(hotkey.flushBuffer(boundaryCharacter: nil) != nil, "the hotkey converts an index expression")
+    }
+
+    runSuite("NgramDetector: a flag or an index between words is transparent") {
+        // 'yf' (на) waits for a second short word to confirm the layout switch; code between
+        // the two must neither confirm nor break that.
+        func secondSwitches(between: String?) -> Bool? {
+            let detector = ngramDetector(current: .english, allowed: [.english, .russian])
+            detector.addCharacter("yf")
+            let first = detector.flushBuffer(boundaryCharacter: " ")
+            assert(first?.shouldSwitchLayout == false, "the first short word waits for a confirmation")
+            if let between {
+                detector.addCharacter(between)
+                assert(detector.flushBuffer(boundaryCharacter: " ") == nil, "\(between) stays")
+            }
+            detector.addCharacter("yf")
+            return detector.flushBuffer(boundaryCharacter: " ")?.shouldSwitchLayout
+        }
+        assertEqual(secondSwitches(between: nil), true, "two short words confirm the switch")
+        assertEqual(secondSwitches(between: "-r"), true, "a flag between them keeps the confirmation")
+        assertEqual(secondSwitches(between: "w[1]"), true, "an index between them keeps the confirmation")
     }
 
     runSuite("NgramDetector: a correction that never reached the field") {
