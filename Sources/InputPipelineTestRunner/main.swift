@@ -2185,9 +2185,10 @@ private func screenChecked(
     _ replies: FieldTextProbe...,
     emits: Bool,
     mode: ScreenCheckMode = .enforce,
+    deadline: UInt64 = InputEngine.screenCheckDeadlineNanoseconds,
     configure: (inout LearningHarness) -> Void = { _ in }
 ) -> LearningHarness {
-    var harness = LearningHarness(screen: ScreenStub(replies: replies), screenCheckMode: mode)
+    var harness = LearningHarness(screen: ScreenStub(replies: replies), screenCheckMode: mode, screenCheckDeadline: deadline)
     configure(&harness)
     harness.type("ghbdtn")
     _ = waitUntil(emits ? 2 : 0.4) { harness.emitted.count > 0 }
@@ -2263,9 +2264,10 @@ run("screen check: an autocorrected word is replaced as the field shows it") {
     check(!waitUntil(0.3) { harness.emitted.count > 0 },
           "a replacement seen, then an unreadable field: the typed length is not deleted")
 
-    harness = screenChecked(.text(before: "ok ghbdth "), .unavailable(transient: true), emits: false)
+    // Three reads must fit before the deadline: a slow runner may not fit them in 150 ms.
+    harness = screenChecked(.text(before: "ok ghbdth "), .unavailable(transient: true), emits: false, deadline: 600_000_000)
     check(waitUntil { (harness.screen?.queries ?? 0) >= 3 }, "timeouts are read again")
-    check(!waitUntil(0.4) { harness.emitted.count > 0 },
+    check(!waitUntil(1.0) { harness.emitted.count > 0 },
           "a replacement seen, then timeouts until the deadline: the typed length is not deleted")
 
     harness = screenChecked(.text(before: "ok ghbdth "), emits: true, mode: .shadow)
