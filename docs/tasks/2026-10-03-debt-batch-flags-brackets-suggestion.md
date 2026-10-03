@@ -3,17 +3,17 @@ id: 2026-10-03-debt-batch-flags-brackets-suggestion
 title: "Debt batch: transparent long flags, bracketed short word in context, inline suggestion for automatic correction and revert"
 type: chore
 pipeline: minimal
-phase: impl
+phase: done
 created: 2026-10-03
 updated: 2026-10-03
 blocked_by: null
-steps_done: 4
+steps_done: 5
 steps_total: 5
-step_current: 5
+step_current: null
 artifacts:
   spec: null
   plan: null
-  branch: null
+  branch: claude/admiring-mccarthy-6g7at7
   pr: null
 ---
 
@@ -32,7 +32,7 @@ artifacts:
 2. ✅ Короткое слово в скобке в контексте
 3. ✅ Подсказка при автоматической коррекции
 4. ✅ Подсказка при откате
-5. ▶ Ревью, CI, eval
+5. ✅ Ревью, CI, eval
 
 ## Log
 
@@ -46,6 +46,10 @@ artifacts:
 - 2026-10-03: verify: `CI красный: https://github.com/8ui/SwitchFix/actions/runs/37130078051 (push a0a3417) — TestRunner зелёный, InputPipelineTestRunner 1435/1: 'timeouts are read again' (тайминг: 3 чтения не влезли в 150 мс, путь .unavailable не затронут) — тесту дан свой дедлайн 600 мс` → exit 1 ❌
 - 2026-10-03: verify: `CI зелёный: https://github.com/8ui/SwitchFix/actions/runs/37130269102 (push 01fb8e9; TestRunner 687/0, InputPipelineTestRunner 1436/0, build-app); LayoutEval и threshold sweep (172 SWEEP-строки) совпадают с базой 37129456647 (e211b47 = master), кроме таймингов` → exit 0 ✅
 - 2026-10-03: verify: `код-ревью субагентом (a0a3417): блокеров нет; should-fix — выделение, затем нечитаемое поле удаляло набранную длину (автоматика и откат теперь .accept) — исправлено sawSelection + тесты (578a633); nit-ы: сохранённый pendingSuppressedShort всегда nil — явный сброс + тест; устаревшее сообщение теста; формулировка CLAUDE.md; принято без правки: '-hello'/'-1' тоже прозрачны, '(еру)' и '-ghb' теперь низкой уверенности (без мгновенного переключения, как 'еру')` → exit 0 ✅
+- 2026-10-03: verify: `CI зелёный после ревью: https://github.com/8ui/SwitchFix/actions/runs/37130535693 (push 578a633; TestRunner 688/0, InputPipelineTestRunner 1442/0, build-app); LayoutEval/sweep = база 37129456647` → exit 0 ✅
+- 2026-10-03: шаг 5 ✅ Ревью, CI, eval — ревью учтено, CI 37130535693 зелёный, eval = база
+- 2026-10-03: artifacts.branch = claude/admiring-mccarthy-6g7at7
+- 2026-10-03: 4 долга закрыто, CI 37130535693 зелёный, eval = база; ветка claude/admiring-mccarthy-6g7at7, PR не создавался
 
 ## Decisions
 
@@ -53,10 +57,8 @@ _Нетривиальные решения по ходу задачи. Одна 
 
 ## Debt
 
-_Отложенное, упрощения, известные пробелы. Формат — чекбоксы (их считают индекс и отчёты по долгам):_
-_- `- [ ] <что отложено> — <почему/контекст>` — открытый долг_
-_- `- [x] <что было> — закрыто YYYY-MM-DD: <причина/ссылка на task>` — закрытый_
-_Без `[ ]`/`[x]` пункт невидим для агрегатора и теряется через 2 недели._
+- [ ] автоматическая коррекция и откат с inline-подсказкой на Mac вживую не проверены (Safari/Chrome-омнибокс) — только тесты пайплайна
+- [ ] прозрачны все '-слова' из ASCII-букв/цифр, оставленные моделью ('-hello', '-1'): в маркированных списках они больше не дают английского контекста — ревью, принято
 
 ## Verification
 
@@ -73,6 +75,12 @@ _Без `[ ]`/`[x]` пункт невидим для агрегатора и т�
   ```
 
 - 2026-10-03 · `код-ревью субагентом (a0a3417): блокеров нет; should-fix — выделение, затем нечитаемое поле удаляло набранную длину (автоматика и откат теперь .accept) — исправлено sawSelection + тесты (578a633); nit-ы: сохранённый pendingSuppressedShort всегда nil — явный сброс + тест; устаревшее сообщение теста; формулировка CLAUDE.md; принято без правки: '-hello'/'-1' тоже прозрачны, '(еру)' и '-ghb' теперь низкой уверенности (без мгновенного переключения, как 'еру')` · exit 0 ✅
+
+  ```
+  (без вывода)
+  ```
+
+- 2026-10-03 · `CI зелёный после ревью: https://github.com/8ui/SwitchFix/actions/runs/37130535693 (push 578a633; TestRunner 688/0, InputPipelineTestRunner 1442/0, build-app); LayoutEval/sweep = база 37129456647` · exit 0 ✅
 
   ```
   (без вывода)
