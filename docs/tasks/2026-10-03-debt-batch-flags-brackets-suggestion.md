@@ -44,6 +44,7 @@ artifacts:
 - 2026-10-03: шаг 4 ✅ Подсказка при откате — код + тесты (a0a3417), ждёт CI
 - 2026-10-03: шаг 5 ▶ Ревью, CI, eval
 - 2026-10-03: verify: `CI красный: https://github.com/8ui/SwitchFix/actions/runs/37130078051 (push a0a3417) — TestRunner зелёный, InputPipelineTestRunner 1435/1: 'timeouts are read again' (тайминг: 3 чтения не влезли в 150 мс, путь .unavailable не затронут) — тесту дан свой дедлайн 600 мс` → exit 1 ❌
+- 2026-10-03: verify: `CI зелёный: https://github.com/8ui/SwitchFix/actions/runs/37130269102 (push 01fb8e9; TestRunner 687/0, InputPipelineTestRunner 1436/0, build-app); LayoutEval и threshold sweep (172 SWEEP-строки) совпадают с базой 37129456647 (e211b47 = master), кроме таймингов` → exit 0 ✅
 
 ## Decisions
 
@@ -59,6 +60,12 @@ _Без `[ ]`/`[x]` пункт невидим для агрегатора и т�
 ## Verification
 
 - 2026-10-03 · `CI красный: https://github.com/8ui/SwitchFix/actions/runs/37130078051 (push a0a3417) — TestRunner зелёный, InputPipelineTestRunner 1435/1: 'timeouts are read again' (тайминг: 3 чтения не влезли в 150 мс, путь .unavailable не затронут) — тесту дан свой дедлайн 600 мс` · exit 1 ❌
+
+  ```
+  (без вывода)
+  ```
+
+- 2026-10-03 · `CI зелёный: https://github.com/8ui/SwitchFix/actions/runs/37130269102 (push 01fb8e9; TestRunner 687/0, InputPipelineTestRunner 1436/0, build-app); LayoutEval и threshold sweep (172 SWEEP-строки) совпадают с базой 37129456647 (e211b47 = master), кроме таймингов` · exit 0 ✅
 
   ```
   (без вывода)
