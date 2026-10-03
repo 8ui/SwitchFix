@@ -30,11 +30,13 @@ public enum ScreenVerdict: Equatable, Sendable {
 
 /// What a correction does with a selection the field shows after the caret.
 public enum ScreenSelectionHandling: Sendable {
-    /// Cancel: Backspace would delete the selection (automatic corrections, reverts).
+    /// Cancel: Backspace would delete the selection (a word read from the screen after a bare
+    /// caret move: nothing typed makes a selection the app's).
     case refuse
-    /// Clear an inline suggestion that follows the typed text, else cancel (the hotkey and
-    /// layout-switch mode: the user asked for this word to be converted). Without a selection
-    /// the verdict is the same as for `refuse`.
+    /// Clear an inline suggestion that follows the typed text, else cancel. Used whenever the
+    /// text was typed (or corrected) since the caret last moved: automatic corrections, the
+    /// hotkey and layout-switch mode on a buffered word, reverts. Without a selection the
+    /// verdict is the same as for `refuse`.
     case accept
     /// As `accept`, and only a suggestion is accepted: the engine saw a selection while a word
     /// was buffered and ignored it, so a field that reads otherwise (unreadable, no selection)

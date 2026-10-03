@@ -286,7 +286,31 @@ public class LayoutDetector {
     /// Automatic detection (plan/005 §4.3): converts only between English and the
     /// native Cyrillic layout; short words go through `ShortWordTable`, longer ones
     /// through the language-model margin.
+    ///
+    /// A command-line flag or an index expression that stays is transparent: it is neither
+    /// native-language context nor a correction, so the words around it keep their series
+    /// and switch confirmation ('yf -la yf' switches like 'yf yf'). Not a detection either:
+    /// a late not-applied report still restores the switch.
     private func checkLanguageModels(word: String, sourceLayout: Layout, suppressedShort: SuppressedShort?) -> DetectionResult? {
+        guard isAutomaticCommandLineFlag(word: word, sourceLayout: sourceLayout)
+            || shouldSkipAutomaticIndexExpression(word: word, sourceLayout: sourceLayout) else {
+            return decideLanguageModels(word: word, sourceLayout: sourceLayout, suppressedShort: suppressedShort)
+        }
+        let saved = (
+            consecutiveWrongCount, lastDetectionResult, pendingSwitchLayout, pendingSwitchCount,
+            recentOutcomes, pendingSuppressedShort
+        )
+        if let result = decideLanguageModels(word: word, sourceLayout: sourceLayout, suppressedShort: suppressedShort) {
+            return result
+        }
+        (consecutiveWrongCount, lastDetectionResult, pendingSwitchLayout, pendingSwitchCount,
+         recentOutcomes, pendingSuppressedShort) = saved
+        detectionSerial &-= 1
+        state = .buffering
+        return nil
+    }
+
+    private func decideLanguageModels(word: String, sourceLayout: Layout, suppressedShort: SuppressedShort?) -> DetectionResult? {
         let originalParts = splitTokenForValidation(word)
         let core = originalParts.core.isEmpty ? word : originalParts.core
 
@@ -313,11 +337,8 @@ public class LayoutDetector {
 
         if shouldSkipAutomaticCommandLineFlag(word: word, sourceLayout: sourceLayout)
             || shouldSkipAutomaticIndexExpression(word: word, sourceLayout: sourceLayout) {
-            // Transparent: a flag or an index is neither native-language context nor a
-            // correction, so the words around it keep their series and switch confirmation
-            // (checked before the acronym rule, which would count '-R' as context).
-            // Not a detection either: a late not-applied report still restores the switch.
-            detectionSerial &-= 1
+            // Before the acronym rule: '-R' is a flag, not an acronym. `checkLanguageModels`
+            // makes the skip transparent.
             state = .buffering
             return nil
         }
@@ -487,12 +508,20 @@ public class LayoutDetector {
     ) -> DetectionResult? {
         var finalWord = applyCase(from: word, to: recomposedWord)
         var originalForCorrection = word
-        let isLowConfidence = word.count <= lowConfidenceMaxLength
+        // Edge punctuation is no evidence ('(еру' is as short as 'еру'), unless it is a
+        // letter on the converted side ('ghb,' → 'прию').
+        let length = max(
+            splitTokenForValidation(word).core.count,
+            splitTokenForValidation(recomposedWord).core.count
+        )
+        let isLowConfidence = length <= lowConfidenceMaxLength
         let shouldSwitch = shouldSwitchLayout(isLowConfidence: isLowConfidence, targetLayout: targetLayout)
 
+        // The deferred-word suppression below keeps the typed count: a merged pair is
+        // deleted and retyped character by character.
         if isLowConfidence, !shouldSwitch, pendingBoundaryCharacter != nil,
            targetLayout != sourceLayout,
-           word.count > shortWordSuppressionLength, word.count <= contextKeepLength,
+           word.count > shortWordSuppressionLength, length <= contextKeepLength,
            hasStrongCurrentContext() {
             SwitchFixLog.detector.info("kept short word \(SwitchFixLog.text(word)) -> \(SwitchFixLog.text(finalWord)) (strong current context)")
             consecutiveWrongCount = 0
@@ -792,13 +821,22 @@ public class LayoutDetector {
     /// A Latin command-line flag (`-r`, `--x`) is never rewritten automatically:
     /// `ls -r` must not become `ls -к`. Longer flags go through the model as usual.
     private func shouldSkipAutomaticCommandLineFlag(word: String, sourceLayout: Layout) -> Bool {
+        guard isAutomaticCommandLineFlag(word: word, sourceLayout: sourceLayout) else { return false }
+        let core = splitTokenForValidation(word).core
+        return core.count == 1 && core.allSatisfy(\.isLetter)
+    }
+
+    /// A Latin token shaped like a command-line flag at an automatic boundary: one or two
+    /// dashes, then Latin letters, digits and inner dashes (`-la`, `--force-with-lease`).
+    /// Only the one-letter ones are a rule; longer ones may be a dialogue line ('-ghbdtn').
+    private func isAutomaticCommandLineFlag(word: String, sourceLayout: Layout) -> Bool {
         guard sourceLayout == .english else { return false }
         // Keep manual/hotkey correction available; suppress only automatic boundary-triggered rewrites.
         guard pendingBoundaryCharacter != nil else { return false }
         let parts = splitTokenForValidation(word)
-        guard parts.suffix.isEmpty, (1...2).contains(parts.prefix.count),
+        guard parts.suffix.isEmpty, !parts.core.isEmpty, (1...2).contains(parts.prefix.count),
               parts.prefix.allSatisfy({ $0 == "-" }) else { return false }
-        return parts.core.count == 1 && parts.core.allSatisfy(\.isLetter)
+        return parts.core.allSatisfy { $0 == "-" || ($0.isASCII && ($0.isLetter || $0.isNumber)) }
     }
 
     /// Code with an index (`obj[0]`, `w[1].`, `m{2}`) is never rewritten automatically: its

@@ -1264,6 +1264,8 @@ private struct LearningHarness {
     let emitted: EmissionLog
     /// The corrections the revert hotkey posted (their recorded plans).
     let reverted: EmissionLog
+    /// The same reverts as posted (their inverse plans).
+    let revertInverses: EmissionLog
     /// Real undo bookkeeping; only posting is replaced (`revertEmission`).
     let corrector: TextCorrector
     let caret = CaretStub()
@@ -1290,6 +1292,8 @@ private struct LearningHarness {
         self.corrector = corrector
         let reverted = EmissionLog()
         self.reverted = reverted
+        let revertInverses = EmissionLog()
+        self.revertInverses = revertInverses
         engine = InputEngine(
             captureState: store,
             initialContext: current,
@@ -1310,7 +1314,11 @@ private struct LearningHarness {
             screenCheckDeadline: screenCheckDeadline,
             readsScreenAfterCaretMove: { _ in readsScreenAfterCaretMove },
             lexicon: lexicon,
-            revertEmission: { revert in reverted.append(revert.recorded); return true },
+            revertEmission: { revert in
+                reverted.append(revert.recorded)
+                revertInverses.append(revert.inverse)
+                return true
+            },
             selectionEmission: { [selections] _, converted in selections.append(converted) }
         )
         engine.updateDetectionConfiguration(allowedLayouts: [.english, .russian])
@@ -2196,9 +2204,13 @@ run("screen check: corrects only what the field still shows") {
     harness = screenChecked(.text(before: "Ghbdtn "), emits: true)
     check(harness.emitted.count == 1, "automatic capitalization keeps the length: corrected")
 
+    harness = screenChecked(.selection(length: 5, before: "old "), emits: false)
+    check(harness.emitted.count == 0, "a selection after other text: Backspace would delete it")
+    check(harness.screen?.queries == 1, "a selection after other text is decided at once, got \(harness.screen?.queries ?? -1)")
+
     harness = screenChecked(.selection(length: 5), emits: false)
-    check(harness.emitted.count == 0, "an inline suggestion is selected: Backspace would delete it")
-    check(harness.screen?.queries == 1, "a selection is decided at once, got \(harness.screen?.queries ?? -1)")
+    check(harness.emitted.count == 0, "a selection with unreadable text before it is never deleted")
+    check((harness.screen?.queries ?? 0) > 1, "the text before it is read again, got \(harness.screen?.queries ?? -1)")
 
     harness = screenChecked(.text(before: "привет "), emits: false)
     check(harness.emitted.count == 0, "the field replaced the word (autocorrect, prediction)")
@@ -2401,9 +2413,15 @@ run("screen check: the hotkey with an inline suggestion") {
     check(typedNothing.emitted.count == 0 && typedNothing.screen?.queries == 0, "no word is corrected")
 }
 
-run("screen check: automatic correction still refuses an inline suggestion") {
-    let harness = screenChecked(.selection(length: 3, before: "ghbdtn "), emits: false)
-    check(harness.emitted.count == 0, "only the hotkey and layout-switch mode clear a suggestion")
+run("screen check: automatic correction clears an inline suggestion") {
+    let harness = screenChecked(.selection(length: 3, before: "ghbdtn "), emits: true)
+    check(harness.emitted.count == 1, "corrected after the suggestion")
+    check(harness.emitted.last?.deleteCount == "ghbdtn ".count + 1,
+          "one more Backspace clears the suggestion, got \(harness.emitted.last?.deleteCount ?? -1)")
+    check(harness.emitted.last?.replacementText == "привет ", "the word is retyped, got \(harness.emitted.last?.replacementText ?? "")")
+
+    let missingSpace = screenChecked(.selection(length: 3, before: "ghbdtn"), emits: false)
+    check(missingSpace.emitted.count == 0, "a suggestion right after the word (the space not shown) is not deleted")
 }
 
 run("layout switch: an inline suggestion after the word") {
@@ -2495,6 +2513,7 @@ run("revert screen check: a changed field is not deleted and not converted") {
     let replies: [FieldTextProbe] = [
         .text(before: "приветствие "),
         .selection(length: 3),
+        .selection(length: 3, before: "приветствие "),
         .text(before: "приветы "),  // looks like an autocorrection of the corrected word
     ]
     for reply in replies {
@@ -2524,6 +2543,30 @@ run("revert screen check: a field still applying the correction is read again") 
     var lagging = revertHarness([.text(before: "прив"), .text(before: "привет ")], deadline: longDeadline)
     lagging.send(.revertHotkey)
     check(waitUntil { lagging.reverted.count == 1 }, "a lagging field is re-read")
+}
+
+run("revert screen check: an inline suggestion after the correction") {
+    var harness = revertHarness([.selection(length: 3, before: "привет ")])
+    harness.send(.revertHotkey)
+    check(waitUntil { harness.reverted.count == 1 }, "reverted after the suggestion")
+    check(harness.revertInverses.last?.deleteCount == "привет ".count + 1,
+          "one more Backspace clears the suggestion, got \(harness.revertInverses.last?.deleteCount ?? -1)")
+    check(harness.revertInverses.last?.replacementText == "ghbdtn ", "the typed word is retyped")
+    check(waitUntil { harness.lexicon.rule(for: "ghbdtn", sourceLayout: .english) == .neverCorrect }, "and learned")
+
+    // The field may still be applying the correction when the suggestion is shown.
+    var lagging = revertHarness(
+        [.selection(length: 3, before: "ghbdtn "), .selection(length: 3, before: "привет ")],
+        deadline: 2_000_000_000
+    )
+    lagging.send(.revertHotkey)
+    check(waitUntil { lagging.reverted.count == 1 }, "the text before the suggestion is read again")
+    check(lagging.revertInverses.last?.deleteCount == "привет ".count + 1, "and the suggestion cleared")
+
+    var plain = revertHarness([.text(before: "привет ")])
+    plain.send(.revertHotkey)
+    check(waitUntil { plain.reverted.count == 1 }, "reverted")
+    check(plain.revertInverses.last?.deleteCount == "привет ".count, "without a suggestion only the correction is deleted")
 }
 
 run("revert screen check: unreadable field, shadow and off") {

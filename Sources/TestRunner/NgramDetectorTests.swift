@@ -204,7 +204,7 @@ func runNgramDetectorSuites() {
         assert(hotkey.flushBuffer(boundaryCharacter: nil) != nil, "the hotkey converts an index expression")
 
         // Transparent: a flag or an index between two short words keeps the switch confirmation.
-        for neutral in ["-r", "w[1]"] {
+        for neutral in ["-r", "w[1]", "-la", "-rf", "--force", "--force-with-lease"] {
             let detector = ngramDetector(current: .english, allowed: [.english, .russian])
             func flush(_ word: String) -> DetectionResult? {
                 detector.addCharacter(word)
@@ -314,6 +314,9 @@ func runNgramDetectorSuites() {
         }
         assert(results(["в", "нову", "еру"]).isEmpty, "'еру' after Ukrainian words stays")
         assert(results(["в", "нову", "еру", "фтв"]).isEmpty, "a kept word does not count toward the next word's switch")
+        // Edge punctuation does not make a short word long ('(еру)' is as short as 'еру').
+        assert(results(["в", "нову", "(еру)"]).isEmpty, "'(еру)' after Ukrainian words stays")
+        assertEqual(results(["(еру)"]).first?.convertedWord, "(the", "isolated '(еру)' is still corrected")
         assert(results(["на", "еру"]).count == 1, "one short context word is not strong context")
         assertEqual(results(["еру"]).first?.convertedWord, "the", "isolated 'еру' is still corrected")
         assertEqual(results(["в", "нову", "еру"], boundary: nil).first?.convertedWord, "the", "the hotkey still converts")
