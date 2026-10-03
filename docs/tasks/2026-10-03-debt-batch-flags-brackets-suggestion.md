@@ -45,6 +45,7 @@ artifacts:
 - 2026-10-03: шаг 5 ▶ Ревью, CI, eval
 - 2026-10-03: verify: `CI красный: https://github.com/8ui/SwitchFix/actions/runs/37130078051 (push a0a3417) — TestRunner зелёный, InputPipelineTestRunner 1435/1: 'timeouts are read again' (тайминг: 3 чтения не влезли в 150 мс, путь .unavailable не затронут) — тесту дан свой дедлайн 600 мс` → exit 1 ❌
 - 2026-10-03: verify: `CI зелёный: https://github.com/8ui/SwitchFix/actions/runs/37130269102 (push 01fb8e9; TestRunner 687/0, InputPipelineTestRunner 1436/0, build-app); LayoutEval и threshold sweep (172 SWEEP-строки) совпадают с базой 37129456647 (e211b47 = master), кроме таймингов` → exit 0 ✅
+- 2026-10-03: verify: `код-ревью субагентом (a0a3417): блокеров нет; should-fix — выделение, затем нечитаемое поле удаляло набранную длину (автоматика и откат теперь .accept) — исправлено sawSelection + тесты (578a633); nit-ы: сохранённый pendingSuppressedShort всегда nil — явный сброс + тест; устаревшее сообщение теста; формулировка CLAUDE.md; принято без правки: '-hello'/'-1' тоже прозрачны, '(еру)' и '-ghb' теперь низкой уверенности (без мгновенного переключения, как 'еру')` → exit 0 ✅
 
 ## Decisions
 
@@ -66,6 +67,12 @@ _Без `[ ]`/`[x]` пункт невидим для агрегатора и т�
   ```
 
 - 2026-10-03 · `CI зелёный: https://github.com/8ui/SwitchFix/actions/runs/37130269102 (push 01fb8e9; TestRunner 687/0, InputPipelineTestRunner 1436/0, build-app); LayoutEval и threshold sweep (172 SWEEP-строки) совпадают с базой 37129456647 (e211b47 = master), кроме таймингов` · exit 0 ✅
+
+  ```
+  (без вывода)
+  ```
+
+- 2026-10-03 · `код-ревью субагентом (a0a3417): блокеров нет; should-fix — выделение, затем нечитаемое поле удаляло набранную длину (автоматика и откат теперь .accept) — исправлено sawSelection + тесты (578a633); nit-ы: сохранённый pendingSuppressedShort всегда nil — явный сброс + тест; устаревшее сообщение теста; формулировка CLAUDE.md; принято без правки: '-hello'/'-1' тоже прозрачны, '(еру)' и '-ghb' теперь низкой уверенности (без мгновенного переключения, как 'еру')` · exit 0 ✅
 
   ```
   (без вывода)
