@@ -202,26 +202,31 @@ func runNgramDetectorSuites() {
         let hotkey = ngramDetector(current: .english, allowed: [.english, .russian])
         hotkey.addCharacter("w[1]")
         assert(hotkey.flushBuffer(boundaryCharacter: nil) != nil, "the hotkey converts an index expression")
-    }
 
-    runSuite("NgramDetector: a one-letter flag or an index between words is transparent") {
-        // 'yf' (на) waits for a second short word to confirm the layout switch; code between
-        // the two must neither confirm nor break that.
-        func secondSwitches(between: String?) -> Bool? {
+        // Transparent: a flag or an index between two short words keeps the switch confirmation.
+        for neutral in ["-r", "w[1]"] {
             let detector = ngramDetector(current: .english, allowed: [.english, .russian])
-            detector.addCharacter("yf")
-            let first = detector.flushBuffer(boundaryCharacter: " ")
-            assert(first?.shouldSwitchLayout == false, "the first short word waits for a confirmation")
-            if let between {
-                detector.addCharacter(between)
-                assert(detector.flushBuffer(boundaryCharacter: " ") == nil, "\(between) stays")
+            func flush(_ word: String) -> DetectionResult? {
+                detector.addCharacter(word)
+                return detector.flushBuffer(boundaryCharacter: " ")
             }
-            detector.addCharacter("yf")
-            return detector.flushBuffer(boundaryCharacter: " ")?.shouldSwitchLayout
+            assertEqual(flush("yf")?.shouldSwitchLayout, false, "the first short word waits for a confirmation")
+            assert(flush(neutral) == nil, "\(neutral) stays")
+            assertEqual(flush("yf")?.shouldSwitchLayout, true, "\(neutral) does not spend the confirmation")
+
+            // A switch cancelled after the neutral word was flushed still gives the confirmation back.
+            let late = ngramDetector(current: .english, allowed: [.english, .russian])
+            func flushLate(_ word: String) -> DetectionResult? {
+                late.addCharacter(word)
+                return late.flushBuffer(boundaryCharacter: " ")
+            }
+            _ = flushLate("yf")
+            let second = flushLate("yf")
+            assertEqual(second?.shouldSwitchLayout, true, "the second short word confirms the switch")
+            assert(flushLate(neutral) == nil, "\(neutral) stays")
+            if let second { late.noteCorrectionNotApplied(second.detectionID) }
+            assertEqual(flushLate("yf")?.shouldSwitchLayout, true, "after \(neutral) the cancelled switch is restored")
         }
-        assertEqual(secondSwitches(between: nil), true, "two short words confirm the switch")
-        assertEqual(secondSwitches(between: "-r"), true, "a flag between them keeps the confirmation")
-        assertEqual(secondSwitches(between: "w[1]"), true, "an index between them keeps the confirmation")
     }
 
     runSuite("NgramDetector: a correction that never reached the field") {

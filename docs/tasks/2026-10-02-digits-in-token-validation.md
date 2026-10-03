@@ -5,7 +5,7 @@ type: bug
 pipeline: minimal
 phase: done
 created: 2026-10-02
-updated: 2026-10-03
+updated: 2026-10-02
 blocked_by: null
 steps_done: 3
 steps_total: 3
@@ -50,7 +50,7 @@ _Нетривиальные решения по ходу задачи. Одна 
 ## Debt
 
 - [ ] arr[i], dict["k"] без цифры правилом не покрыты (идут через модель)
-- [x] нейтральный пропуск (флаг и индекс) обнуляет consecutiveWrongCount/pendingSwitch — в прозе 'cnhjrf 2[ rjvyfnyfz' разрывает серию; прозрачный пропуск (только state=.buffering) — решение для обоих правил — закрыто 2026-10-03: 2026-10-03-debt-batch-flags-counters-adjacency
+- [x] нейтральный пропуск (флаг и индекс) обнуляет consecutiveWrongCount/pendingSwitch — в прозе 'cnhjrf 2[ rjvyfnyfz' разрывает серию; прозрачный пропуск (только state=.buffering) — решение для обоих правил — закрыто 2026-10-02: 2026-10-02-debt-batch-skip-adjacency-suffix-tests
 
 ## Verification
 

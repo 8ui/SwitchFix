@@ -54,6 +54,7 @@ artifacts:
 - 2026-10-03: 5 долгов закрыто, CI 37119599598 зелёный; ветка claude/brave-franklin-mgg4gy, PR не создавался
 - 2026-10-03: artifacts.branch = claude/brave-franklin-mgg4gy
 - 2026-10-03: artifacts.pr = https://github.com/8ui/SwitchFix/pull/19
+- 2026-10-03: merge master (PR 17): смежность при смене режима, прозрачный пропуск и тест fallback 'always' уже сделаны параллельной задачей 2026-10-02-debt-batch-skip-adjacency-suffix-tests — взяты её код и тесты, мои дубли удалены; остались: тесты многобуквенных флагов, счётчики Words при правке, тест fallback 'never correct'
 
 ## Decisions
 
@@ -62,7 +63,7 @@ _Нетривиальные решения по ходу задачи. Одна 
 ## Debt
 
 - [ ] многобуквенные флаги (-rf, -la) держит модель, а не правило: они не прозрачны — сбрасывают подтверждение переключения и пишутся в контекст как .validCurrent ('yf -la yf' не переключает)
-- [ ] пропуск флага/индекса тратит detectionSerial: отчёт noteCorrectionNotApplied о коррекции до флага уже не восстанавливает состояние переключения (окно ~150 мс) — ревью nit
+- [x] пропуск флага/индекса тратит detectionSerial: отчёт noteCorrectionNotApplied о коррекции до флага уже не восстанавливает состояние переключения (окно ~150 мс) — ревью nit — закрыто 2026-10-03: 2026-10-02-debt-batch-skip-adjacency-suffix-tests (detectionSerial &-= 1, влито в master PR 17)
 
 ## Verification
 

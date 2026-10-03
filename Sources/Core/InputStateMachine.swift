@@ -81,6 +81,17 @@ struct ScreenSuffix {
         }
     }
 
+    /// A correction replaced the end of the text: when the suffix ends with what it deleted,
+    /// the screen now ends with the replacement; otherwise the screen is unknown.
+    mutating func replaced(_ deleted: String, with replacement: String) {
+        guard !text.isEmpty, text.hasSuffix(deleted) else {
+            unknownEdit()
+            return
+        }
+        text.removeLast(deleted.count)
+        typed(replacement)
+    }
+
     mutating func deleted() {
         if text.isEmpty {
             needsTyping = true
@@ -154,6 +165,19 @@ public struct InputStateMachine {
         return commands
     }
 
+    /// SwitchFix switched the input source itself (after a correction): the text was not
+    /// edited, so the screen suffix survives in the same app. Focus is re-resolved after the
+    /// switch (unknown until then); `focusResolved` keeps the suffix when the field is plain.
+    public mutating func generatedLayoutSwitched(_ context: InputContextSnapshot) -> [InputStateCommand] {
+        let keepsSuffix = context.frontmostPID == self.context.frontmostPID
+            && context.appAllowed == self.context.appAllowed
+            && context.secureFocus != .secure
+        let suffix = screenSuffix
+        let commands = updateContext(context)
+        if keepsSuffix { screenSuffix = suffix }
+        return commands
+    }
+
     /// Same app, permissions and input source; epoch and focus may differ.
     private func sameField(_ context: InputContextSnapshot) -> Bool {
         context.frontmostPID == self.context.frontmostPID
@@ -169,10 +193,20 @@ public struct InputStateMachine {
         screenSuffix.unknownEdit()
     }
 
+    /// A correction posted outside the event stream deleted `deleted` before the caret and
+    /// typed `replacement`, and nothing was processed since it was planned.
+    public mutating func correctionApplied(deleted: String, replacement: String) {
+        screenSuffix.replaced(deleted, with: replacement)
+    }
+
+    /// The text changed outside the event stream in a way the suffix cannot follow.
+    public mutating func screenChangedUnseen() {
+        screenSuffix.unknownEdit()
+    }
+
     public mutating func updatePreferences(_ preferences: InputPreferencesSnapshot) -> [InputStateCommand] {
         let wasEnabled = self.preferences.isEnabled
-        // Another mode in between (hotkey, layout switch) may have converted text the
-        // automatic detector never saw: the next word does not continue the last flush.
+        // A word flushed in another mode was never offered as the previous word of a pair.
         if preferences.correctionMode != self.preferences.correctionMode {
             wordFollowsFlush = false
         }

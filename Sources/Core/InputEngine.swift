@@ -210,7 +210,7 @@ public final class InputEngine {
     public func handleGeneratedLayoutContext(_ context: InputContextSnapshot) {
         let generation = captureState.snapshot().editGeneration
         inputQueue.async { [weak self] in
-            _ = self?.stateMachine.updateContext(context)
+            _ = self?.stateMachine.generatedLayoutSwitched(context)
             self?.resetDetectorState()
         }
         correctionQueue.async { [weak self] in
@@ -357,6 +357,16 @@ public final class InputEngine {
             self.inputQueue.async {
                 self.detectionQueue.async { completion() }
             }
+        }
+    }
+
+    /// Runs `completion` once queued emissions and the input work they posted are done
+    /// (tests: the screen suffix has followed an applied correction). Only emissions already
+    /// queued: wait for the emission itself first.
+    public func drainCorrection(completion: @escaping () -> Void) {
+        correctionQueue.async { [weak self] in
+            guard let self else { return completion() }
+            self.inputQueue.async { completion() }
         }
     }
 
@@ -859,9 +869,21 @@ public final class InputEngine {
                 ?? self.corrector.apply(plan, latestCaptureState: self.captureState.snapshot)
             if applied {
                 self.learnFromApplied(plan)
+                self.inputQueue.async { self.noteScreenCorrected(plan) }
             } else {
                 self.noteNotApplied(detectionID)
             }
+        }
+    }
+
+    /// Runs on the input queue after `plan` reached the field: the screen suffix follows the
+    /// correction when it deleted exactly what was typed and nothing was processed since.
+    private func noteScreenCorrected(_ plan: CorrectionPlan) {
+        let typed = plan.originalText + plan.boundaryText
+        if latestProcessedSequence == plan.boundarySequence, plan.deleteCount == typed.count {
+            stateMachine.correctionApplied(deleted: typed, replacement: plan.replacementText)
+        } else {
+            stateMachine.screenChangedUnseen()
         }
     }
 
