@@ -231,7 +231,8 @@ public final class PersonalLexicon: @unchecked Sendable {
     /// Replaces the entry with the same id; an edited entry becomes the user's own
     /// (`manual`). Fails when the entry is gone or another entry has the new word + layout.
     /// The counters are not editable: the stored ones are kept, so a match counted while
-    /// the form was open is not overwritten by the form's snapshot.
+    /// the form was open is not overwritten by the form's snapshot. A new word or layout is
+    /// a new rule and starts from zero.
     @discardableResult
     public func update(_ entry: LexiconEntry) -> LexiconValidationError? {
         if let error = Self.validate(word: entry.word, sourceLayout: entry.sourceLayout, rule: entry.rule) {
@@ -243,8 +244,10 @@ public final class PersonalLexicon: @unchecked Sendable {
         let error: LexiconValidationError? = lock.locked {
             guard let position = items.firstIndex(where: { $0.id == entry.id }) else { return .missing }
             if let clash = index[edited.key], items[clash].id != entry.id { return .duplicate }
-            edited.matchCount = items[position].matchCount
-            edited.lastMatchedAt = items[position].lastMatchedAt
+            let stored = items[position]
+            let sameKey = stored.key == edited.key
+            edited.matchCount = sameKey ? stored.matchCount : 0
+            edited.lastMatchedAt = sameKey ? stored.lastMatchedAt : nil
             removeEntry(at: position)
             insert(edited)
             return nil

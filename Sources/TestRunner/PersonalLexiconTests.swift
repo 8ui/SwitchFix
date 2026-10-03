@@ -187,6 +187,11 @@ func runPersonalLexiconSuites() {
         assertEqual(lexicon.entries.first?.rule, .alwaysCorrect(to: .russian), "the edit is applied")
         assertEqual(lexicon.entries.first?.matchCount, 1, "the match counted meanwhile stays")
         assert(lexicon.entries.first?.lastMatchedAt != nil, "and so does its time")
+        var renamed = edited
+        renamed.word = "rehkf"
+        assert(lexicon.update(renamed) == nil, "rename should succeed")
+        assertEqual(lexicon.entries.first?.matchCount, 0, "another word starts from zero")
+        assert(lexicon.entries.first?.lastMatchedAt == nil, "and has never been used")
     }
 
     runSuite("PersonalLexicon: a recently matched entry survives eviction") {

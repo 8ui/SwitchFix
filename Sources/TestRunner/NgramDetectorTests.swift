@@ -162,6 +162,7 @@ func runNgramDetectorSuites() {
 
     runSuite("NgramDetector: command-line flags stay") {
         for words in [["ls", "-r"], ["rm", "-r", "-f"], ["tar", "-c", "-z", "-f"], ["cp", "-r", "-d"], ["grep", "-r"], ["-r"], ["--x"], ["ls", "-R"],
+                      // Longer flags are not a rule: the model keeps them.
                       ["rm", "-rf"], ["ls", "-la"], ["ls", "-ltr"], ["tar", "-xzf"], ["tar", "-xvzf"], ["rsync", "-avz"],
                       ["git", "commit", "--amend"], ["--force"], ["git", "push", "--force-with-lease"]] {
             let detector = ngramDetector(current: .english, allowed: [.english, .russian])
@@ -203,7 +204,7 @@ func runNgramDetectorSuites() {
         assert(hotkey.flushBuffer(boundaryCharacter: nil) != nil, "the hotkey converts an index expression")
     }
 
-    runSuite("NgramDetector: a flag or an index between words is transparent") {
+    runSuite("NgramDetector: a one-letter flag or an index between words is transparent") {
         // 'yf' (на) waits for a second short word to confirm the layout switch; code between
         // the two must neither confirm nor break that.
         func secondSwitches(between: String?) -> Bool? {

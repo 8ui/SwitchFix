@@ -1976,7 +1976,8 @@ run("learning: the revert hotkey's fallback conversion leaves learned rules alon
     check(!waitUntil(0.3) { never.lexicon.rule(for: "ghbdtn", sourceLayout: .english) != .neverCorrect },
           "the learned 'never correct' stays")
 
-    // A learned "always correct": the fallback applies it; the rule and its origin stay.
+    // A learned "always correct": the detector applies it, so this half pins the outcome
+    // (the rule and its origin stay) without reaching the `teaches` switch.
     var always = LearningHarness(revertReturnsNothing: true)
     always.lexicon.recordAccepted(word: "rehk", sourceLayout: .english, target: .russian)
     always.type("rehk", boundary: nil)

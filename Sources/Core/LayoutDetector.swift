@@ -313,9 +313,10 @@ public class LayoutDetector {
 
         if shouldSkipAutomaticCommandLineFlag(word: word, sourceLayout: sourceLayout)
             || shouldSkipAutomaticIndexExpression(word: word, sourceLayout: sourceLayout) {
-            // Transparent: a flag or an index is neither native-language context nor a
-            // correction, and the layout-switch confirmation of the words around it survives
-            // (checked before the acronym rule, which would count '-R' as context).
+            // Transparent: a one-letter flag or an index is neither native-language context nor
+            // a correction, and the layout-switch confirmation of the words around it survives
+            // (checked before the acronym rule, which would count '-R' as context). Longer
+            // flags ('-rf') are kept by the model and count as an ordinary kept word.
             state = .buffering
             return nil
         }
