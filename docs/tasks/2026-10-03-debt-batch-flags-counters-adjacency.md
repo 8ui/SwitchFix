@@ -7,9 +7,9 @@ phase: impl
 created: 2026-10-03
 updated: 2026-10-03
 blocked_by: null
-steps_done: 2
+steps_done: 3
 steps_total: 6
-step_current: 3
+step_current: 4
 artifacts:
   spec: null
   plan: null
@@ -31,8 +31,8 @@ artifacts:
 
 1. ✅ Смежность при смене режима
 2. ✅ Счётчики при правке записи
-3. ▶ Многобуквенные флаги
-4. ⬜ Прозрачный пропуск флага/индекса
+3. ✅ Многобуквенные флаги
+4. ▶ Прозрачный пропуск флага/индекса
 5. ⬜ Тесты fallback отката с правилами
 6. ⬜ Ревью, CI, eval
 
@@ -42,6 +42,8 @@ artifacts:
 - 2026-10-03: brainstorm: что — 5 долгов (см. Context); зачем — пользователь попросил закрыть следующую пачку; готово — тесты + CI + eval vs база + закрытые долги
 - 2026-10-03: шаг 1 ✅ Смежность при смене режима — InputStateMachine: смена режима сбрасывает wordFollowsFlush; тест в 'flush adjacency'
 - 2026-10-03: шаг 2 ✅ Счётчики при правке записи — PersonalLexicon.update берёт счётчики из хранимой записи; тест
+- 2026-10-03: verify: `до фикса: CI https://github.com/8ui/SwitchFix/actions/runs/37119332302 (push 268283c) — TestRunner 652/2: падает только прозрачный пропуск (флаг/индекс между 'yf yf'); многобуквенные флаги -rf -la -ltr -xzf -xvzf -avz --amend --force --force-with-lease уже остаются (модель), '-ghbdtn' → '-привет'` → exit 1 ❌
+- 2026-10-03: шаг 3 ✅ Многобуквенные флаги — проверено CI: модель уже оставляет флаги; правило не расширено, тесты фиксируют поведение
 
 ## Decisions
 
@@ -56,7 +58,11 @@ _Без `[ ]`/`[x]` пункт невидим для агрегатора и т�
 
 ## Verification
 
-_Доказательства, а не утверждения. Заполняется `rtp verify <id> --run "<команда>"`: команда, exit code, хвост вывода._
+- 2026-10-03 · `до фикса: CI https://github.com/8ui/SwitchFix/actions/runs/37119332302 (push 268283c) — TestRunner 652/2: падает только прозрачный пропуск (флаг/индекс между 'yf yf'); многобуквенные флаги -rf -la -ltr -xzf -xvzf -avz --amend --force --force-with-lease уже остаются (модель), '-ghbdtn' → '-привет'` · exit 1 ❌
+
+  ```
+  (без вывода)
+  ```
 
 ## Handoff
 

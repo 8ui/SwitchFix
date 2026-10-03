@@ -313,12 +313,9 @@ public class LayoutDetector {
 
         if shouldSkipAutomaticCommandLineFlag(word: word, sourceLayout: sourceLayout)
             || shouldSkipAutomaticIndexExpression(word: word, sourceLayout: sourceLayout) {
-            // Neutral: a flag or an index is neither native-language context nor a correction
+            // Transparent: a flag or an index is neither native-language context nor a
+            // correction, and the layout-switch confirmation of the words around it survives
             // (checked before the acronym rule, which would count '-R' as context).
-            consecutiveWrongCount = 0
-            lastDetectionResult = nil
-            pendingSwitchLayout = nil
-            pendingSwitchCount = 0
             state = .buffering
             return nil
         }
