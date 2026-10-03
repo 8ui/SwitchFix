@@ -748,7 +748,8 @@ public final class InputEngine {
         startedAt: UInt64,
         attempt: Int,
         replacedBefore: Int? = nil,
-        sawReplacement: Bool = false
+        sawReplacement: Bool = false,
+        sawSelection: Bool = false
     ) {
         let kind = check.kind.rawValue
         let provenance = String(describing: check.provenance)
@@ -811,12 +812,21 @@ public final class InputEngine {
                         check.cancelled()
                         return
                     }
+                    // Nor once a selection was seen: Backspace would delete it first.
+                    var selectionSeen = sawSelection
+                    if case .selection = probe { selectionSeen = true }
+                    if verdict == .unknown, selectionSeen, !shadow {
+                        SwitchFixLog.engine.notice("\(kind) cancelled reason=screen-unreadable-after-selection attempts=\(attempt)")
+                        check.cancelled()
+                        return
+                    }
                     if verdict == .retry || unconfirmed != nil, !shadow {
                         self.inputQueue.asyncAfter(deadline: .now() + Self.screenCheckRetryInterval) { [weak self] in
                             self?.verifyScreen(
                                 check, query: query, startedAt: startedAt,
                                 attempt: attempt + 1, replacedBefore: unconfirmed,
-                                sawReplacement: sawReplacement || unconfirmed != nil
+                                sawReplacement: sawReplacement || unconfirmed != nil,
+                                sawSelection: selectionSeen
                             )
                         }
                         return

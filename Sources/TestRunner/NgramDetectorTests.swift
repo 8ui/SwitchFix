@@ -227,6 +227,18 @@ func runNgramDetectorSuites() {
             if let second { late.noteCorrectionNotApplied(second.detectionID) }
             assertEqual(flushLate("yf")?.shouldSwitchLayout, true, "after \(neutral) the cancelled switch is restored")
         }
+
+        // A deferred short word is not merged across a flag: the flag is on screen between them.
+        let deferred = ngramDetector(current: .russian, allowed: [.english, .russian])
+        let recorder = MockDetectorDelegate()
+        deferred.delegate = recorder
+        deferred.currentLayout = .russian
+        for word in ["сейчас", "на", "ше", "-la", "цщклы"] {
+            deferred.addCharacter(word)
+            deferred.flushBuffer(boundaryCharacter: " ")
+        }
+        assert(!recorder.results.contains { $0.originalWord.contains("-la") },
+               "no merge across a flag, got \(recorder.results.map(\.originalWord))")
     }
 
     runSuite("NgramDetector: a correction that never reached the field") {

@@ -2149,7 +2149,7 @@ run("screen verification: an inline suggestion after the word") {
         ScreenVerification.verdict(word: "ujnjdj", boundary: "", probe: probe, final: final, selection: selection)
     }
     let suggestion = FieldTextProbe.selection(length: 4, before: "ya ujnjdj")
-    check(verdict(suggestion, .refuse) == .mismatch, "automatic corrections still refuse a selection")
+    check(verdict(suggestion, .refuse) == .mismatch, "a selection read after a bare caret move is refused")
     check(verdict(suggestion, .accept) == .matchBeforeSelection(deleteCount: 7),
           "the hotkey clears the suggestion with one more Backspace")
     check(verdict(suggestion, .require) == .matchBeforeSelection(deleteCount: 7), "also when the engine saw it")
@@ -2424,6 +2424,12 @@ run("screen check: automatic correction clears an inline suggestion") {
 
     let missingSpace = screenChecked(.selection(length: 3, before: "ghbdtn"), emits: false)
     check(missingSpace.emitted.count == 0, "a suggestion right after the word (the space not shown) is not deleted")
+
+    for unreadable in [FieldTextProbe.unavailable(transient: false), .unavailable(transient: true)] {
+        let blind = screenChecked(.selection(length: 3), unreadable, emits: false)
+        check(waitUntil { (blind.screen?.queries ?? 0) >= 2 }, "read again after a selection, then \(unreadable)")
+        check(!waitUntil(0.4) { blind.emitted.count > 0 }, "a selection, then \(unreadable): nothing is deleted")
+    }
 }
 
 run("layout switch: an inline suggestion after the word") {
@@ -2564,6 +2570,10 @@ run("revert screen check: an inline suggestion after the correction") {
     lagging.send(.revertHotkey)
     check(waitUntil { lagging.reverted.count == 1 }, "the text before the suggestion is read again")
     check(lagging.revertInverses.last?.deleteCount == "привет ".count + 1, "and the suggestion cleared")
+
+    var blind = revertHarness([.selection(length: 3), .unavailable(transient: false)])
+    blind.send(.revertHotkey)
+    check(!waitUntil(0.5) { blind.reverted.count > 0 }, "a selection, then an unreadable field: no revert")
 
     var plain = revertHarness([.text(before: "привет ")])
     plain.send(.revertHotkey)

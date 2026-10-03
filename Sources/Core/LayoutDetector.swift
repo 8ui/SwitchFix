@@ -296,15 +296,14 @@ public class LayoutDetector {
             || shouldSkipAutomaticIndexExpression(word: word, sourceLayout: sourceLayout) else {
             return decideLanguageModels(word: word, sourceLayout: sourceLayout, suppressedShort: suppressedShort)
         }
-        let saved = (
-            consecutiveWrongCount, lastDetectionResult, pendingSwitchLayout, pendingSwitchCount,
-            recentOutcomes, pendingSuppressedShort
-        )
+        // A deferred short word is not given back: the flag is on screen between it and the
+        // next word, so merging them would delete the wrong length (`flushBuffer` dropped it).
+        let saved = (consecutiveWrongCount, lastDetectionResult, pendingSwitchLayout, pendingSwitchCount, recentOutcomes)
         if let result = decideLanguageModels(word: word, sourceLayout: sourceLayout, suppressedShort: suppressedShort) {
             return result
         }
-        (consecutiveWrongCount, lastDetectionResult, pendingSwitchLayout, pendingSwitchCount,
-         recentOutcomes, pendingSuppressedShort) = saved
+        (consecutiveWrongCount, lastDetectionResult, pendingSwitchLayout, pendingSwitchCount, recentOutcomes) = saved
+        pendingSuppressedShort = nil
         detectionSerial &-= 1
         state = .buffering
         return nil
