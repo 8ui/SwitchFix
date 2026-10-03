@@ -55,6 +55,7 @@ artifacts:
 - 2026-10-03: artifacts.branch = claude/brave-franklin-mgg4gy
 - 2026-10-03: artifacts.pr = https://github.com/8ui/SwitchFix/pull/19
 - 2026-10-03: merge master (PR 17): смежность при смене режима, прозрачный пропуск и тест fallback 'always' уже сделаны параллельной задачей 2026-10-02-debt-batch-skip-adjacency-suffix-tests — взяты её код и тесты, мои дубли удалены; остались: тесты многобуквенных флагов, счётчики Words при правке, тест fallback 'never correct'
+- 2026-10-03: verify: `CI зелёный после merge master: https://github.com/8ui/SwitchFix/actions/runs/37129456647 (TestRunner 661/0, InputPipelineTestRunner 1414/0)` → exit 0 ✅
 
 ## Decisions
 
@@ -86,6 +87,12 @@ _Нетривиальные решения по ходу задачи. Одна 
   ```
 
 - 2026-10-03 · `CI зелёный после правок ревью: https://github.com/8ui/SwitchFix/actions/runs/37119599598 (push 26aeecf; TestRunner 657/0, InputPipelineTestRunner 1386/0, build-app)` · exit 0 ✅
+
+  ```
+  (без вывода)
+  ```
+
+- 2026-10-03 · `CI зелёный после merge master: https://github.com/8ui/SwitchFix/actions/runs/37129456647 (TestRunner 661/0, InputPipelineTestRunner 1414/0)` · exit 0 ✅
 
   ```
   (без вывода)
