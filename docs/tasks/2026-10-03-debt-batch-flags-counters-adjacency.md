@@ -14,7 +14,7 @@ artifacts:
   spec: null
   plan: null
   branch: claude/brave-franklin-mgg4gy
-  pr: null
+  pr: "https://github.com/8ui/SwitchFix/pull/19"
 ---
 
 ## Context
@@ -53,6 +53,7 @@ artifacts:
 - 2026-10-03: шаг 6 ✅ Ревью, CI, eval — ревью учтено, CI зелёный
 - 2026-10-03: 5 долгов закрыто, CI 37119599598 зелёный; ветка claude/brave-franklin-mgg4gy, PR не создавался
 - 2026-10-03: artifacts.branch = claude/brave-franklin-mgg4gy
+- 2026-10-03: artifacts.pr = https://github.com/8ui/SwitchFix/pull/19
 
 ## Decisions
 
