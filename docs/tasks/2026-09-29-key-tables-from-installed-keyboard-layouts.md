@@ -5,7 +5,7 @@ type: bug
 pipeline: full
 phase: done
 created: 2026-09-29
-updated: 2026-09-29
+updated: 2026-10-05
 blocked_by: null
 steps_done: 5
 steps_total: 5
@@ -63,12 +63,12 @@ _Нетривиальные решения по ходу задачи. Одна 
 ## Debt
 
 - [ ] Границы слова по физической клавише: № ? @ # $ % ^ & * обрывают слово — спека key-tables, вне объёма
-- [ ] Перестраивать таблицы при смене типа клавиатуры (LMGetKbdType) — спека key-tables, вне объёма
+- [x] Перестраивать таблицы при смене типа клавиатуры (LMGetKbdType) — спека key-tables, вне объёма — закрыто 2026-10-05: 2026-10-05-debt-batch-revert-shortcuts-keytables
 - [ ] Report-only LayoutEval на реальных (не .pc) таблицах — спека key-tables M4
 - [ ] Общий dependency-free таргет с ключевыми данными для Core и ModelTrainer — спека key-tables B2
 - [ ] Автодетекция перебирает все таблицы исходной раскладки (US+Colemak/Dvorak): первая прошедшая порог побеждает — не измерено LayoutEval
 - [ ] Выделение без букв (';5') при .pc-фолбэке источника (Phonetic, нечитаемый uchr) всё ещё идёт через English → 'ж5'; end-to-end теста ';5'→'$5' через движок нет — ревью key-tables, low
-- [ ] Тесты KeyTableBuilder: нет проверки пропуска dead keys; suite 'system tables agree' пропускает клавиши 10/50 целиком (ё/ґ на 50 не покрыты на ANSI) — ревью key-tables, low
+- [x] Тесты KeyTableBuilder: нет проверки пропуска dead keys; suite 'system tables agree' пропускает клавиши 10/50 целиком (ё/ґ на 50 не покрыты на ANSI) — ревью key-tables, low — закрыто 2026-10-05: 2026-10-05-debt-batch-revert-shortcuts-keytables
 
 ## Verification
 

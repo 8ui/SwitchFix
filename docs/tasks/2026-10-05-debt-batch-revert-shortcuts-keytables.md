@@ -3,17 +3,17 @@ id: 2026-10-05-debt-batch-revert-shortcuts-keytables
 title: "Debt batch: revert staleness mechanism test, shortcut refresh throttling, key table tests on ANSI/ISO, rebuild on keyboard type change"
 type: chore
 pipeline: minimal
-phase: impl
+phase: done
 created: 2026-10-05
 updated: 2026-10-05
 blocked_by: null
-steps_done: 4
+steps_done: 5
 steps_total: 5
-step_current: 5
+step_current: null
 artifacts:
   spec: null
   plan: null
-  branch: null
+  branch: claude/charming-clarke-8bf4te
   pr: null
 ---
 
@@ -32,7 +32,7 @@ artifacts:
 2. ✅ Троттлинг чтения хоткеев смены источника
 3. ✅ Тесты KeyTableBuilder: dead keys, 10/50 на ANSI/ISO
 4. ✅ Пересборка таблиц при смене типа клавиатуры
-5. ▶ Ревью и CI
+5. ✅ Ревью и CI
 
 ## Log
 
@@ -44,6 +44,11 @@ artifacts:
 - 2026-10-05: шаг 3 ✅ Тесты KeyTableBuilder: dead keys, 10/50 на ANSI/ISO — тесты 10/50 ANSI/ISO + dead keys
 - 2026-10-05: шаг 4 ✅ Пересборка таблиц при смене типа клавиатуры — refreshIfKeyboardTypeChanged при активации/смене источника
 - 2026-10-05: verify: `код-ревью субагентом (0a0ca8a): блокеров нет, маппинг исходов verifyScreen без регресса, тест ловит удаление повторной проверки; should-fix: уведомление после своего переключения всё равно перечитывало хоткеи (.ifStale) — теперь .keep; dead-key тест зависел от клавиатуры машины — явный ANSI; ANSI Shift+50 — исправлено в 1451bf3; nit-ы: round-trip без проверки клавиши, CLAUDE.md — исправлено в f72524a; не правлено: keyboardType(physicalLayout:) берёт первый тип из 0...255 (тест прошёл, покрытие ANSI реальное: ё/ґ на 50)` → exit 0 ✅
+- 2026-10-05: verify: `CI зелёный: https://github.com/8ui/SwitchFix/actions/runs/37288304994 (push f72524a; TestRunner 1168/0, InputPipelineTestRunner 1455/0, build-app); новые сьюты 10/50 ANSI/ISO и dead keys отработали без SKIP` → exit 0 ✅
+- 2026-10-05: шаг 5 ✅ Ревью и CI — ревью учтено, CI 37288304994 зелёный
+- 2026-10-05: artifacts.branch = claude/charming-clarke-8bf4te
+- 2026-10-05: impl complete
+- 2026-10-05: 4 долга закрыто, CI 37288304994 зелёный; ветка claude/charming-clarke-8bf4te, PR не создавался
 
 ## Decisions
 
@@ -51,10 +56,8 @@ _Нетривиальные решения по ходу задачи. Одна 
 
 ## Debt
 
-_Отложенное, упрощения, известные пробелы. Формат — чекбоксы (их считают индекс и отчёты по долгам):_
-_- `- [ ] <что отложено> — <почему/контекст>` — открытый долг_
-_- `- [x] <что было> — закрыто YYYY-MM-DD: <причина/ссылка на task>` — закрытый_
-_Без `[ ]`/`[x]` пункт невидим для агрегатора и теряется через 2 недели._
+- [ ] пересборка таблиц по типу клавиатуры срабатывает только при активации приложения или смене источника: первые слова, набранные на новой (ISO) клавиатуре до этого, идут по старым таблицам; на Mac вживую не проверено
+- [ ] KeyTableBuilder.keyboardType(physicalLayout:) берёт первый тип 0...255 с нужной раскладкой — не обязательно реальный USB-тип (ревью, nit)
 
 ## Verification
 
@@ -65,6 +68,12 @@ _Без `[ ]`/`[x]` пункт невидим для агрегатора и т�
   ```
 
 - 2026-10-05 · `код-ревью субагентом (0a0ca8a): блокеров нет, маппинг исходов verifyScreen без регресса, тест ловит удаление повторной проверки; should-fix: уведомление после своего переключения всё равно перечитывало хоткеи (.ifStale) — теперь .keep; dead-key тест зависел от клавиатуры машины — явный ANSI; ANSI Shift+50 — исправлено в 1451bf3; nit-ы: round-trip без проверки клавиши, CLAUDE.md — исправлено в f72524a; не правлено: keyboardType(physicalLayout:) берёт первый тип из 0...255 (тест прошёл, покрытие ANSI реальное: ё/ґ на 50)` · exit 0 ✅
+
+  ```
+  (без вывода)
+  ```
+
+- 2026-10-05 · `CI зелёный: https://github.com/8ui/SwitchFix/actions/runs/37288304994 (push f72524a; TestRunner 1168/0, InputPipelineTestRunner 1455/0, build-app); новые сьюты 10/50 ANSI/ISO и dead keys отработали без SKIP` · exit 0 ✅
 
   ```
   (без вывода)
