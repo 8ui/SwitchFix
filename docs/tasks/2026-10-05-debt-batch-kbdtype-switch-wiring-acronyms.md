@@ -7,9 +7,9 @@ phase: impl
 created: 2026-10-05
 updated: 2026-10-05
 blocked_by: null
-steps_done: 1
+steps_done: 2
 steps_total: 4
-step_current: 2
+step_current: 3
 artifacts:
   spec: null
   plan: null
@@ -28,8 +28,8 @@ artifacts:
 ## Progress
 
 1. ✅ Тип клавиатуры из события tap-а + известные типы первыми
-2. ▶ Тестируемая проводка finishLayoutSwitch
-3. ⬜ Acronym fallback только для хоткея + eval
+2. ✅ Тестируемая проводка finishLayoutSwitch
+3. ▶ Acronym fallback только для хоткея + eval
 4. ⬜ Ревью и CI
 
 ## Log
@@ -37,6 +37,8 @@ artifacts:
 - 2026-10-05: triage — pipeline `minimal`, reason: три независимых долга малого объёма: тип клавиатуры из события tap-а (KeyboardMonitor/InputSourceManager/AppDelegate), тестируемая проводка finishLayoutSwitch (TextCorrector), acronym fallback только для хоткея (LayoutDetector, замер LayoutEval); ревью субагентом, CI
 - 2026-10-05: brainstorm: что — 3 долга (см. Context); зачем — пользователь попросил ещё пачку; готово — тесты + CI + eval vs база; Enter-долг не взят: тихое переключение раскладки после отправки — продуктовое решение
 - 2026-10-05: шаг 1 ✅ Тип клавиатуры из события tap-а + известные типы первыми — код, ждёт CI
+- 2026-10-05: шаг 2 ✅ Тестируемая проводка finishLayoutSwitch — TextCorrector: очередь/frontmost/switcher инъекциями + тест
+- 2026-10-05: verify: `код-ревью субагентом (ce6d884): блокер — тест проводки сравнивал rawValue 'ru'/'en', а у Layout 'russian'/'english'; should-fix: активация/смена источника пересобирали по LMGetKbdType (мог откатить таблицы), переводы монитора шли с LMGetKbdType, события чужого софта меняли тип (шторм пересборок), CLAUDE.md — всё исправлено в следующем коммите (запоминание последнего типа, только hidSystemState); принято: ГКД/ЗРЗ (английские аббревиатуры без гласных на русской раскладке) больше не исправляются автоматически — сверить в eval` → exit 1 ❌
 
 ## Decisions
 
@@ -51,7 +53,11 @@ _Без `[ ]`/`[x]` пункт невидим для агрегатора и т�
 
 ## Verification
 
-_Доказательства, а не утверждения. Заполняется `rtp verify <id> --run "<команда>"`: команда, exit code, хвост вывода._
+- 2026-10-05 · `код-ревью субагентом (ce6d884): блокер — тест проводки сравнивал rawValue 'ru'/'en', а у Layout 'russian'/'english'; should-fix: активация/смена источника пересобирали по LMGetKbdType (мог откатить таблицы), переводы монитора шли с LMGetKbdType, события чужого софта меняли тип (шторм пересборок), CLAUDE.md — всё исправлено в следующем коммите (запоминание последнего типа, только hidSystemState); принято: ГКД/ЗРЗ (английские аббревиатуры без гласных на русской раскладке) больше не исправляются автоматически — сверить в eval` · exit 1 ❌
+
+  ```
+  (без вывода)
+  ```
 
 ## Handoff
 

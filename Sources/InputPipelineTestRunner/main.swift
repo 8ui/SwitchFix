@@ -2747,7 +2747,7 @@ run("layout switch after a correction: queued, rechecked and superseded") {
 
     corrector.finishLayoutSwitch(to: .russian, after: plan(to: .russian), latestCaptureState: store.snapshot)
     settle()
-    check(switched.converted == ["ru"], "nothing changed: the switch runs on its queue, got \(switched.converted)")
+    check(switched.converted == ["russian"], "nothing changed: the switch runs on its queue, got \(switched.converted)")
 
     // A revert queued before the correction's switch ran: only the newest switch runs.
     let held = DispatchSemaphore(value: 0)
@@ -2756,12 +2756,12 @@ run("layout switch after a correction: queued, rechecked and superseded") {
     corrector.finishLayoutSwitch(to: .english, after: plan(to: .english), latestCaptureState: store.snapshot)
     held.signal()
     settle()
-    check(switched.converted == ["ru", "en"], "the older queued switch is superseded, got \(switched.converted)")
+    check(switched.converted == ["russian", "english"], "the older queued switch is superseded, got \(switched.converted)")
 
     frontmostLock.lock(); frontmost = start.context.frontmostPID + 1; frontmostLock.unlock()
     corrector.finishLayoutSwitch(to: .russian, after: plan(to: .russian), latestCaptureState: store.snapshot)
     settle()
-    check(switched.converted == ["ru", "en"], "another app in front when it runs: no switch, got \(switched.converted)")
+    check(switched.converted == ["russian", "english"], "another app in front when it runs: no switch, got \(switched.converted)")
 
     frontmostLock.lock(); frontmost = start.context.frontmostPID; frontmostLock.unlock()
     let gate = DispatchSemaphore(value: 0)
@@ -2774,7 +2774,7 @@ run("layout switch after a correction: queued, rechecked and superseded") {
     )
     gate.signal()
     settle()
-    check(switched.converted == ["ru", "en"], "the focus changed before it ran: no switch, got \(switched.converted)")
+    check(switched.converted == ["russian", "english"], "the focus changed before it ran: no switch, got \(switched.converted)")
 }
 
 run("revert screen check: a hotkey correction (no boundary)") {

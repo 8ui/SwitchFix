@@ -63,8 +63,9 @@ public final class KeyboardMonitor {
     // Tap-callback-thread confined: a lone hotkey-modifier press awaiting its release.
     private var controlTapArmed = false
     private var clickTracker = PlainClickTracker()
-    // Tap-callback-thread confined: the keyboard type of the last hardware key-down.
-    private var lastKeyboardType: Int64?
+    /// The keyboard type of the last hardware key-down (written on the tap thread); the key
+    /// texts are translated for it. Nil before the first one: `LMGetKbdType`.
+    private let lastKeyboardType = OSAllocatedUnfairLock<UInt32?>(initialState: nil)
     private var tapResetCount: UInt64 = 0
     /// Uptime of the last mouse-down the tap delivered: a watchdog compares it with clicks
     /// seen elsewhere to catch a tap that reports enabled but gets no events.
@@ -271,12 +272,13 @@ public final class KeyboardMonitor {
             TISCopyCurrentKeyboardLayoutInputSource()?.takeRetainedValue(),
         ].compactMap { $0 }
         var table: [TranslationKey: String] = [:]
+        let keyboardType = lastKeyboardType.withLock { $0 } ?? UInt32(LMGetKbdType())
         for source in sources {
             for keyCode in UInt16(0)..<UInt16(128) {
                 for shifted in [false, true] {
                     let key = TranslationKey(keyCode: keyCode, shifted: shifted)
                     if table[key] == nil,
-                       let text = Self.translatedCharacter(from: source, keyCode: keyCode, shifted: shifted) {
+                       let text = Self.translatedCharacter(from: source, keyCode: keyCode, shifted: shifted, keyboardType: keyboardType) {
                         table[key] = text
                     }
                 }
@@ -395,12 +397,21 @@ public final class KeyboardMonitor {
     }
 
     /// Reports a change of the keyboard typed on: the key tables depend on its physical
-    /// layout (ANSI/ISO/JIS). Posted events without a keyboard type (0) are ignored.
+    /// layout (ANSI/ISO/JIS).
     private func noteKeyboardType(of event: CGEvent) {
-        let keyboardType = event.getIntegerValueField(.keyboardEventKeyboardType)
-        guard (1...255).contains(keyboardType), keyboardType != lastKeyboardType else { return }
-        lastKeyboardType = keyboardType
-        onKeyboardTypeChanged?(UInt32(keyboardType))
+        // Events posted by other software (text expanders, virtual keyboards, remote desktop)
+        // carry their own source's type: only the hardware's counts.
+        guard event.getIntegerValueField(.eventSourceStateID) == Int64(CGEventSourceStateID.hidSystemState.rawValue) else {
+            return
+        }
+        let field = event.getIntegerValueField(.keyboardEventKeyboardType)
+        guard (1...255).contains(field) else { return }
+        let keyboardType = UInt32(field)
+        let changed = lastKeyboardType.withLock { last -> Bool in
+            defer { last = keyboardType }
+            return last != keyboardType
+        }
+        if changed { onKeyboardTypeChanged?(keyboardType) }
     }
 
     private func classify(
@@ -721,7 +732,8 @@ public final class KeyboardMonitor {
     private static func translatedCharacter(
         from source: TISInputSource,
         keyCode: UInt16,
-        shifted: Bool
+        shifted: Bool,
+        keyboardType: UInt32
     ) -> String? {
         guard let layoutDataReference = TISGetInputSourceProperty(source, kTISPropertyUnicodeKeyLayoutData) else {
             return nil
@@ -739,7 +751,7 @@ public final class KeyboardMonitor {
                 keyCode,
                 UInt16(kUCKeyActionDown),
                 modifierState,
-                UInt32(LMGetKbdType()),
+                keyboardType,
                 OptionBits(kUCKeyTranslateNoDeadKeysBit),
                 &deadKeyState,
                 characters.count,
