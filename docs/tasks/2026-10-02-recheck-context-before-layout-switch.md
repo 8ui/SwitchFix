@@ -5,7 +5,7 @@ type: bug
 pipeline: minimal
 phase: done
 created: 2026-10-02
-updated: 2026-10-02
+updated: 2026-10-05
 blocked_by: null
 steps_done: 3
 steps_total: 3
@@ -48,7 +48,7 @@ artifacts:
 
 ## Debt
 
-- [ ] тест покрывает предикат mayFinishLayoutSwitch, но не проводку finishLayoutSwitch (main + TIS) и не токен вытеснения
+- [x] тест покрывает предикат mayFinishLayoutSwitch, но не проводку finishLayoutSwitch (main + TIS) и не токен вытеснения — закрыто 2026-10-05: 2026-10-05-debt-batch-kbdtype-switch-wiring-acronyms
 
 ## Verification
 
