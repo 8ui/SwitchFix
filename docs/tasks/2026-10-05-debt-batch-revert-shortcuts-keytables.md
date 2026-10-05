@@ -7,9 +7,9 @@ phase: impl
 created: 2026-10-05
 updated: 2026-10-05
 blocked_by: null
-steps_done: 2
+steps_done: 4
 steps_total: 5
-step_current: 3
+step_current: 5
 artifacts:
   spec: null
   plan: null
@@ -30,9 +30,9 @@ artifacts:
 
 1. ✅ Seam исхода сверки поля + тест механизма отмены
 2. ✅ Троттлинг чтения хоткеев смены источника
-3. ▶ Тесты KeyTableBuilder: dead keys, 10/50 на ANSI/ISO
-4. ⬜ Пересборка таблиц при смене типа клавиатуры
-5. ⬜ Ревью и CI
+3. ✅ Тесты KeyTableBuilder: dead keys, 10/50 на ANSI/ISO
+4. ✅ Пересборка таблиц при смене типа клавиатуры
+5. ▶ Ревью и CI
 
 ## Log
 
@@ -41,6 +41,9 @@ artifacts:
 - 2026-10-05: шаг 1 ✅ Seam исхода сверки поля + тест механизма отмены — seam screenCheckObserver + тесты (stale/refused), ждёт CI
 - 2026-10-05: шаг 2 ✅ Троттлинг чтения хоткеев смены источника — ShortcutRefresh keep/ifStale/now + тест, ждёт CI
 - 2026-10-05: verify: `CI красный: https://github.com/8ui/SwitchFix/actions/runs/37287983485 (push 0a0ca8a) — сборка ок, TestRunner 1158/1: новый тест ANSI RussianWin Shift+50 ждал 'Ё', система даёт латинскую 'Ë' (санитайзер её убирает, 'Ё' на другой клавише); остальные 10/50 на ANSI совпали с .pc (ё, ґ/Ґ), round-trip ок, dead keys ок` → exit 1 ❌
+- 2026-10-05: шаг 3 ✅ Тесты KeyTableBuilder: dead keys, 10/50 на ANSI/ISO — тесты 10/50 ANSI/ISO + dead keys
+- 2026-10-05: шаг 4 ✅ Пересборка таблиц при смене типа клавиатуры — refreshIfKeyboardTypeChanged при активации/смене источника
+- 2026-10-05: verify: `код-ревью субагентом (0a0ca8a): блокеров нет, маппинг исходов verifyScreen без регресса, тест ловит удаление повторной проверки; should-fix: уведомление после своего переключения всё равно перечитывало хоткеи (.ifStale) — теперь .keep; dead-key тест зависел от клавиатуры машины — явный ANSI; ANSI Shift+50 — исправлено в 1451bf3; nit-ы: round-trip без проверки клавиши, CLAUDE.md — исправлено в f72524a; не правлено: keyboardType(physicalLayout:) берёт первый тип из 0...255 (тест прошёл, покрытие ANSI реальное: ё/ґ на 50)` → exit 0 ✅
 
 ## Decisions
 
@@ -56,6 +59,12 @@ _Без `[ ]`/`[x]` пункт невидим для агрегатора и т�
 ## Verification
 
 - 2026-10-05 · `CI красный: https://github.com/8ui/SwitchFix/actions/runs/37287983485 (push 0a0ca8a) — сборка ок, TestRunner 1158/1: новый тест ANSI RussianWin Shift+50 ждал 'Ё', система даёт латинскую 'Ë' (санитайзер её убирает, 'Ё' на другой клавише); остальные 10/50 на ANSI совпали с .pc (ё, ґ/Ґ), round-trip ок, dead keys ок` · exit 1 ❌
+
+  ```
+  (без вывода)
+  ```
+
+- 2026-10-05 · `код-ревью субагентом (0a0ca8a): блокеров нет, маппинг исходов verifyScreen без регресса, тест ловит удаление повторной проверки; should-fix: уведомление после своего переключения всё равно перечитывало хоткеи (.ifStale) — теперь .keep; dead-key тест зависел от клавиатуры машины — явный ANSI; ANSI Shift+50 — исправлено в 1451bf3; nit-ы: round-trip без проверки клавиши, CLAUDE.md — исправлено в f72524a; не правлено: keyboardType(physicalLayout:) берёт первый тип из 0...255 (тест прошёл, покрытие ANSI реальное: ё/ґ на 50)` · exit 0 ✅
 
   ```
   (без вывода)
