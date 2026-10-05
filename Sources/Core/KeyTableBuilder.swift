@@ -93,7 +93,9 @@ public enum KeyTableBuilder {
     /// A keyboard type of the given physical layout (`kKeyboardANSI`, `kKeyboardISO`), for
     /// building tables of a keyboard other than the one attached; nil if none is known.
     public static func keyboardType(physicalLayout: PhysicalKeyboardLayoutType) -> UInt32? {
-        (UInt32(0)...UInt32(255)).first { KBGetLayoutType(Int16($0)) == physicalLayout }
+        // Common USB keyboard types (ANSI 40, ISO 41, JIS 42) first, then any other one.
+        let candidates = [UInt32(40), 41, 42] + Array(UInt32(1)...UInt32(255))
+        return candidates.first { KBGetLayoutType(Int16($0)) == physicalLayout }
     }
 }
 

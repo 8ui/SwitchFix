@@ -373,6 +373,31 @@ runSuite("LayoutDetector: Acronym fallback preserves case") {
     }
 }
 
+runSuite("LayoutDetector: Cyrillic abbreviations stay at a word boundary") {
+    for word in ["СМС", "НН", "ТВ", "СК"] {
+        let detector = LayoutDetector()
+        let mockDelegate = MockDetectorDelegate()
+        detector.delegate = mockDelegate
+        detector.currentLayout = .russian
+        for char in word {
+            detector.addCharacter(String(char))
+        }
+        detector.flushBuffer(boundaryCharacter: " ")
+        assertEqual(mockDelegate.results.count, 0, "\(word) is not rewritten automatically")
+
+        // On request (no boundary, as for the hotkey) the fallback still converts it.
+        let manual = LayoutDetector()
+        let manualDelegate = MockDetectorDelegate()
+        manual.delegate = manualDelegate
+        manual.currentLayout = .russian
+        for char in word {
+            manual.addCharacter(String(char))
+        }
+        manual.flushBuffer()
+        assertEqual(manualDelegate.results.count, 1, "\(word) converts on request")
+    }
+}
+
 runSuite("LayoutDetector: All-caps English token is not auto-corrected") {
     let detector = LayoutDetector()
     let mockDelegate = MockDetectorDelegate()

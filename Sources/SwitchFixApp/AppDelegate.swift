@@ -198,6 +198,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         monitor.onInput = { [weak engine] input in
             engine?.enqueue(input)
         }
+        monitor.onKeyboardTypeChanged = { [weak self] keyboardType in
+            DispatchQueue.main.async { self?.keyboardTypeChanged(keyboardType) }
+        }
         guard monitor.start() else {
             SwitchFixLog.app.error("Monitoring failed to start (event tap creation failed)")
             return
@@ -324,6 +327,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             return
         }
         focusCoordinator?.focusMayChange(pid: pid, epoch: epoch)
+    }
+
+    /// Typing moved to a keyboard of another type: the key tables follow its physical layout
+    /// (the word being typed is detected with them at its boundary).
+    private func keyboardTypeChanged(_ keyboardType: UInt32) {
+        guard inputSourceManager.refreshIfKeyboardTypeChanged(keyboardType: keyboardType) else { return }
+        keyboardMonitor?.refreshInputTranslations(shortcuts: .keep)
+        updateDetectionConfiguration(allowedLayouts: readyLayouts)
     }
 
     /// A layout was added or removed in System Settings: rebuild the key tables.

@@ -46,7 +46,8 @@ public final class InputSourceManager {
     }
 
     /// Refresh source discovery away from the input and correction hot paths.
-    public func refreshInstalledSources() {
+    /// - Parameter keyboardType: the keyboard the tables are for; nil: the one last typed on.
+    public func refreshInstalledSources(keyboardType requestedKeyboardType: UInt32? = nil) {
         guard let sources = TISCreateInputSourceList(nil, false)?.takeRetainedValue() as? [TISInputSource] else {
             return
         }
@@ -56,7 +57,7 @@ public final class InputSourceManager {
         var tables: [String: KeyTable] = [:]
         var fallbacks: [String] = []
         var descriptors: [Layout: [InputSourceDescriptor]] = [:]
-        let keyboardType = UInt32(LMGetKbdType())
+        let keyboardType = requestedKeyboardType ?? UInt32(LMGetKbdType())
         let physicalLayout = KBGetLayoutType(Int16(keyboardType))
 
         for source in sources {
@@ -117,12 +118,16 @@ public final class InputSourceManager {
     /// Rebuilds the key tables when the keyboard last typed on has another physical layout
     /// than the one they were built for (an ISO keyboard attached to an ANSI Mac: the keys
     /// next to Shift and 1 differ). Returns whether it rebuilt them.
+    /// - Parameter keyboardType: the keyboard a key event came from; nil: the one last typed on.
     @discardableResult
-    public func refreshIfKeyboardTypeChanged() -> Bool {
-        let physicalLayout = KBGetLayoutType(Int16(LMGetKbdType()))
-        guard state.withLock({ $0.physicalKeyboardLayout != physicalLayout }) else { return false }
-        SwitchFixLog.source.notice("keyboard type changed (physical layout \(physicalLayout)): rebuilding key tables")
-        refreshInstalledSources()
+    public func refreshIfKeyboardTypeChanged(keyboardType: UInt32? = nil) -> Bool {
+        let type = keyboardType ?? UInt32(LMGetKbdType())
+        let physicalLayout = KBGetLayoutType(Int16(truncatingIfNeeded: type))
+        let known = [kKeyboardANSI, kKeyboardISO, kKeyboardJIS].map { PhysicalKeyboardLayoutType($0) }
+        guard known.contains(physicalLayout),
+              state.withLock({ $0.physicalKeyboardLayout != physicalLayout }) else { return false }
+        SwitchFixLog.source.notice("keyboard type \(type) (physical layout \(physicalLayout)): rebuilding key tables")
+        refreshInstalledSources(keyboardType: type)
         return true
     }
 

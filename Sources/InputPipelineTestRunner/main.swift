@@ -2722,6 +2722,61 @@ run("layout switch after a correction: rechecked on main") {
     check(!TextCorrector.mayFinishLayoutSwitch(for: plan, latest: otherApp.snapshot(), frontmostPID: pid), "the capture state already moved to another app")
 }
 
+run("layout switch after a correction: queued, rechecked and superseded") {
+    let store = CaptureStateStore(context: context(), hotkeys: HotkeyConfiguration(hotkeyModifiers: 0))
+    let start = store.snapshot()
+    func plan(to target: Layout) -> CorrectionPlan {
+        CorrectionPlan(
+            boundarySequence: start.latestPhysicalSequence, contextEpoch: start.context.epoch,
+            targetPID: start.context.frontmostPID, editGeneration: start.editGeneration,
+            correctionEpoch: start.correctionEpoch, deleteCount: 7, replacementText: "привет ",
+            originalText: "ghbdtn", correctedText: "привет", boundaryText: " ",
+            originalLayout: .english, targetLayout: target
+        )
+    }
+    let queue = DispatchQueue(label: "test.layout-switch")
+    let switched = SelectionLog()
+    let frontmostLock = NSLock()
+    var frontmost: pid_t? = start.context.frontmostPID
+    let corrector = TextCorrector(
+        layoutSwitchQueue: queue,
+        frontmostPID: { frontmostLock.lock(); defer { frontmostLock.unlock() }; return frontmost },
+        layoutSwitch: { switched.append($0.rawValue) }
+    )
+    func settle() { queue.sync {} }
+
+    corrector.finishLayoutSwitch(to: .russian, after: plan(to: .russian), latestCaptureState: store.snapshot)
+    settle()
+    check(switched.converted == ["ru"], "nothing changed: the switch runs on its queue, got \(switched.converted)")
+
+    // A revert queued before the correction's switch ran: only the newest switch runs.
+    let held = DispatchSemaphore(value: 0)
+    queue.async { held.wait() }
+    corrector.finishLayoutSwitch(to: .russian, after: plan(to: .russian), latestCaptureState: store.snapshot)
+    corrector.finishLayoutSwitch(to: .english, after: plan(to: .english), latestCaptureState: store.snapshot)
+    held.signal()
+    settle()
+    check(switched.converted == ["ru", "en"], "the older queued switch is superseded, got \(switched.converted)")
+
+    frontmostLock.lock(); frontmost = start.context.frontmostPID + 1; frontmostLock.unlock()
+    corrector.finishLayoutSwitch(to: .russian, after: plan(to: .russian), latestCaptureState: store.snapshot)
+    settle()
+    check(switched.converted == ["ru", "en"], "another app in front when it runs: no switch, got \(switched.converted)")
+
+    frontmostLock.lock(); frontmost = start.context.frontmostPID; frontmostLock.unlock()
+    let gate = DispatchSemaphore(value: 0)
+    queue.async { gate.wait() }
+    corrector.finishLayoutSwitch(to: .russian, after: plan(to: .russian), latestCaptureState: store.snapshot)
+    // A click while the switch waits: rechecked against the state when it runs.
+    _ = store.capture(
+        timestamp: 1, kind: .focusMayChange, keyCode: 0, flagsRawValue: 0,
+        isAutorepeat: false, sourcePID: 1, sourceUserData: 0
+    )
+    gate.signal()
+    settle()
+    check(switched.converted == ["ru", "en"], "the focus changed before it ran: no switch, got \(switched.converted)")
+}
+
 run("revert screen check: a hotkey correction (no boundary)") {
     var harness = LearningHarness(screen: ScreenStub(.text(before: "ujnjdj"), .text(before: "готово")))
     harness.type("ujnjdj", boundary: nil)

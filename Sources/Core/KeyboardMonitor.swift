@@ -19,6 +19,9 @@ public struct InputSourceShortcut: Hashable, Sendable {
 
 public final class KeyboardMonitor {
     public var onInput: ((CapturedInput) -> Void)?
+    /// A key-down came from a keyboard of another type than the previous one (an external
+    /// ISO keyboard on an ANSI Mac); called on the tap thread with the event's keyboard type.
+    public var onKeyboardTypeChanged: ((UInt32) -> Void)?
 
     private struct TapLifecycle {
         var tap: CFMachPort?
@@ -60,6 +63,8 @@ public final class KeyboardMonitor {
     // Tap-callback-thread confined: a lone hotkey-modifier press awaiting its release.
     private var controlTapArmed = false
     private var clickTracker = PlainClickTracker()
+    // Tap-callback-thread confined: the keyboard type of the last hardware key-down.
+    private var lastKeyboardType: Int64?
     private var tapResetCount: UInt64 = 0
     /// Uptime of the last mouse-down the tap delivered: a watchdog compares it with clicks
     /// seen elsewhere to catch a tap that reports enabled but gets no events.
@@ -357,6 +362,7 @@ public final class KeyboardMonitor {
 
         let sourceUserData = event.getIntegerValueField(.eventSourceUserData)
         guard sourceUserData != switchFixEventMarker else { return }
+        if type == .keyDown { noteKeyboardType(of: event) }
 
         let keyCode = UInt16(truncatingIfNeeded: event.getIntegerValueField(.keyboardEventKeycode))
         let flags = event.flags
@@ -386,6 +392,15 @@ public final class KeyboardMonitor {
             callbackDurationNanoseconds: duration
         )
         diagnosticRingIndex = (diagnosticRingIndex + 1) % diagnosticRing.count
+    }
+
+    /// Reports a change of the keyboard typed on: the key tables depend on its physical
+    /// layout (ANSI/ISO/JIS). Posted events without a keyboard type (0) are ignored.
+    private func noteKeyboardType(of event: CGEvent) {
+        let keyboardType = event.getIntegerValueField(.keyboardEventKeyboardType)
+        guard (1...255).contains(keyboardType), keyboardType != lastKeyboardType else { return }
+        lastKeyboardType = keyboardType
+        onKeyboardTypeChanged?(UInt32(keyboardType))
     }
 
     private func classify(

@@ -800,7 +800,12 @@ public class LayoutDetector {
         return true
     }
 
+    /// A short all-caps word without vowels is converted even though the model cannot judge
+    /// it, but only on request: typed in Cyrillic it is mostly a native abbreviation (СМС, ТВ,
+    /// НН), which an automatic rewrite would turn into nonsense (CVC, ND, YY).
     private func shouldAllowAcronymFallback(original: String, converted: String, currentLayout: Layout) -> Bool {
+        // Keep manual/hotkey correction available; suppress only automatic boundary-triggered rewrites.
+        guard pendingBoundaryCharacter == nil else { return false }
         guard original.count >= 2 else { return false }
         guard original.count <= 3 else { return false }
         guard isAllUppercase(original) else { return false }
