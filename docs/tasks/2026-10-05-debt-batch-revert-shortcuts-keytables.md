@@ -40,6 +40,7 @@ artifacts:
 - 2026-10-05: brainstorm: что — 4 долга (см. Context); зачем — пользователь попросил закрыть следующую пачку; готово — тесты + CI зелёный + закрытые долги
 - 2026-10-05: шаг 1 ✅ Seam исхода сверки поля + тест механизма отмены — seam screenCheckObserver + тесты (stale/refused), ждёт CI
 - 2026-10-05: шаг 2 ✅ Троттлинг чтения хоткеев смены источника — ShortcutRefresh keep/ifStale/now + тест, ждёт CI
+- 2026-10-05: verify: `CI красный: https://github.com/8ui/SwitchFix/actions/runs/37287983485 (push 0a0ca8a) — сборка ок, TestRunner 1158/1: новый тест ANSI RussianWin Shift+50 ждал 'Ё', система даёт латинскую 'Ë' (санитайзер её убирает, 'Ё' на другой клавише); остальные 10/50 на ANSI совпали с .pc (ё, ґ/Ґ), round-trip ок, dead keys ок` → exit 1 ❌
 
 ## Decisions
 
@@ -54,7 +55,11 @@ _Без `[ ]`/`[x]` пункт невидим для агрегатора и т�
 
 ## Verification
 
-_Доказательства, а не утверждения. Заполняется `rtp verify <id> --run "<команда>"`: команда, exit code, хвост вывода._
+- 2026-10-05 · `CI красный: https://github.com/8ui/SwitchFix/actions/runs/37287983485 (push 0a0ca8a) — сборка ок, TestRunner 1158/1: новый тест ANSI RussianWin Shift+50 ждал 'Ё', система даёт латинскую 'Ë' (санитайзер её убирает, 'Ё' на другой клавише); остальные 10/50 на ANSI совпали с .pc (ё, ґ/Ґ), round-trip ок, dead keys ок` · exit 1 ❌
+
+  ```
+  (без вывода)
+  ```
 
 ## Handoff
 

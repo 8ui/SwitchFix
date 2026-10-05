@@ -143,6 +143,12 @@ func runSystemKeyTableTests() {
                 for (stroke, character) in pc.keyToChar where stroke.keyCode != 10 {
                     // ISO keyboards swap the § and ` keys; on ANSI key 50 is the ` key.
                     if name == "ISO" && stroke.keyCode == 50 { continue }
+                    // RussianWin Shift+` is a Latin 'Ë' in the system data: dropped, 'Ё' is elsewhere.
+                    if id == "RussianWin" && stroke == KeyStroke(50, shift: true) {
+                        assertEqual(system.keyToChar[stroke], nil, "\(name) \(id): Latin 'Ë' dropped")
+                        assert(system.charToKey["Ё"].map { $0 != stroke } ?? false, "\(name) \(id): 'Ё' on another key")
+                        continue
+                    }
                     assertEqual(system.keyToChar[stroke], character, "\(name) \(id) \(stroke)")
                 }
                 // Whichever key carries them, the letters of the ` key (ё, ґ) round-trip.
