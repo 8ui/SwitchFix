@@ -1200,6 +1200,16 @@ private final class SelectionLog {
     var converted: [String] { lock.lock(); defer { lock.unlock() }; return _converted }
 }
 
+/// How each field-text check ended ("kind:outcome", e.g. "revert:stale").
+private final class ScreenCheckLog {
+    private let lock = NSLock()
+    private var _outcomes: [String] = []
+    func append(_ kind: ScreenCheckKind, _ outcome: ScreenCheckOutcome) {
+        lock.lock(); _outcomes.append("\(kind.rawValue):\(outcome.rawValue)"); lock.unlock()
+    }
+    var outcomes: [String] { lock.lock(); defer { lock.unlock() }; return _outcomes }
+}
+
 /// What the fake Accessibility query answers for the manual hotkey.
 private final class CaretStub {
     private let lock = NSLock()
@@ -1271,6 +1281,7 @@ private struct LearningHarness {
     let caret = CaretStub()
     let selections = SelectionLog()
     let screen: ScreenStub?
+    let screenChecks = ScreenCheckLog()
     var timestamp: UInt64 = 0
 
     init(
@@ -1313,6 +1324,7 @@ private struct LearningHarness {
             screenCheckMode: screenCheckMode,
             screenCheckDeadline: screenCheckDeadline,
             readsScreenAfterCaretMove: { _ in readsScreenAfterCaretMove },
+            screenCheckObserver: { [screenChecks] kind, outcome in screenChecks.append(kind, outcome) },
             lexicon: lexicon,
             revertEmission: { revert in
                 reverted.append(revert.recorded)
@@ -2528,6 +2540,7 @@ run("revert screen check: a changed field is not deleted and not converted") {
         var harness = revertHarness([reply])
         harness.send(.revertHotkey)
         check(!waitUntil(0.5) { harness.reverted.count > 0 }, "no revert for \(reply)")
+        check(harness.screenChecks.outcomes.last == "revert:refused", "the field refuses \(reply), got \(harness.screenChecks.outcomes)")
         check(harness.emitted.count == 1, "no fallback conversion for \(reply)")
         check(harness.lexicon.entries.isEmpty, "nothing learned for \(reply)")
         check(waitUntil { !harness.corrector.canUndo }, "the refused revert is forgotten for \(reply)")
@@ -2611,9 +2624,14 @@ run("revert screen check: staleness during the read cancels without forgetting")
     harness.send(.revertHotkey)
     check(waitUntil { harness.screen?.queries == 2 }, "the revert reads the field")
     check(!waitUntil(0.3) { harness.reverted.count > 0 }, "a key during the read cancels the revert")
+    // The check itself sees the change after the read (applyRevert would also skip it).
+    check(waitUntil { harness.screenChecks.outcomes.count == 2 }, "both checks ended")
+    check(harness.screenChecks.outcomes == ["correction:proceeded", "revert:stale"],
+          "the read is followed by a staleness check, got \(harness.screenChecks.outcomes)")
     check(harness.corrector.canUndo, "a stale revert is not a refusal: the correction can still be reverted")
     harness.send(.revertHotkey)
     check(waitUntil { harness.reverted.count == 1 }, "the next press reverts")
+    check(harness.screenChecks.outcomes.last == "revert:proceeded", "the next check proceeds")
 }
 
 run("revert screen check: a correction recorded during the read is not wiped") {
@@ -2702,6 +2720,61 @@ run("layout switch after a correction: rechecked on main") {
     check(!TextCorrector.mayFinishLayoutSwitch(for: plan, latest: refocused.snapshot(), frontmostPID: pid), "only the epoch changed: no switch")
     let otherApp = CaptureStateStore(context: context(pid: pid + 1), hotkeys: HotkeyConfiguration(hotkeyModifiers: 0))
     check(!TextCorrector.mayFinishLayoutSwitch(for: plan, latest: otherApp.snapshot(), frontmostPID: pid), "the capture state already moved to another app")
+}
+
+run("layout switch after a correction: queued, rechecked and superseded") {
+    let store = CaptureStateStore(context: context(), hotkeys: HotkeyConfiguration(hotkeyModifiers: 0))
+    let start = store.snapshot()
+    func plan(to target: Layout) -> CorrectionPlan {
+        CorrectionPlan(
+            boundarySequence: start.latestPhysicalSequence, contextEpoch: start.context.epoch,
+            targetPID: start.context.frontmostPID, editGeneration: start.editGeneration,
+            correctionEpoch: start.correctionEpoch, deleteCount: 7, replacementText: "привет ",
+            originalText: "ghbdtn", correctedText: "привет", boundaryText: " ",
+            originalLayout: .english, targetLayout: target
+        )
+    }
+    let queue = DispatchQueue(label: "test.layout-switch")
+    let switched = SelectionLog()
+    let frontmostLock = NSLock()
+    var frontmost: pid_t? = start.context.frontmostPID
+    let corrector = TextCorrector(
+        layoutSwitchQueue: queue,
+        frontmostPID: { frontmostLock.lock(); defer { frontmostLock.unlock() }; return frontmost },
+        layoutSwitch: { switched.append($0.rawValue) }
+    )
+    func settle() { queue.sync {} }
+
+    corrector.finishLayoutSwitch(to: .russian, after: plan(to: .russian), latestCaptureState: store.snapshot)
+    settle()
+    check(switched.converted == ["russian"], "nothing changed: the switch runs on its queue, got \(switched.converted)")
+
+    // A revert queued before the correction's switch ran: only the newest switch runs.
+    let held = DispatchSemaphore(value: 0)
+    queue.async { held.wait() }
+    corrector.finishLayoutSwitch(to: .russian, after: plan(to: .russian), latestCaptureState: store.snapshot)
+    corrector.finishLayoutSwitch(to: .english, after: plan(to: .english), latestCaptureState: store.snapshot)
+    held.signal()
+    settle()
+    check(switched.converted == ["russian", "english"], "the older queued switch is superseded, got \(switched.converted)")
+
+    frontmostLock.lock(); frontmost = start.context.frontmostPID + 1; frontmostLock.unlock()
+    corrector.finishLayoutSwitch(to: .russian, after: plan(to: .russian), latestCaptureState: store.snapshot)
+    settle()
+    check(switched.converted == ["russian", "english"], "another app in front when it runs: no switch, got \(switched.converted)")
+
+    frontmostLock.lock(); frontmost = start.context.frontmostPID; frontmostLock.unlock()
+    let gate = DispatchSemaphore(value: 0)
+    queue.async { gate.wait() }
+    corrector.finishLayoutSwitch(to: .russian, after: plan(to: .russian), latestCaptureState: store.snapshot)
+    // A click while the switch waits: rechecked against the state when it runs.
+    _ = store.capture(
+        timestamp: 1, kind: .focusMayChange, keyCode: 0, flagsRawValue: 0,
+        isAutorepeat: false, sourcePID: 1, sourceUserData: 0
+    )
+    gate.signal()
+    settle()
+    check(switched.converted == ["russian", "english"], "the focus changed before it ran: no switch, got \(switched.converted)")
 }
 
 run("revert screen check: a hotkey correction (no boundary)") {
@@ -2829,6 +2902,19 @@ run("input-source shortcuts from com.apple.symbolichotkeys") {
     check(parsed(["60": ["enabled": 1]]) == defaults, "a missing value means the default")
     check(parsed(["60": ["value": ["parameters": [32, 49, 1048576]]]]) == [InputSourceShortcut(keyCode: 49, modifiers: CGEventFlags.maskCommand.rawValue), ctrlOptionSpace], "no enabled key: on")
     check(parsed(["60": entry(1, ["a", "b", "c"])]) == defaults, "non-numeric parameters mean the default")
+}
+
+run("input-source shortcuts: re-read at most once per interval unless forced") {
+    let interval = KeyboardMonitor.shortcutRefreshInterval
+    func due(_ mode: KeyboardMonitor.ShortcutRefresh, _ last: TimeInterval?, _ now: TimeInterval) -> Bool {
+        KeyboardMonitor.shortcutsNeedRefresh(mode, lastRefresh: last, now: now)
+    }
+    check(due(.ifStale, nil, 100), "the first read")
+    check(!due(.ifStale, 100, 100 + interval / 2), "an activation right after a read shares it")
+    check(due(.ifStale, 100, 100 + interval), "a later activation reads again")
+    check(due(.now, 100, 100), "a forced read (sources changed, tap restarted)")
+    check(!due(.keep, nil, 100), "SwitchFix's own switch never reads")
+    check(!due(.keep, 100, 100 + 10 * interval), "not even when stale")
 }
 
 if CommandLine.arguments.contains("--integration-smoke") {

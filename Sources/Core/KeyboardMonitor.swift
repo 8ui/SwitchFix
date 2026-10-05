@@ -19,6 +19,9 @@ public struct InputSourceShortcut: Hashable, Sendable {
 
 public final class KeyboardMonitor {
     public var onInput: ((CapturedInput) -> Void)?
+    /// A key-down came from a keyboard of another type than the previous one (an external
+    /// ISO keyboard on an ANSI Mac); called on the tap thread with the event's keyboard type.
+    public var onKeyboardTypeChanged: ((UInt32) -> Void)?
 
     private struct TapLifecycle {
         var tap: CFMachPort?
@@ -46,10 +49,13 @@ public final class KeyboardMonitor {
     private let captureState: CaptureStateStore
     private let lifecycle = OSAllocatedUnfairLock(initialState: TapLifecycle())
     private let translations = OSAllocatedUnfairLock(initialState: [TranslationKey: String]())
-    /// System shortcuts that switch the input source, refreshed with the translation table.
+    /// System shortcuts that switch the input source, re-read with the translation table
+    /// (`ShortcutRefresh`).
     private let systemInputSourceShortcuts = OSAllocatedUnfairLock(
         initialState: KeyboardMonitor.defaultInputSourceShortcuts
     )
+    /// Uptime of the last shortcut read (`refreshInputSourceShortcuts`); nil before the first.
+    private let lastShortcutRefresh = OSAllocatedUnfairLock<TimeInterval?>(initialState: nil)
     private var diagnosticRing = [EventMetadata?](repeating: nil, count: 256)
     private var diagnosticRingIndex = 0
     // Tap-callback-thread confined: tracks caps lock toggle state for edge detection.
@@ -57,6 +63,9 @@ public final class KeyboardMonitor {
     // Tap-callback-thread confined: a lone hotkey-modifier press awaiting its release.
     private var controlTapArmed = false
     private var clickTracker = PlainClickTracker()
+    /// The keyboard type of the last hardware key-down (written on the tap thread); the key
+    /// texts are translated for it. Nil before the first one: `LMGetKbdType`.
+    private let lastKeyboardType = OSAllocatedUnfairLock<UInt32?>(initialState: nil)
     private var tapResetCount: UInt64 = 0
     /// Uptime of the last mouse-down the tap delivered: a watchdog compares it with clicks
     /// seen elsewhere to catch a tap that reports enabled but gets no events.
@@ -230,20 +239,46 @@ public final class KeyboardMonitor {
         return start()
     }
 
+    /// How `refreshInputTranslations` treats the input-source shortcuts.
+    public enum ShortcutRefresh: Sendable {
+        /// Keep them: SwitchFix's own layout switch changes neither the shortcuts nor the sources.
+        case keep
+        /// Re-read unless read within `shortcutRefreshInterval` (app activations, source changes).
+        case ifStale
+        /// Re-read now (the tap starts or restarts, enabled sources changed).
+        case now
+    }
+
+    /// Reading the shortcuts synchronizes a preferences domain and lists the input sources on
+    /// main; activations and switches in quick succession share one read.
+    public static let shortcutRefreshInterval: TimeInterval = 2
+
+    /// Whether `mode` re-reads the shortcuts last read at `lastRefresh` (uptime, nil: never).
+    public static func shortcutsNeedRefresh(_ mode: ShortcutRefresh, lastRefresh: TimeInterval?, now: TimeInterval) -> Bool {
+        switch mode {
+        case .keep: return false
+        case .now: return true
+        case .ifStale:
+            guard let lastRefresh else { return true }
+            return now - lastRefresh >= shortcutRefreshInterval
+        }
+    }
+
     /// Precompute the current layout's key texts away from the event-tap callback (the HID
     /// tap's only source of text; at session level, a check of the event's own text).
-    public func refreshInputTranslations() {
+    public func refreshInputTranslations(shortcuts: ShortcutRefresh = .ifStale) {
         let sources = [
             TISCopyCurrentKeyboardInputSource()?.takeRetainedValue(),
             TISCopyCurrentKeyboardLayoutInputSource()?.takeRetainedValue(),
         ].compactMap { $0 }
         var table: [TranslationKey: String] = [:]
+        let keyboardType = lastKeyboardType.withLock { $0 } ?? UInt32(LMGetKbdType())
         for source in sources {
             for keyCode in UInt16(0)..<UInt16(128) {
                 for shifted in [false, true] {
                     let key = TranslationKey(keyCode: keyCode, shifted: shifted)
                     if table[key] == nil,
-                       let text = Self.translatedCharacter(from: source, keyCode: keyCode, shifted: shifted) {
+                       let text = Self.translatedCharacter(from: source, keyCode: keyCode, shifted: shifted, keyboardType: keyboardType) {
                         table[key] = text
                     }
                 }
@@ -251,7 +286,13 @@ public final class KeyboardMonitor {
         }
         let preparedTable = table
         translations.withLock { $0 = preparedTable }
-        refreshInputSourceShortcuts()
+        let now = ProcessInfo.processInfo.systemUptime
+        let due = lastShortcutRefresh.withLock { last -> Bool in
+            guard Self.shortcutsNeedRefresh(shortcuts, lastRefresh: last, now: now) else { return false }
+            last = now
+            return true
+        }
+        if due { refreshInputSourceShortcuts() }
     }
 
     public func stop() {
@@ -323,6 +364,7 @@ public final class KeyboardMonitor {
 
         let sourceUserData = event.getIntegerValueField(.eventSourceUserData)
         guard sourceUserData != switchFixEventMarker else { return }
+        if type == .keyDown { noteKeyboardType(of: event) }
 
         let keyCode = UInt16(truncatingIfNeeded: event.getIntegerValueField(.keyboardEventKeycode))
         let flags = event.flags
@@ -352,6 +394,24 @@ public final class KeyboardMonitor {
             callbackDurationNanoseconds: duration
         )
         diagnosticRingIndex = (diagnosticRingIndex + 1) % diagnosticRing.count
+    }
+
+    /// Reports a change of the keyboard typed on: the key tables depend on its physical
+    /// layout (ANSI/ISO/JIS).
+    private func noteKeyboardType(of event: CGEvent) {
+        // Events posted by other software (text expanders, virtual keyboards, remote desktop)
+        // carry their own source's type: only the hardware's counts.
+        guard event.getIntegerValueField(.eventSourceStateID) == Int64(CGEventSourceStateID.hidSystemState.rawValue) else {
+            return
+        }
+        let field = event.getIntegerValueField(.keyboardEventKeyboardType)
+        guard (1...255).contains(field) else { return }
+        let keyboardType = UInt32(field)
+        let changed = lastKeyboardType.withLock { last -> Bool in
+            defer { last = keyboardType }
+            return last != keyboardType
+        }
+        if changed { onKeyboardTypeChanged?(keyboardType) }
     }
 
     private func classify(
@@ -672,7 +732,8 @@ public final class KeyboardMonitor {
     private static func translatedCharacter(
         from source: TISInputSource,
         keyCode: UInt16,
-        shifted: Bool
+        shifted: Bool,
+        keyboardType: UInt32
     ) -> String? {
         guard let layoutDataReference = TISGetInputSourceProperty(source, kTISPropertyUnicodeKeyLayoutData) else {
             return nil
@@ -690,7 +751,7 @@ public final class KeyboardMonitor {
                 keyCode,
                 UInt16(kUCKeyActionDown),
                 modifierState,
-                UInt32(LMGetKbdType()),
+                keyboardType,
                 OptionBits(kUCKeyTranslateNoDeadKeysBit),
                 &deadKeyState,
                 characters.count,

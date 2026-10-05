@@ -28,6 +28,11 @@ public final class InputSourceManager {
         var currentLayout: Layout?
         var currentInputSourceID: String?
         var pendingSelectionID: String?
+        /// Physical layout (ANSI, ISO, JIS) of the keyboard type the tables were built for.
+        var physicalKeyboardLayout: PhysicalKeyboardLayoutType?
+        /// The keyboard type key events last came from (`refreshIfKeyboardTypeChanged`): the
+        /// default for later rebuilds, since `LMGetKbdType` can lag in a background agent.
+        var reportedKeyboardType: UInt32?
     }
 
     private struct SelectionCallbacks {
@@ -44,7 +49,9 @@ public final class InputSourceManager {
     }
 
     /// Refresh source discovery away from the input and correction hot paths.
-    public func refreshInstalledSources() {
+    /// - Parameter keyboardType: the keyboard the tables are for; nil: the one key events last
+    ///   came from, else `LMGetKbdType`.
+    public func refreshInstalledSources(keyboardType requestedKeyboardType: UInt32? = nil) {
         guard let sources = TISCreateInputSourceList(nil, false)?.takeRetainedValue() as? [TISInputSource] else {
             return
         }
@@ -54,7 +61,10 @@ public final class InputSourceManager {
         var tables: [String: KeyTable] = [:]
         var fallbacks: [String] = []
         var descriptors: [Layout: [InputSourceDescriptor]] = [:]
-        let keyboardType = UInt32(LMGetKbdType())
+        let keyboardType = requestedKeyboardType
+            ?? state.withLock({ $0.reportedKeyboardType })
+            ?? UInt32(LMGetKbdType())
+        let physicalLayout = KBGetLayoutType(Int16(keyboardType))
 
         for source in sources {
             guard let sourceID = Self.stringProperty(source, kTISPropertyInputSourceID),
@@ -94,6 +104,7 @@ public final class InputSourceManager {
             value.sources = discoveredSources
             value.layoutSources = discoveredLayoutSources
             value.tablesBySource = discoveredTables
+            value.physicalKeyboardLayout = physicalLayout
             value.descriptors = discoveredDescriptors
             value.lastUsedSourceID = value.lastUsedSourceID.filter { discoveredSources[$0.value] != nil }
             // Same layout the discovery loop assigned, not the fallback of `layout(for:)`.
@@ -108,6 +119,27 @@ public final class InputSourceManager {
         for sourceID in newFallbacks {
             SwitchFixLog.source.info("key table unavailable for \(sourceID), using built-in")
         }
+    }
+
+    /// Rebuilds the key tables when the keyboard last typed on has another physical layout
+    /// than the one they were built for (an ISO keyboard attached to an ANSI Mac: the keys
+    /// next to Shift and 1 differ). Returns whether it rebuilt them.
+    /// - Parameter keyboardType: the keyboard a key event came from (remembered for later
+    ///   rebuilds); nil: the one reported last, else `LMGetKbdType`.
+    @discardableResult
+    public func refreshIfKeyboardTypeChanged(keyboardType: UInt32? = nil) -> Bool {
+        let type = keyboardType ?? state.withLock({ $0.reportedKeyboardType }) ?? UInt32(LMGetKbdType())
+        let physicalLayout = KBGetLayoutType(Int16(truncatingIfNeeded: type))
+        let known = [kKeyboardANSI, kKeyboardISO, kKeyboardJIS].map { PhysicalKeyboardLayoutType($0) }
+        guard known.contains(physicalLayout) else { return false }
+        let changed = state.withLock { value -> Bool in
+            if keyboardType != nil { value.reportedKeyboardType = type }
+            return value.physicalKeyboardLayout != physicalLayout
+        }
+        guard changed else { return false }
+        SwitchFixLog.source.notice("keyboard type \(type) (physical layout \(physicalLayout)): rebuilding key tables")
+        refreshInstalledSources(keyboardType: type)
+        return true
     }
 
     /// Key tables per layout: the override or last-used source first, then the other

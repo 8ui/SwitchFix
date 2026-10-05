@@ -5,7 +5,7 @@ type: bug
 pipeline: no-spec
 phase: done
 created: 2026-10-02
-updated: 2026-10-02
+updated: 2026-10-05
 blocked_by: null
 steps_done: 4
 steps_total: 4
@@ -58,7 +58,7 @@ _Нетривиальные решения по ходу задачи. Одна 
 
 - [ ] повторное нажатие ⌃⌥Space (перебор 3+ источников) или автоповтор теряет слово, как и Globe — безопасно (текст не меняется)
 - [ ] Caps Lock как переключатель раскладки (настройка macOS, flagsChanged) и сторонние переключатели (Karabiner, Punto) не распознаются
-- [ ] refreshInputSourceShortcuts на main при каждой активации и смене источника (CFPreferencesAppSynchronize + TIS) без троттлинга; коррекция со сменой раскладки обновляет дважды
+- [x] refreshInputSourceShortcuts на main при каждой активации и смене источника (CFPreferencesAppSynchronize + TIS) без троттлинга; коррекция со сменой раскладки обновляет дважды — закрыто 2026-10-05: 2026-10-05-debt-batch-revert-shortcuts-keytables
 
 ## Verification
 

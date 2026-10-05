@@ -11,6 +11,25 @@ public enum ScreenCheckMode: String, Sendable {
     case enforce
 }
 
+/// What a field-text check guards.
+public enum ScreenCheckKind: String, Sendable {
+    case correction
+    case revert
+}
+
+/// How a field-text check ended (`InputEngine`'s `screenCheckObserver`).
+public enum ScreenCheckOutcome: String, Sendable {
+    /// The deletion goes ahead (it is still skipped if the state changes before it is posted).
+    case proceeded
+    /// The state changed before or right after a read: the request is dropped, not refused.
+    case stale
+    /// The field refused the text (a mismatch, or unreadable when a match is required).
+    case refused
+    /// Ended without deleting for another reason: an unconfirmed replacement, or an
+    /// unreadable field after a replacement or a selection was seen.
+    case cancelled
+}
+
 public enum ScreenVerdict: Equatable, Sendable {
     /// The field ends with the typed text: deleting it is safe.
     case match

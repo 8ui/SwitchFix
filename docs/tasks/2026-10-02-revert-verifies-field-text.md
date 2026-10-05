@@ -5,7 +5,7 @@ type: bug
 pipeline: no-spec
 phase: done
 created: 2026-10-02
-updated: 2026-10-02
+updated: 2026-10-05
 blocked_by: null
 steps_done: 4
 steps_total: 4
@@ -55,8 +55,8 @@ _Нетривиальные решения по ходу задачи. Одна 
 
 ## Debt
 
-- [ ] между replaceContext и rebaseUndoContext (своё переключение раскладки) отмена во время чтения поля всё ещё отменяется как устаревшая — окно сузилось до промежутка в AppDelegate; нажатие можно повторить
-- [ ] тест 'staleness during the read' проверяет исход, не механизм: повторную проверку после чтения дублирует applyRevert
+- [ ] отмена, чья сверка поля идёт во время собственного переключения раскладки, отменяется как устаревшая: окно — не только промежуток до rebaseUndoContext, но и до повторного разрешения фокуса (свой switch ставит secureFocus .unknown, isUndoEligible требует notSecure); на практике отмену жмут позже переключения, нажатие можно повторить — переформулировано 2026-10-05
+- [x] тест 'staleness during the read' проверяет исход, не механизм: повторную проверку после чтения дублирует applyRevert — закрыто 2026-10-05: 2026-10-05-debt-batch-revert-shortcuts-keytables
 
 ## Verification
 

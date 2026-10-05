@@ -60,6 +60,8 @@ public final class InputEngine {
     /// Replaces the selected text with its conversion (tests replace
     /// `TextCorrector.performSelectionCorrection`): the selection and the converted text.
     public typealias SelectionEmission = (String, String) -> Void
+    /// Told how each field-text check ended, on the input queue (tests).
+    public typealias ScreenCheckObserver = (ScreenCheckKind, ScreenCheckOutcome) -> Void
 
     public var onFocusMayChange: ((pid_t, UInt64) -> Void)?
 
@@ -84,6 +86,7 @@ public final class InputEngine {
     private let screenTextRequest: ScreenTextRequest?
     private let screenCheckMode: ScreenCheckMode
     private let readsScreenAfterCaretMove: ((pid_t) -> Bool)?
+    private let screenCheckObserver: ScreenCheckObserver?
     /// While a word is buffered the user has only typed since the caret last moved, so a
     /// selection is the app's (an inline suggestion): the hotkey and layout-switch mode correct
     /// the word instead. Only when the field check enforces: it alone clears the suggestion.
@@ -129,6 +132,7 @@ public final class InputEngine {
         screenCheckMode: ScreenCheckMode = .enforce,
         screenCheckDeadline: UInt64 = InputEngine.screenCheckDeadlineNanoseconds,
         readsScreenAfterCaretMove: ((pid_t) -> Bool)? = nil,
+        screenCheckObserver: ScreenCheckObserver? = nil,
         lexicon: PersonalLexicon? = nil,
         revertEmission: RevertEmission? = nil,
         selectionEmission: SelectionEmission? = nil
@@ -145,6 +149,7 @@ public final class InputEngine {
         self.screenCheckMode = screenCheckMode
         self.screenCheckDeadline = screenCheckDeadline
         self.readsScreenAfterCaretMove = readsScreenAfterCaretMove
+        self.screenCheckObserver = screenCheckObserver
         self.lexicon = lexicon
         self.revertEmission = revertEmission
         self.selectionEmission = selectionEmission
@@ -707,11 +712,6 @@ public final class InputEngine {
             && latest.context == request.context
     }
 
-    private enum ScreenCheckKind: String {
-        case correction
-        case revert
-    }
-
     /// What the field-text check compares and what it does with the verdict.
     private struct ScreenCheck {
         let kind: ScreenCheckKind
@@ -755,7 +755,7 @@ public final class InputEngine {
         let provenance = String(describing: check.provenance)
         guard check.isCurrent() else {
             SwitchFixLog.engine.notice("\(kind) cancelled reason=stale-during-screen-check attempts=\(attempt - 1) provenance=\(provenance)")
-            check.cancelled()
+            self.finish(check, .stale)
             return
         }
         // AX ranges are UTF-16. The margin: 2 for a decomposed accent in the field, 2 for an
@@ -768,7 +768,7 @@ public final class InputEngine {
                     guard let self else { return }
                     guard check.isCurrent() else {
                         SwitchFixLog.engine.notice("\(kind) cancelled reason=stale-during-screen-check attempts=\(attempt) provenance=\(provenance)")
-                        check.cancelled()
+                        self.finish(check, .stale)
                         return
                     }
                     let elapsed = DispatchTime.now().uptimeNanoseconds &- startedAt
@@ -802,14 +802,14 @@ public final class InputEngine {
                     }
                     if unconfirmed != nil, final, sawReplacement, !shadow {
                         SwitchFixLog.engine.notice("\(kind) cancelled reason=screen-replacement-unconfirmed attempts=\(attempt)")
-                        check.cancelled()
+                        self.finish(check, .cancelled)
                         return
                     }
                     // Once a replacement was seen (even before a retry), an unreadable field
                     // is no reason to delete the typed length.
                     if verdict == .unknown, sawReplacement, !shadow {
                         SwitchFixLog.engine.notice("\(kind) cancelled reason=screen-unreadable-after-replacement attempts=\(attempt)")
-                        check.cancelled()
+                        self.finish(check, .cancelled)
                         return
                     }
                     // Nor once a selection was seen: Backspace would delete it first.
@@ -817,7 +817,7 @@ public final class InputEngine {
                     if case .selection = probe { selectionSeen = true }
                     if verdict == .unknown, selectionSeen, !shadow {
                         SwitchFixLog.engine.notice("\(kind) cancelled reason=screen-unreadable-after-selection attempts=\(attempt)")
-                        check.cancelled()
+                        self.finish(check, .cancelled)
                         return
                     }
                     if verdict == .retry || unconfirmed != nil, !shadow {
@@ -836,27 +836,40 @@ public final class InputEngine {
                     )
                     if verdict == .unknown, check.requiresMatch, !shadow {
                         SwitchFixLog.engine.notice("\(kind) cancelled reason=screen-unreadable-unconfirmed")
-                        check.reject()
-                        check.cancelled()
+                        self.finish(check, .refused)
                         return
                     }
                     if verdict == .mismatch, !shadow {
                         SwitchFixLog.engine.notice("\(kind) cancelled reason=screen-mismatch")
-                        check.reject()
-                        check.cancelled()
+                        self.finish(check, .refused)
                         return
                     }
                     if case .replaced(let deleteCount) = verdict, !shadow {
-                        check.proceed(deleteCount)
+                        self.finish(check, .proceeded, deleteCount: deleteCount)
                         return
                     }
                     if case .matchBeforeSelection(let deleteCount) = verdict, !shadow {
-                        check.proceed(deleteCount)
+                        self.finish(check, .proceeded, deleteCount: deleteCount)
                         return
                     }
-                    check.proceed(nil)
+                    self.finish(check, .proceeded)
                 }
             }
+        }
+    }
+
+    /// Ends `check` with `outcome` (on the input queue): tells the observer, then proceeds,
+    /// or cancels after a refusal's `reject`.
+    private func finish(_ check: ScreenCheck, _ outcome: ScreenCheckOutcome, deleteCount: Int? = nil) {
+        screenCheckObserver?(check.kind, outcome)
+        switch outcome {
+        case .proceeded:
+            check.proceed(deleteCount)
+        case .refused:
+            check.reject()
+            check.cancelled()
+        case .stale, .cancelled:
+            check.cancelled()
         }
     }
 

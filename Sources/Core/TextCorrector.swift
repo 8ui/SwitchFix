@@ -139,9 +139,25 @@ public final class TextCorrector {
     /// superseded (a revert queued before the correction's switch ran must win).
     private let lastLayoutSwitch = OSAllocatedUnfairLock<UInt64>(initialState: 0)
     private let logger = Logger(subsystem: "com.switchfix", category: "correction")
+    /// Where a layout switch after a correction runs, which app is in front there and what
+    /// switches the layout: main, NSWorkspace and TIS in the app (tests replace them).
+    private let layoutSwitchQueue: DispatchQueue
+    private let frontmostPID: () -> pid_t?
+    private let layoutSwitch: ((Layout) -> Void)?
 
-    public init(inputSourceManager: InputSourceManager = .shared) {
+    /// - Parameters:
+    ///   - layoutSwitchQueue: must be main in the app (TIS APIs are main-thread-only).
+    ///   - layoutSwitch: nil switches with `inputSourceManager`.
+    public init(
+        inputSourceManager: InputSourceManager = .shared,
+        layoutSwitchQueue: DispatchQueue = .main,
+        frontmostPID: @escaping () -> pid_t? = { NSWorkspace.shared.frontmostApplication?.processIdentifier },
+        layoutSwitch: ((Layout) -> Void)? = nil
+    ) {
         self.inputSourceManager = inputSourceManager
+        self.layoutSwitchQueue = layoutSwitchQueue
+        self.frontmostPID = frontmostPID
+        self.layoutSwitch = layoutSwitch
         let source = CGEventSource(stateID: .privateState)
         source?.userData = switchFixEventMarker
         source?.localEventsSuppressionInterval = 0
@@ -195,8 +211,10 @@ public final class TextCorrector {
             latest.context.secureFocus == .notSecure
     }
 
-    /// Runs on the main thread (TIS APIs are main-thread-only).
-    private func finishLayoutSwitch(
+    /// Switches to `layout` on the layout-switch queue (main) after `plan` reached the app,
+    /// unless a newer switch was queued since or the focus or app changed (public for the
+    /// pipeline tests; `apply` and `postUndo` call it).
+    public func finishLayoutSwitch(
         to layout: Layout,
         after plan: CorrectionPlan,
         latestCaptureState: @escaping () -> CaptureStateSnapshot
@@ -205,19 +223,23 @@ public final class TextCorrector {
             value &+= 1
             return value
         }
-        DispatchQueue.main.async { [inputSourceManager, logger, lastLayoutSwitch] in
+        layoutSwitchQueue.async { [inputSourceManager, logger, lastLayoutSwitch, frontmostPID, layoutSwitch] in
             // Every switch bumps the context epoch, so a newer queued switch would fail the
             // epoch check after this one ran: run only the newest.
             guard lastLayoutSwitch.withLock({ $0 }) == token else {
                 logger.notice("layout switch skipped: superseded by a newer one")
                 return
             }
-            let frontmostPID = NSWorkspace.shared.frontmostApplication?.processIdentifier
-            guard Self.mayFinishLayoutSwitch(for: plan, latest: latestCaptureState(), frontmostPID: frontmostPID) else {
-                logger.notice("layout switch skipped: focus or app changed since the correction pid=\(plan.targetPID, privacy: .public) frontmost=\(frontmostPID ?? -1, privacy: .public)")
+            let frontmost = frontmostPID()
+            guard Self.mayFinishLayoutSwitch(for: plan, latest: latestCaptureState(), frontmostPID: frontmost) else {
+                logger.notice("layout switch skipped: focus or app changed since the correction pid=\(plan.targetPID, privacy: .public) frontmost=\(frontmost ?? -1, privacy: .public)")
                 return
             }
-            inputSourceManager.switchTo(layout)
+            if let layoutSwitch {
+                layoutSwitch(layout)
+            } else {
+                inputSourceManager.switchTo(layout)
+            }
         }
     }
 
