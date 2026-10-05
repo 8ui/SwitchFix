@@ -14,7 +14,7 @@ artifacts:
   spec: null
   plan: null
   branch: claude/charming-clarke-8bf4te
-  pr: null
+  pr: "https://github.com/8ui/SwitchFix/pull/21"
 ---
 
 ## Context
@@ -46,6 +46,7 @@ artifacts:
 - 2026-10-05: artifacts.branch = claude/charming-clarke-8bf4te
 - 2026-10-05: impl complete
 - 2026-10-05: 3 долга закрыто (+1 переформулирован), CI 37289712125 зелёный, eval-компромисс в Decisions; PR не создавался
+- 2026-10-05: artifacts.pr = https://github.com/8ui/SwitchFix/pull/21
 
 ## Decisions
 
