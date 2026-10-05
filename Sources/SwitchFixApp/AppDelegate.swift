@@ -370,10 +370,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let oldSourceID = previousInputSourceID
         inputSourceManager.refreshIfKeyboardTypeChanged()
         inputSourceManager.refreshCurrentInputSource()
-        keyboardMonitor?.refreshInputTranslations()
         let newLayout = inputSourceManager.currentLayout()
         let newSourceID = inputSourceManager.currentInputSourceID()
         let expectedGeneratedSelection = inputSourceManager.consumeExpectedSelection(sourceID: newSourceID)
+        // SwitchFix's own switch changes neither the shortcuts nor the sources.
+        keyboardMonitor?.refreshInputTranslations(shortcuts: expectedGeneratedSelection ? .keep : .ifStale)
         previousLayout = newLayout
         previousInputSourceID = newSourceID
 

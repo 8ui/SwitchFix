@@ -155,6 +155,7 @@ func runSystemKeyTableTests() {
                 for shift in [false, true] {
                     guard let letter = pc.keyToChar[KeyStroke(50, shift: shift)], letter.isLetter else { continue }
                     let typed = LayoutMapper.convert(String(letter), from: system, to: us)
+                    assert(typed != String(letter), "\(name) \(id): '\(letter)' is on a key")
                     assertEqual(LayoutMapper.convert(typed, from: us, to: system), String(letter), "\(name) \(id) via '\(typed)'")
                 }
             }
@@ -162,7 +163,12 @@ func runSystemKeyTableTests() {
     }
 
     runSuite("KeyTables: dead keys are skipped") {
-        guard let raw = KeyTableBuilder.installedRawTable(sourceID: "com.apple.keylayout.USInternational-PC") else {
+        // ANSI: on ISO keyboards keys 10 and 50 swap, and 50 is no longer the dead ` key.
+        guard let ansi = KeyTableBuilder.keyboardType(physicalLayout: PhysicalKeyboardLayoutType(kKeyboardANSI)) else {
+            print("  SKIP: no ANSI keyboard type")
+            return
+        }
+        guard let raw = KeyTableBuilder.installedRawTable(sourceID: "com.apple.keylayout.USInternational-PC", keyboardType: ansi) else {
             print("  SKIP: USInternational-PC not installed on this machine")
             return
         }
