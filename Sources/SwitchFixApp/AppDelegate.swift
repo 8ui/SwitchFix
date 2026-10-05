@@ -138,7 +138,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             // The input-source notification comes later; keys typed meanwhile need the new
             // layout's texts (the events may still carry the old one).
             didSelect: { [weak self] in
-                self?.keyboardMonitor?.refreshInputTranslations()
+                self?.keyboardMonitor?.refreshInputTranslations(shortcuts: .keep)
             }
         )
 
@@ -194,7 +194,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         guard let state = captureState, let engine = inputEngine else { return }
         refreshFrontmostContext()
         let monitor = KeyboardMonitor(captureState: state)
-        monitor.refreshInputTranslations()
+        monitor.refreshInputTranslations(shortcuts: .now)
         monitor.onInput = { [weak engine] input in
             engine?.enqueue(input)
         }
@@ -313,7 +313,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let now = ProcessInfo.processInfo.systemUptime
         guard force || now - lastTapRestartUptime >= 5 else { return }
         lastTapRestartUptime = now
-        monitor.refreshInputTranslations()
+        monitor.refreshInputTranslations(shortcuts: .now)
         guard monitor.restart(reason: reason) else {
             SwitchFixLog.app.error("event tap could not be recreated (\(reason))")
             return
@@ -330,7 +330,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     @objc private func enabledInputSourcesChanged() {
         inputSourceManager.refreshInstalledSources()
         inputSourceManager.refreshCurrentInputSource()
-        keyboardMonitor?.refreshInputTranslations()
+        keyboardMonitor?.refreshInputTranslations(shortcuts: .now)
         updateDetectionConfiguration(allowedLayouts: readyLayouts)
     }
 
@@ -339,6 +339,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
               let state = captureState else {
             return
         }
+        inputSourceManager.refreshIfKeyboardTypeChanged()
         inputSourceManager.refreshCurrentInputSource()
         keyboardMonitor?.refreshInputTranslations()
         let layout = inputSourceManager.currentLayout()
@@ -367,6 +368,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         guard let state = captureState else { return }
         let oldLayout = previousLayout
         let oldSourceID = previousInputSourceID
+        inputSourceManager.refreshIfKeyboardTypeChanged()
         inputSourceManager.refreshCurrentInputSource()
         keyboardMonitor?.refreshInputTranslations()
         let newLayout = inputSourceManager.currentLayout()

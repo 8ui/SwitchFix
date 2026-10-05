@@ -46,10 +46,13 @@ public final class KeyboardMonitor {
     private let captureState: CaptureStateStore
     private let lifecycle = OSAllocatedUnfairLock(initialState: TapLifecycle())
     private let translations = OSAllocatedUnfairLock(initialState: [TranslationKey: String]())
-    /// System shortcuts that switch the input source, refreshed with the translation table.
+    /// System shortcuts that switch the input source, re-read with the translation table
+    /// (`ShortcutRefresh`).
     private let systemInputSourceShortcuts = OSAllocatedUnfairLock(
         initialState: KeyboardMonitor.defaultInputSourceShortcuts
     )
+    /// Uptime of the last shortcut read (`refreshInputSourceShortcuts`); nil before the first.
+    private let lastShortcutRefresh = OSAllocatedUnfairLock<TimeInterval?>(initialState: nil)
     private var diagnosticRing = [EventMetadata?](repeating: nil, count: 256)
     private var diagnosticRingIndex = 0
     // Tap-callback-thread confined: tracks caps lock toggle state for edge detection.
@@ -230,9 +233,34 @@ public final class KeyboardMonitor {
         return start()
     }
 
+    /// How `refreshInputTranslations` treats the input-source shortcuts.
+    public enum ShortcutRefresh: Sendable {
+        /// Keep them: SwitchFix's own layout switch changes neither the shortcuts nor the sources.
+        case keep
+        /// Re-read unless read within `shortcutRefreshInterval` (app activations, source changes).
+        case ifStale
+        /// Re-read now (the tap starts or restarts, enabled sources changed).
+        case now
+    }
+
+    /// Reading the shortcuts synchronizes a preferences domain and lists the input sources on
+    /// main; activations and switches in quick succession share one read.
+    public static let shortcutRefreshInterval: TimeInterval = 2
+
+    /// Whether `mode` re-reads the shortcuts last read at `lastRefresh` (uptime, nil: never).
+    public static func shortcutsNeedRefresh(_ mode: ShortcutRefresh, lastRefresh: TimeInterval?, now: TimeInterval) -> Bool {
+        switch mode {
+        case .keep: return false
+        case .now: return true
+        case .ifStale:
+            guard let lastRefresh else { return true }
+            return now - lastRefresh >= shortcutRefreshInterval
+        }
+    }
+
     /// Precompute the current layout's key texts away from the event-tap callback (the HID
     /// tap's only source of text; at session level, a check of the event's own text).
-    public func refreshInputTranslations() {
+    public func refreshInputTranslations(shortcuts: ShortcutRefresh = .ifStale) {
         let sources = [
             TISCopyCurrentKeyboardInputSource()?.takeRetainedValue(),
             TISCopyCurrentKeyboardLayoutInputSource()?.takeRetainedValue(),
@@ -251,7 +279,13 @@ public final class KeyboardMonitor {
         }
         let preparedTable = table
         translations.withLock { $0 = preparedTable }
-        refreshInputSourceShortcuts()
+        let now = ProcessInfo.processInfo.systemUptime
+        let due = lastShortcutRefresh.withLock { last -> Bool in
+            guard Self.shortcutsNeedRefresh(shortcuts, lastRefresh: last, now: now) else { return false }
+            last = now
+            return true
+        }
+        if due { refreshInputSourceShortcuts() }
     }
 
     public func stop() {

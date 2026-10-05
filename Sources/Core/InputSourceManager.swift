@@ -28,6 +28,8 @@ public final class InputSourceManager {
         var currentLayout: Layout?
         var currentInputSourceID: String?
         var pendingSelectionID: String?
+        /// Physical layout (ANSI, ISO, JIS) of the keyboard type the tables were built for.
+        var physicalKeyboardLayout: PhysicalKeyboardLayoutType?
     }
 
     private struct SelectionCallbacks {
@@ -55,6 +57,7 @@ public final class InputSourceManager {
         var fallbacks: [String] = []
         var descriptors: [Layout: [InputSourceDescriptor]] = [:]
         let keyboardType = UInt32(LMGetKbdType())
+        let physicalLayout = KBGetLayoutType(Int16(keyboardType))
 
         for source in sources {
             guard let sourceID = Self.stringProperty(source, kTISPropertyInputSourceID),
@@ -94,6 +97,7 @@ public final class InputSourceManager {
             value.sources = discoveredSources
             value.layoutSources = discoveredLayoutSources
             value.tablesBySource = discoveredTables
+            value.physicalKeyboardLayout = physicalLayout
             value.descriptors = discoveredDescriptors
             value.lastUsedSourceID = value.lastUsedSourceID.filter { discoveredSources[$0.value] != nil }
             // Same layout the discovery loop assigned, not the fallback of `layout(for:)`.
@@ -108,6 +112,18 @@ public final class InputSourceManager {
         for sourceID in newFallbacks {
             SwitchFixLog.source.info("key table unavailable for \(sourceID), using built-in")
         }
+    }
+
+    /// Rebuilds the key tables when the keyboard last typed on has another physical layout
+    /// than the one they were built for (an ISO keyboard attached to an ANSI Mac: the keys
+    /// next to Shift and 1 differ). Returns whether it rebuilt them.
+    @discardableResult
+    public func refreshIfKeyboardTypeChanged() -> Bool {
+        let physicalLayout = KBGetLayoutType(Int16(LMGetKbdType()))
+        guard state.withLock({ $0.physicalKeyboardLayout != physicalLayout }) else { return false }
+        SwitchFixLog.source.notice("keyboard type changed (physical layout \(physicalLayout)): rebuilding key tables")
+        refreshInstalledSources()
+        return true
     }
 
     /// Key tables per layout: the override or last-used source first, then the other

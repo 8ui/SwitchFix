@@ -75,11 +75,25 @@ public enum KeyTableBuilder {
     }
 
     /// Table of an installed (not necessarily enabled) layout; for tests and diagnostics.
-    public static func installedTable(sourceID: String, layout: Layout) -> KeyTable? {
+    /// - Parameter keyboardType: the physical keyboard type; nil: the one last typed on.
+    public static func installedTable(sourceID: String, layout: Layout, keyboardType: UInt32? = nil) -> KeyTable? {
+        installedRawTable(sourceID: sourceID, keyboardType: keyboardType).flatMap { sanitized($0, layout: layout) }
+    }
+
+    /// `rawTable` of an installed layout; for tests and diagnostics.
+    public static func installedRawTable(sourceID: String, keyboardType: UInt32? = nil) -> [KeyStroke: Character]? {
         let filter = [kTISPropertyInputSourceID as String: sourceID] as CFDictionary
         guard let sources = TISCreateInputSourceList(filter, true)?.takeRetainedValue() as? [TISInputSource],
-              let source = sources.first else { return nil }
-        return table(for: source, layout: layout, keyboardType: UInt32(LMGetKbdType()))
+              let source = sources.first,
+              let pointer = TISGetInputSourceProperty(source, kTISPropertyUnicodeKeyLayoutData) else { return nil }
+        let data = Unmanaged<CFData>.fromOpaque(pointer).takeUnretainedValue() as Data
+        return rawTable(uchr: data, keyboardType: keyboardType ?? UInt32(LMGetKbdType()))
+    }
+
+    /// A keyboard type of the given physical layout (`kKeyboardANSI`, `kKeyboardISO`), for
+    /// building tables of a keyboard other than the one attached; nil if none is known.
+    public static func keyboardType(physicalLayout: PhysicalKeyboardLayoutType) -> UInt32? {
+        (UInt32(0)...UInt32(255)).first { KBGetLayoutType(Int16($0)) == physicalLayout }
     }
 }
 

@@ -1,3 +1,4 @@
+import Carbon
 import Core
 
 func runKeyTableTests() {
@@ -112,6 +113,64 @@ func runSystemKeyTableTests() {
                 assertEqual(system.keyToChar[stroke], character, "\(id) \(stroke)")
             }
         }
+    }
+
+    runSuite("KeyTables: keys 10 and 50 on ANSI and ISO keyboards") {
+        let types: [(String, UInt32?)] = [
+            ("ANSI", KeyTableBuilder.keyboardType(physicalLayout: PhysicalKeyboardLayoutType(kKeyboardANSI))),
+            ("ISO", KeyTableBuilder.keyboardType(physicalLayout: PhysicalKeyboardLayoutType(kKeyboardISO))),
+        ]
+        let pairs: [(String, Layout, KeyTable)] = [
+            ("US", .english, .pcEnglish), ("RussianWin", .russian, .pcRussian),
+            ("Ukrainian-PC", .ukrainian, .pcUkrainian),
+        ]
+        for (name, type) in types {
+            guard let type else {
+                print("  SKIP: no \(name) keyboard type")
+                continue
+            }
+            guard let us = KeyTableBuilder.installedTable(sourceID: "com.apple.keylayout.US", layout: .english, keyboardType: type) else {
+                print("  SKIP: US not installed on this machine")
+                return
+            }
+            for (id, layout, pc) in pairs {
+                guard let system = KeyTableBuilder.installedTable(
+                    sourceID: "com.apple.keylayout.\(id)", layout: layout, keyboardType: type
+                ) else {
+                    print("  SKIP: \(id) not installed on this machine")
+                    continue
+                }
+                for (stroke, character) in pc.keyToChar where stroke.keyCode != 10 {
+                    // ISO keyboards swap the § and ` keys; on ANSI key 50 is the ` key.
+                    if name == "ISO" && stroke.keyCode == 50 { continue }
+                    assertEqual(system.keyToChar[stroke], character, "\(name) \(id) \(stroke)")
+                }
+                // Whichever key carries them, the letters of the ` key (ё, ґ) round-trip.
+                for shift in [false, true] {
+                    guard let letter = pc.keyToChar[KeyStroke(50, shift: shift)], letter.isLetter else { continue }
+                    let typed = LayoutMapper.convert(String(letter), from: system, to: us)
+                    assertEqual(LayoutMapper.convert(typed, from: us, to: system), String(letter), "\(name) \(id) via '\(typed)'")
+                }
+            }
+        }
+    }
+
+    runSuite("KeyTables: dead keys are skipped") {
+        guard let raw = KeyTableBuilder.installedRawTable(sourceID: "com.apple.keylayout.USInternational-PC") else {
+            print("  SKIP: USInternational-PC not installed on this machine")
+            return
+        }
+        // US International: ' " ` ~ ^ start a composition instead of typing.
+        let deadKeys = [KeyStroke(39), KeyStroke(39, shift: true), KeyStroke(50), KeyStroke(50, shift: true), KeyStroke(22, shift: true)]
+        for stroke in deadKeys {
+            assertEqual(raw[stroke], nil, "dead key \(stroke)")
+        }
+        assertEqual(raw[KeyStroke(0)], "a")
+        assertEqual(raw[KeyStroke(0, shift: true)], "A")
+        // A skipped key keeps .pc's character in the table.
+        let table = KeyTableBuilder.sanitized(raw, layout: .english)
+        assertEqual(table?.keyToChar[KeyStroke(39)], "'")
+        assertEqual(table?.keyToChar[KeyStroke(0)], "a")
     }
 
     runSuite("KeyTables: shifted digit row and mac layouts") {
