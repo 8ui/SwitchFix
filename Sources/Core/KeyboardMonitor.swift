@@ -364,10 +364,28 @@ public final class KeyboardMonitor {
 
         let sourceUserData = event.getIntegerValueField(.eventSourceUserData)
         guard sourceUserData != switchFixEventMarker else { return }
+        // The tap is listen-only: the app gets the event while this callback still waits for
+        // main, and a correction posted meanwhile passes every staleness check.
+        if type != .leftMouseDragged,
+           let latency = Self.tapLatency(eventTimestamp: event.timestamp, now: startedAt),
+           latency > Self.slowTapLatencyNanoseconds {
+            SwitchFixLog.monitor.notice("tap latency ms=\(Double(latency) / 1_000_000.0) type=\(type.rawValue)")
+        }
         if type == .keyDown { noteKeyboardType(of: event) }
 
         let keyCode = UInt16(truncatingIfNeeded: event.getIntegerValueField(.keyboardEventKeycode))
         let flags = event.flags
+        if type == .flagsChanged {
+            switch Self.modifierChange(
+                keyCode: keyCode,
+                flags: flags,
+                tapHotkeyKeyCode: captureState.hotkeyConfiguration().hotkeyKeyCode
+            ) {
+            case .press: captureState.noteModifierPress()
+            case .releaseAll: captureState.noteModifiersReleased()
+            case nil: break
+            }
+        }
         guard let kind = classify(type: type, event: event, keyCode: keyCode, flags: flags) else {
             return
         }
@@ -761,6 +779,49 @@ public final class KeyboardMonitor {
         }
         guard status == noErr, actualLength > 0 else { return nil }
         return String(utf16CodeUnits: characters, count: actualLength)
+    }
+
+    /// A tap callback this late after the event is logged (`handle`).
+    static let slowTapLatencyNanoseconds: UInt64 = 5_000_000
+
+    /// How long after `eventTimestamp` (uptime nanoseconds, as `DispatchTime`) the callback ran
+    /// at `now`; nil when the event carries no usable time.
+    public static func tapLatency(eventTimestamp: UInt64, now: UInt64) -> UInt64? {
+        guard eventTimestamp > 0, eventTimestamp <= now else { return nil }
+        return now - eventTimestamp
+    }
+
+    /// Shift, Control, Option and Command, each side, with the device flag bit of that side
+    /// (the shared mask stays set while the other side is held).
+    private static let modifierSideBitsByKeyCode: [UInt16: UInt64] = [
+        56: 0x2, 60: 0x4, // Shift
+        59: 0x1, 62: 0x2000, // Control
+        58: 0x20, 61: 0x40, // Option
+        55: 0x8, 54: 0x10, // Command
+    ]
+
+    public enum ModifierChange: Equatable {
+        /// A counted modifier went down.
+        case press
+        /// The last counted modifier went up.
+        case releaseAll
+    }
+
+    /// What a flagsChanged event does to Shift, Control, Option and Command. A press after a
+    /// word's boundary usually comes milliseconds before a key (Shift+2 for a quote, a
+    /// capital): `CaptureStateStore.noteModifierPress` cancels a correction still in flight
+    /// before that key can reach the field ahead of the deletes. Releasing them all with no key
+    /// in between ends that (a modifier tapped alone may switch the layout, as Karabiner does).
+    /// Caps Lock (the revert hotkey), Fn/Globe (an input-source key) and the lone-tap hotkey's
+    /// modifier never count.
+    public static func modifierChange(keyCode: UInt16, flags: CGEventFlags, tapHotkeyKeyCode: UInt16) -> ModifierChange? {
+        let excluded = TapModifierHotkey.configured(keyCode: tapHotkeyKeyCode)?.keyCodes ?? []
+        guard let bit = modifierSideBitsByKeyCode[keyCode], !excluded.contains(keyCode) else { return nil }
+        if flags.rawValue & bit != 0 { return .press }
+        let counted = modifierSideBitsByKeyCode
+            .filter { !excluded.contains($0.key) }
+            .values.reduce(0, |)
+        return flags.rawValue & counted == 0 ? .releaseAll : nil
     }
 
     private static let eventTapCallback: CGEventTapCallBack = { _, type, event, userInfo in
