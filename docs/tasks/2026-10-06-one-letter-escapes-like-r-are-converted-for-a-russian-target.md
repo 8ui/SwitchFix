@@ -3,7 +3,7 @@ id: 2026-10-06-one-letter-escapes-like-r-are-converted-for-a-russian-target
 title: One-letter escapes like \r are converted for a Russian target
 type: bug
 pipeline: minimal
-phase: review
+phase: done
 created: 2026-10-06
 updated: 2026-10-06
 blocked_by: null
@@ -13,8 +13,8 @@ step_current: null
 artifacts:
   spec: null
   plan: null
-  branch: null
-  pr: null
+  branch: claude/wave-2
+  pr: "https://github.com/8ui/SwitchFix/pull/24"
 ---
 
 ## Context
@@ -36,6 +36,9 @@ _2-5 строк: что делаем и зачем. Задача этой сек
 - 2026-10-06: шаг 1 ✅ Условие и тесты
 - 2026-10-06: шаг 2 ✅ Ревью — ревью general-purpose (sonnet): дефектов нет
 - 2026-10-06: impl+review: дефектов нет; z\ (я\) больше не исправляется — принято
+- 2026-10-06: verify: `CI зелёный: https://github.com/8ui/SwitchFix/actions/runs/37468934068 (push 7c7c624, PR 24)` → exit 0 ✅
+- 2026-10-06: artifacts.branch = claude/wave-2; artifacts.pr = https://github.com/8ui/SwitchFix/pull/24
+- 2026-10-06: CI зелёный, PR 24
 
 ## Decisions
 
@@ -91,6 +94,12 @@ _Нетривиальные решения по ходу задачи. Одна 
   Building for production...
   [1 / 5] LanguageModel
   Build complete! (0,24 с)
+  ```
+
+- 2026-10-06 · `CI зелёный: https://github.com/8ui/SwitchFix/actions/runs/37468934068 (push 7c7c624, PR 24)` · exit 0 ✅
+
+  ```
+  (без вывода)
   ```
 
 ## Handoff

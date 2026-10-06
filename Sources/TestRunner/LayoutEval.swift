@@ -129,12 +129,17 @@ private func loadSentences(_ language: Layout) -> [[String]] {
         .filter { !$0.isEmpty }
 }
 
+/// The key tables the eval types and detects with: the static `.pc` ones, so eval numbers
+/// never depend on the machine; `--layout-eval-real-tables` swaps in the installed ones.
+private var evalTables: KeyboardTables = .pc
+
 private func makeDetector(
     current: Layout,
     allowed: Set<Layout>,
     thresholds: DetectionThresholds = .default
 ) -> LayoutDetector {
     let detector = LayoutDetector()
+    detector.keyboardTables = evalTables
     detector.thresholds = thresholds
     detector.currentLayout = current
     detector.allowedLayouts = allowed
@@ -150,13 +155,13 @@ private func detect(_ detector: LayoutDetector, word: String, current: Layout) -
 }
 
 private func typedForm(of word: String, language: Layout, on layout: Layout) -> String {
-    layout == language ? word : LayoutMapper.convert(word, from: language, to: layout)
+    layout == language ? word : LayoutMapper.convert(word, from: language, to: layout, tables: evalTables)
 }
 
 /// A mistyping is only reachable when the key mapping round-trips.
 private func isReachable(_ word: String, language: Layout, on layout: Layout) -> Bool {
     let typed = typedForm(of: word, language: language, on: layout)
-    return typed != word && LayoutMapper.convert(typed, from: layout, to: language) == word
+    return typed != word && LayoutMapper.convert(typed, from: layout, to: language, tables: evalTables) == word
 }
 
 private func restores(_ result: DetectionResult, to word: String, language: Layout) -> Bool {
@@ -583,6 +588,38 @@ func runLayoutEvalSuites() {
     runMixedEval()
     runIsolatedEval(sentences: sentences)
     runSentenceEval(sentences: sentences)
+    runEdgeCaseEval()
+}
+
+/// Report-only: the isolated-word and edge-case eval on the installed US, RussianWin and
+/// Ukrainian-PC layouts (as the app resolves them), to compare with the `.pc` numbers.
+/// Skipped where they are not installed.
+func runRealTableLayoutEval() {
+    let sources: [Layout: String] = [
+        .english: "com.apple.keylayout.US",
+        .russian: "com.apple.keylayout.RussianWin",
+        .ukrainian: "com.apple.keylayout.Ukrainian-PC",
+    ]
+    var tablesBySource: [String: KeyTable] = [:]
+    for (layout, id) in sources {
+        guard let table = KeyTableBuilder.installedTable(sourceID: id, layout: layout) else {
+            print("  SKIP: \(id) not installed — real-table eval needs US, RussianWin and Ukrainian-PC")
+            return
+        }
+        tablesBySource[id] = table
+    }
+    evalTables = KeyboardTables.resolve(
+        layoutSources: sources.mapValues { [$0] },
+        tablesBySource: tablesBySource,
+        firstChoice: sources
+    )
+    defer { evalTables = .pc }
+    print("Real-table eval (installed layouts, keyboard type of this Mac); compare with the .pc run.")
+    var sentences: [Layout: [[String]]] = [:]
+    for language in evalLanguages {
+        sentences[language] = loadSentences(language)
+    }
+    runIsolatedEval(sentences: sentences)
     runEdgeCaseEval()
 }
 

@@ -3,7 +3,7 @@ id: 2026-10-06-a-word-ended-by-enter-in-the-wrong-layout-does-not-switch
 title: A word ended by Enter in the wrong layout does not switch the layout
 type: bug
 pipeline: minimal
-phase: review
+phase: done
 created: 2026-10-06
 updated: 2026-10-06
 blocked_by: null
@@ -13,8 +13,8 @@ step_current: null
 artifacts:
   spec: null
   plan: null
-  branch: null
-  pr: null
+  branch: claude/wave-2
+  pr: "https://github.com/8ui/SwitchFix/pull/24"
 ---
 
 ## Context
@@ -42,6 +42,9 @@ _2-5 строк: что делаем и зачем. Задача этой сек
 - 2026-10-06: verify: `swift build -c release` → exit 0 ✅
 - 2026-10-06: verify: `swift run -c release InputPipelineTestRunner` → exit 0 ✅
 - 2026-10-06: доработка: переключение после Enter только для слов от 4 букв (короткие — основной источник ложных; Caps Lock-отмена после Enter была бы случайной); тест с мутационной проверкой
+- 2026-10-06: verify: `CI зелёный: https://github.com/8ui/SwitchFix/actions/runs/37468934068 (push 7c7c624, PR 24)` → exit 0 ✅
+- 2026-10-06: artifacts.branch = claude/wave-2; artifacts.pr = https://github.com/8ui/SwitchFix/pull/24
+- 2026-10-06: CI зелёный, PR 24
 
 ## Decisions
 
@@ -155,6 +158,12 @@ _Нетривиальные решения по ходу задачи. Одна 
   Building for production...
   [1 / 9]
   Build complete! (0,24 с)
+  ```
+
+- 2026-10-06 · `CI зелёный: https://github.com/8ui/SwitchFix/actions/runs/37468934068 (push 7c7c624, PR 24)` · exit 0 ✅
+
+  ```
+  (без вывода)
   ```
 
 ## Handoff
