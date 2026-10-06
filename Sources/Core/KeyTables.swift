@@ -101,7 +101,8 @@ enum PCLayoutData {
         "`": "ё", "~": "Ё",
     ]
 
-    // EN (QWERTY) → UK (Ukrainian) — modern macOS Ukrainian layout
+    // EN (QWERTY) → UK (Ukrainian) — modern macOS Ukrainian layout (Ukrainian-PC: the
+    // apostrophe ʼ U+02BC is on the backslash key)
     static let enToUkStandard: [Character: Character] = [
         "q": "й", "w": "ц", "e": "у", "r": "к", "t": "е", "y": "н", "u": "г", "i": "ш", "o": "щ", "p": "з",
         "[": "х", "]": "ї", "a": "ф", "s": "і", "d": "в", "f": "а", "g": "п", "h": "р", "j": "о", "k": "л",
@@ -112,7 +113,7 @@ enum PCLayoutData {
         "{": "Х", "}": "Ї", "A": "Ф", "S": "І", "D": "В", "F": "А", "G": "П", "H": "Р", "J": "О", "K": "Л",
         "L": "Д", ":": "Ж", "\"": "Є", "Z": "Я", "X": "Ч", "C": "С", "V": "М", "B": "И", "N": "Т", "M": "Ь",
         "<": "Б", ">": "Ю", "?": ",",
-        "`": "ґ", "~": "Ґ",
+        "`": "ґ", "~": "Ґ", "\\": "ʼ",
     ]
 
     // EN (QWERTY) → UK (Ukrainian Legacy) — swaps positions of и/і.

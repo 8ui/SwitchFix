@@ -105,7 +105,9 @@ extension Layout {
         guard let scalar = character.unicodeScalars.first else { return false }
         switch self {
         case .english: return scalar.isASCII
-        case .russian, .ukrainian: return (0x0400...0x04FF).contains(scalar.value)
+        case .russian: return (0x0400...0x04FF).contains(scalar.value)
+        // The Ukrainian apostrophe ʼ (U+02BC) is a modifier letter.
+        case .ukrainian: return (0x0400...0x04FF).contains(scalar.value) || scalar.value == 0x02BC
         }
     }
 }

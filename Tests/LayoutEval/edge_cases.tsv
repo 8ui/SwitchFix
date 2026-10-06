@@ -194,3 +194,15 @@ fix	en	uk	коміт	slang-tech
 fix	en	uk	гітхаб	slang-tech
 fix	en	uk	норм	slang-tech
 fix	en	uk	зара	slang-tech
+keep	en	en	C:\Users	backslash
+keep	en	en	\n	backslash
+keep	en	en	path\to\file	backslash
+keep	en	en	\section	backslash
+keep	en	en	foo\bar	backslash
+keep	en	en	dir\yes	backslash
+fix	en	uk	пʼятниця	apostrophe
+fix	en	uk	обʼєкт	apostrophe
+fix	en	uk	мʼякий	apostrophe
+fix	en	uk	сімʼя	apostrophe
+fix	en	uk	компʼютер	apostrophe
+fix	en	uk	зʼїсти	apostrophe

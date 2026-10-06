@@ -23,6 +23,10 @@ func runPersonalLexiconSuites() {
         assertEqual(PersonalLexicon.validate(word: "", sourceLayout: .english, rule: .neverCorrect), .empty)
         assertEqual(PersonalLexicon.validate(word: String(repeating: "a", count: 65), sourceLayout: .english, rule: .neverCorrect), .tooLong)
         assertEqual(PersonalLexicon.validate(word: "привет", sourceLayout: .english, rule: .neverCorrect), .notTypable)
+        // The Ukrainian apostrophe key (backslash) and ʼ itself are typable.
+        assertEqual(PersonalLexicon.validate(word: "g\\znybwz", sourceLayout: .english, rule: .alwaysCorrect(to: .ukrainian)), nil)
+        assertEqual(PersonalLexicon.validate(word: "пʼятниця", sourceLayout: .ukrainian, rule: .neverCorrect), nil)
+        assertEqual(LexiconKey.normalize("пʼятниця"), LexiconKey.normalize("п'ятниця"), "ʼ and ' are one key")
         assertEqual(PersonalLexicon.validate(word: "ghbdtn", sourceLayout: .english, rule: .alwaysCorrect(to: .english)), .sameLayoutTarget)
         assertEqual(PersonalLexicon.validate(word: "было", sourceLayout: .russian, rule: .alwaysCorrect(to: .ukrainian)), .unsupportedPair, "no ru ↔ uk rules")
         assert(PersonalLexicon.validate(word: ",erdf", sourceLayout: .english, rule: .alwaysCorrect(to: .russian)) == nil, "punctuation keys are letters on the other layout")

@@ -96,7 +96,7 @@ public class LayoutDetector {
         var set = CharacterSet.punctuationCharacters.union(.symbols)
         set.subtract(CharacterSet(charactersIn: "'’`-"))
         // Keep punctuation keys that may correspond to letters in other layouts.
-        set.subtract(CharacterSet(charactersIn: ",.;'[]`<>:\"{}~"))
+        set.subtract(WordBoundary.softBoundaryCharacterSet)
         return set
     }()
 
@@ -293,7 +293,8 @@ public class LayoutDetector {
     /// a late not-applied report still restores the switch.
     private func checkLanguageModels(word: String, sourceLayout: Layout, suppressedShort: SuppressedShort?) -> DetectionResult? {
         guard isAutomaticCommandLineFlag(word: word, sourceLayout: sourceLayout)
-            || shouldSkipAutomaticIndexExpression(word: word, sourceLayout: sourceLayout) else {
+            || shouldSkipAutomaticIndexExpression(word: word, sourceLayout: sourceLayout)
+            || shouldSkipAutomaticBackslashToken(word: word, sourceLayout: sourceLayout) else {
             return decideLanguageModels(word: word, sourceLayout: sourceLayout, suppressedShort: suppressedShort)
         }
         // A deferred short word is not given back: the flag is on screen between it and the
@@ -335,7 +336,8 @@ public class LayoutDetector {
         }
 
         if shouldSkipAutomaticCommandLineFlag(word: word, sourceLayout: sourceLayout)
-            || shouldSkipAutomaticIndexExpression(word: word, sourceLayout: sourceLayout) {
+            || shouldSkipAutomaticIndexExpression(word: word, sourceLayout: sourceLayout)
+            || shouldSkipAutomaticBackslashToken(word: word, sourceLayout: sourceLayout) {
             // Before the acronym rule: '-R' is a flag, not an acronym. `checkLanguageModels`
             // makes the skip transparent.
             state = .buffering
@@ -362,7 +364,8 @@ public class LayoutDetector {
         var highestMargin = -Double.infinity
         var firstConversion: (target: Layout, converted: String)?
 
-        for target in automaticTargets(for: sourceLayout) {
+        for target in automaticTargets(for: sourceLayout)
+        where sourceLayout != .english || pendingBoundaryCharacter == nil || backslashFits(word: word, target: target) {
             let conversions = LayoutMapper.convertCandidates(word, from: sourceLayout, to: target, tables: keyboardTables)
             if firstConversion == nil, let first = conversions.first {
                 firstConversion = (target, first)
@@ -858,6 +861,48 @@ public class LayoutDetector {
     }
 
     private static let indexBrackets: Set<Character> = ["[", "]", "{", "}"]
+
+    /// The backslash key stays in a typed word (it is the Ukrainian apostrophe), so an English
+    /// token with one is converted automatically only to a target the key fits:
+    /// - apostrophe (Ukrainian-PC): it joins a Ukrainian word (`g\znybwz` → пʼятниця,
+    ///   `LayoutMapper.isUkrainianApostropheJoin`);
+    /// - a letter (ґ on the old Apple Ukrainian layout): never — it used to end the word, and
+    ///   paths would turn into ґ-words;
+    /// - punctuation (`\` on RussianWin): at an edge, as before (`ghbdtn\` → привет\).
+    /// A token with two never fits. Without a fitting target (paths and escapes: `C:\Users`,
+    /// `\n`, `dir\a\b`) the token stays; `checkLanguageModels` makes the skip transparent.
+    private func shouldSkipAutomaticBackslashToken(word: String, sourceLayout: Layout) -> Bool {
+        guard sourceLayout == .english,
+              pendingBoundaryCharacter != nil,
+              word.contains(WordBoundary.apostropheKey) else { return false }
+        let targets = automaticTargets(for: .english)
+        // A Ukrainian word next to a backslash (`ghbdsn\\`) would end in ʼ: it stays rather
+        // than going to Russian, the other target.
+        if targets.contains(.ukrainian),
+           LayoutMapper.isApostrophe(LayoutMapper.backslashKey(on: .ukrainian, tables: keyboardTables)),
+           !backslashFits(word: word, target: .ukrainian) {
+            return true
+        }
+        return !targets.contains { backslashFits(word: word, target: $0) }
+    }
+
+    private func backslashFits(word: String, target: Layout) -> Bool {
+        let chars = Array(word)
+        let backslashes = chars.indices.filter { chars[$0] == WordBoundary.apostropheKey }
+        guard !backslashes.isEmpty else { return true }
+        guard backslashes.count == 1, let index = backslashes.first else { return false }
+        let typed = LayoutMapper.backslashKey(on: target, tables: keyboardTables)
+        if LayoutMapper.isApostrophe(typed) {
+            guard target == .ukrainian, index > 0, index < chars.count - 1 else { return false }
+            return LayoutMapper.isUkrainianApostropheJoin(
+                before: chars[index - 1], after: chars[index + 1], tables: keyboardTables
+            )
+        }
+        if typed?.isLetter == true { return false }
+        // Inside the core (between its first and last letter or digit): a path.
+        let parts = splitTokenForValidation(word)
+        return index < parts.prefix.count || index >= chars.count - parts.suffix.count
+    }
 
     private func containsVowel(_ text: String, layout: Layout) -> Bool {
         let vowels: CharacterSet

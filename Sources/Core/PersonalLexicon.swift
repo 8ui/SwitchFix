@@ -53,7 +53,7 @@ public struct LexiconKey: Hashable, Sendable {
     }
 
     private static let shiftedKeys: [Character: Character] = [
-        "’": "'", "{": "[", "}": "]", ":": ";", "\"": "'", "<": ",", ">": ".", "~": "`",
+        "’": "'", "ʼ": "'", "{": "[", "}": "]", ":": ";", "\"": "'", "<": ",", ">": ".", "~": "`",
     ]
 }
 

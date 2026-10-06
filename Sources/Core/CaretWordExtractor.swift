@@ -8,8 +8,14 @@ enum WordBoundary {
         return set
     }()
 
-    /// Punctuation that is a letter in a Cyrillic layout (б, ю, ж, э, х, ъ, …): stays in the word.
-    private static let softBoundaryCharacterSet = CharacterSet(charactersIn: ",.;'[]`<>:\"{}~")
+    /// Punctuation that is a letter in a Cyrillic layout (б, ю, ж, э, х, ъ, …, the Ukrainian
+    /// apostrophe ʼ on the backslash key): stays in the word. The detector keeps the same set.
+    static let softBoundaryCharacterSet = CharacterSet(charactersIn: ",.;'[]`<>:\"{}~\\")
+
+    /// The backslash is the Ukrainian apostrophe key, so it belongs to a word only where it
+    /// joins a Ukrainian word (`LayoutMapper.isUkrainianApostropheJoin`: `g\znybwz` → пʼятниця,
+    /// `j,\'rn` → обʼєкт); paths and escapes (`C:\Users`, `\n`) are not words.
+    static let apostropheKey: Character = "\\"
 
     /// True when a typed single-character text ends the word, as `KeyboardMonitor` classifies it.
     static func isPunctuationBoundary(_ text: String) -> Bool {
@@ -35,10 +41,16 @@ public enum CaretWordExtractor {
         next: Character?,
         tables: KeyboardTables = .pc
     ) -> String? {
-        if let next, isWordCharacter(next) { return nil }
+        // A backslash after the caret is a word character only before a letter, which is not seen.
+        if let next, next != WordBoundary.apostropheKey, isWordCharacter(next) { return nil }
         let characters = Array(prefix)
         var start = characters.count
         while start > 0, isWordCharacter(characters[start - 1]) {
+            if characters[start - 1] == WordBoundary.apostropheKey,
+               start == characters.count || start < 2
+                || !LayoutMapper.isUkrainianApostropheJoin(before: characters[start - 2], after: characters[start], tables: tables) {
+                break
+            }
             start -= 1
         }
         guard start < characters.count else { return nil }

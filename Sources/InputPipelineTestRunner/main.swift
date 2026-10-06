@@ -909,6 +909,18 @@ run("caret word extraction") {
     check(word("123") == nil, "a word needs a letter")
     check(word("ghbdtné") == nil, "a character no layout can type rejects the word")
     check(word(String(repeating: "a", count: 65)) == nil, "a word over 64 characters is rejected")
+    // The backslash is the Ukrainian apostrophe key (ʼ): inside a word only between letters.
+    check(word("g\\znybwz") == "g\\znybwz", "the apostrophe key between letters stays in the word")
+    check(word("це пʼятниця") == "пʼятниця", "the apostrophe itself is a word character")
+    check(word("\\ghbdtn") == "ghbdtn", "a leading backslash ends the word")
+    check(word("ghbdtn\\") == nil, "nothing after a trailing backslash")
+    check(word("j,\\'rn") == "j,\\'rn", "letter keys around the apostrophe key count as letters")
+    check(word("C:\\dir\\ghbdtn") == "ghbdtn", "a path separates at the last backslash")
+    check(word("src/dir\\ghbdtn") == "ghbdtn", "a path after a slash separates too")
+    check(word("src/g\\znybwz") == "g\\znybwz", "an apostrophe word after a slash stays whole")
+    check(word("x\\\\znybwz") == "znybwz", "a doubled backslash does not join")
+    check(word("it\\ghbdtn") == "ghbdtn", "the key before a letter other than я ю є ї separates")
+    check(word("ghbdtn", next: "\\") == "ghbdtn", "a backslash after the caret does not join")
 }
 
 run("100,000 event stress") {
