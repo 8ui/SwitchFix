@@ -868,7 +868,8 @@ public class LayoutDetector {
     ///   `LayoutMapper.isUkrainianApostropheJoin`);
     /// - a letter (ґ on the old Apple Ukrainian layout): never — it used to end the word, and
     ///   paths would turn into ґ-words;
-    /// - punctuation (`\` on RussianWin): at an edge, as before (`ghbdtn\` → привет\).
+    /// - punctuation (`\` on RussianWin): at an edge of a word of two or more characters, as
+    ///   before (`ghbdtn\` → привет\); not next to one letter (`\r`, `\d` are escapes).
     /// A token with two never fits. Without a fitting target (paths and escapes: `C:\Users`,
     /// `\n`, `dir\a\b`) the token stays; `checkLanguageModels` makes the skip transparent.
     private func shouldSkipAutomaticBackslashToken(word: String, sourceLayout: Layout) -> Bool {
@@ -899,8 +900,10 @@ public class LayoutDetector {
             )
         }
         if typed?.isLetter == true { return false }
-        // Inside the core (between its first and last letter or digit): a path.
+        // Inside the core (between its first and last letter or digit): a path. A one-letter
+        // core next to it is an escape (`\r`, `\d`), not a word.
         let parts = splitTokenForValidation(word)
+        guard parts.core.count > 1 else { return false }
         return index < parts.prefix.count || index >= chars.count - parts.suffix.count
     }
 
