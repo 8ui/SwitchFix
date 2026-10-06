@@ -39,6 +39,9 @@ _2-5 строк: что делаем и зачем. Задача этой сек
 - 2026-10-06: verify: `swift run -c release InputPipelineTestRunner` → exit 0 ✅
 - 2026-10-06: verify: `swift run -c release InputPipelineTestRunner` → exit 0 ✅
 - 2026-10-06: шаг 3 ✅ Ревью и проверки — ревью general-purpose (opus): дефектов нет; UX-риск — в долг
+- 2026-10-06: verify: `swift build -c release` → exit 0 ✅
+- 2026-10-06: verify: `swift run -c release InputPipelineTestRunner` → exit 0 ✅
+- 2026-10-06: доработка: переключение после Enter только для слов от 4 букв (короткие — основной источник ложных; Caps Lock-отмена после Enter была бы случайной); тест с мутационной проверкой
 
 ## Decisions
 
@@ -46,7 +49,7 @@ _Нетривиальные решения по ходу задачи. Одна 
 
 ## Debt
 
-- [ ] ложное переключение после Enter не откатывается хоткеем отмены и не учит лексикон (undo не записывается) — можно записывать switch-only undo или ограничить высокоуверенными результатами (ревью, medium)
+- [ ] ложное переключение после Enter не откатывается хоткеем отмены и не учит лексикон — сознательно: отмена по умолчанию на Caps Lock, его жмут для заглавной в начале следующего сообщения; риск снижен порогом ≥4 букв (InputEngine.minimumLettersForEnterSwitch) — переформулировано 2026-10-06
 - [ ] переключение после Enter идёт без сверки текста поля (enforce) — текст не меняется, риск только лишнего переключения (ревью, low)
 - [ ] Shift+Return не отличается от Return: в чатах он перевод строки, но в терминалах выполняет — слово перед ним тоже не перенабирается
 
@@ -115,6 +118,43 @@ _Нетривиальные решения по ходу задачи. Одна 
   Building for production...
   [1 / 1]
   Build complete! (0,32 с)
+  ```
+
+- 2026-10-06 · `swift build -c release` · exit 0 ✅
+
+  ```
+  /Users/andrejsokolov/Desktop/projects/SwitchFix/Sources/Core/InputEngine.swift:800:59: [1;33mwarning: [1;39m'weak' ownership of capture 'self' differs from implicitly-captured strong reference in outer scope[0;0m [#]8;;https://docs.swift.org/compiler/documentation/diagnostics/implicit-strong-cap… [обрезано 35 симв.]
+   [0;36m797 |[0;0m         // suffix is compared, so a character cut at the window's start does not matter.
+   [0;36m798 |[0;0m         let window = (check.word + check.boundary).utf16.count + 6
+   [0;36m799 |[0;0m         selectionQueue.async {
+       [0;36m|[0;0m                              |- [1;39mnote: [1;39m'self' implicitly strongly captured here[0;0m
+       [0;36m|[0;0m                              `- [1;39mnote: [1;39madd 'self' as a capture list item to silence[0;0m
+   [0;36m800 |[0;0m             query(check.pid, check.epoch, window) { [weak self] probe in
+       [0;36m|[0;0m                                                           |- [1;33mwarning: [1;39m'weak' ownership of capture 'self' differs from implicitly-captured strong reference in outer scope[0;0m [#]8;;https://docs.swift.org/compiler/documentation/diagnostics/implicit-strong-capture\… [обрезано 29 симв.]
+       [0;36m|[0;0m                                                           `- [1;39mnote: [1;39mexplicitly assign the capture list item to silence[0;0m
+   [0;36m801 |[0;0m                 self?.inputQueue.async {
+   [0;36m802 |[0;0m                     guard let self else { return }
+  
+  [#ImplicitStrongCapture]: <https://docs.swift.org/compiler/documentation/diagnostics/implicit-strong-capture>
+  ```
+
+- 2026-10-06 · `swift run -c release InputPipelineTestRunner` · exit 0 ✅
+
+  ```
+  --- layout switch after a correction: queued, rechecked and superseded ---
+  --- revert screen check: a hotkey correction (no boundary) ---
+  --- key-down classification: input-source shortcuts act like the Globe key ---
+  --- key-down classification: other keys as before ---
+  --- key-down classification: caret moves and unseen edits ---
+  --- mouse-down classification ---
+  --- input-source shortcuts from com.apple.symbolichotkeys ---
+  --- input-source shortcuts: re-read at most once per interval unless forced ---
+  
+  Input pipeline: 1477 passed, 0 failed
+  
+  Building for production...
+  [1 / 9]
+  Build complete! (0,24 с)
   ```
 
 ## Handoff

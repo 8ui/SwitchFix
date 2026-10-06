@@ -115,6 +115,8 @@ public final class InputEngine {
     /// How long after a caret move the hotkey waits before reading the word before the caret:
     /// Accessibility (Chromium) may still report the previous caret position.
     static let caretSettleNanoseconds: UInt64 = 200_000_000
+    /// A word ended by Enter switches the layout only from this length (see `prepareCorrection`).
+    static let minimumLettersForEnterSwitch = 4
     private var maximumQueueDepth = 0
     private let logger = Logger(subsystem: "com.switchfix", category: "input-engine")
 
@@ -655,7 +657,17 @@ public final class InputEngine {
             // erases the wrong thing and retyping the newline would submit it again. The
             // layout still switches, so the next message is typed in the right one.
             noteNotApplied(result.detectionID)
-            let switchesLayout = result.shouldSwitchLayout && result.targetLayout != request.context.layout
+            // Nothing on screen shows the switch and the revert hotkey (Caps Lock by default,
+            // pressed for the capital that starts the next message) must not undo it, so only
+            // words long enough for the model to be sure switch: short ones are most of the
+            // false positives.
+            let letters = max(
+                result.originalWord.filter(\.isLetter).count,
+                result.convertedWord.filter(\.isLetter).count
+            )
+            let switchesLayout = result.shouldSwitchLayout
+                && result.targetLayout != request.context.layout
+                && letters >= Self.minimumLettersForEnterSwitch
             SwitchFixLog.engine.notice("correction cancelled reason=word-ended-by-enter layoutSwitch=\(switchesLayout ? result.targetLayout.rawValue : "none")")
             guard switchesLayout else { return }
             let plan = CorrectionPlan(

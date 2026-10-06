@@ -1864,6 +1864,12 @@ run("automatic correction: Enter switches the layout only for a mistyped word") 
     check(!waitUntil(0.3) { !harness.switched.converted.isEmpty }, "a word typed right: no switch")
     check(harness.emitted.count == 0, "and nothing is emitted")
     // A key typed after Enter cancels the queued switch: `mayFinishLayoutSwitch` (tested above).
+    // A short word is not trusted enough for a switch nothing on screen shows.
+    var short = LearningHarness()
+    short.type("lf", boundary: " ")
+    _ = waitUntil(0.3) { short.emitted.count > 0 }
+    short.type("yt", boundary: "\n")
+    check(!waitUntil(0.3) { !short.switched.converted.isEmpty }, "a short word ended by Enter: no switch, got \(short.switched.converted)")
 }
 
 run("learning: forced hotkey conversion teaches alwaysCorrect") {
