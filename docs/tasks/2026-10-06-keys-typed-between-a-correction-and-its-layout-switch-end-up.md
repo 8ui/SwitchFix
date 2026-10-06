@@ -3,7 +3,7 @@ id: 2026-10-06-keys-typed-between-a-correction-and-its-layout-switch-end-up
 title: Keys typed between a correction and its layout switch end up in two layouts
 type: bug
 pipeline: minimal
-phase: review
+phase: done
 created: 2026-10-06
 updated: 2026-10-06
 blocked_by: null
@@ -13,8 +13,8 @@ step_current: null
 artifacts:
   spec: null
   plan: null
-  branch: null
-  pr: null
+  branch: claude/wave-1
+  pr: "https://github.com/8ui/SwitchFix/pull/23"
 ---
 
 ## Context
@@ -42,6 +42,9 @@ Telegram: в русской раскладке «слово ␣""» быстро
 - 2026-10-06: spec-review: n/a; code-review: субагент general-purpose (opus) — дефектов нет; поправлены комментарий и лог пропуска
 - 2026-10-06: ревью учтено
 - 2026-10-06: шаг 3 ✅ Ревью и проверки — локальные проверки и ревью пройдены; ждёт CI
+- 2026-10-06: verify: `CI зелёный: https://github.com/8ui/SwitchFix/actions/runs/37467000197 (push f9b7c7e, PR 23)` → exit 0 ✅
+- 2026-10-06: artifacts.branch = claude/wave-1; artifacts.pr = https://github.com/8ui/SwitchFix/pull/23
+- 2026-10-06: CI зелёный, PR 23
 
 ## Decisions
 
@@ -135,6 +138,12 @@ Telegram: в русской раскладке «слово ␣""» быстро
   
   Building for production...
   Build complete! (0,21 с)
+  ```
+
+- 2026-10-06 · `CI зелёный: https://github.com/8ui/SwitchFix/actions/runs/37467000197 (push f9b7c7e, PR 23)` · exit 0 ✅
+
+  ```
+  (без вывода)
   ```
 
 ## Handoff

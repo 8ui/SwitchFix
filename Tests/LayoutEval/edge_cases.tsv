@@ -206,3 +206,16 @@ fix	en	uk	мʼякий	apostrophe
 fix	en	uk	сімʼя	apostrophe
 fix	en	uk	компʼютер	apostrophe
 fix	en	uk	зʼїсти	apostrophe
+keep	en	en	arr[i]	index-no-digit
+keep	en	en	dict["k"]	index-no-digit
+keep	en	en	items[idx]	index-no-digit
+keep	en	en	a[i]	index-no-digit
+keep	en	en	x[key]	index-no-digit
+keep	en	en	map[k]	index-no-digit
+keep	en	en	data["name"]	index-no-digit
+keep	en	en	m[i][j]	index-no-digit
+keep	en	en	cfg{x}	index-no-digit
+keep	en	en	list[n-1]	index-no-digit
+keep	en	en	arr[i],	index-no-digit
+keep	en	en	obj.items[i]	index-no-digit
+keep	en	en	row[col]	index-no-digit

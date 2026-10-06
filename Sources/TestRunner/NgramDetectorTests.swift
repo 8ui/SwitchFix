@@ -196,6 +196,7 @@ func runNgramDetectorSuites() {
             (["C:\\Users"], uk), (["C:\\Users"], ru), (["\\n"], uk), (["\\section"], uk),
             (["path\\to\\file"], uk), (["path\\to\\file"], ru), (["dir\\ghbdtn"], ru),
             (["\\\\server"], uk), (["\\\\server"], ru), (["ghbdtn\\"], uk),
+            (["\\r"], ru), (["\\b"], ru), (["\\d"], ru), (["\\e"], [.english, .russian, .ukrainian]),
         ] {
             let detector = ngramDetector(current: .english, allowed: allowed)
             let recorder = MockDetectorDelegate()

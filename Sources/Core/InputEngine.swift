@@ -115,6 +115,8 @@ public final class InputEngine {
     /// How long after a caret move the hotkey waits before reading the word before the caret:
     /// Accessibility (Chromium) may still report the previous caret position.
     static let caretSettleNanoseconds: UInt64 = 200_000_000
+    /// A word ended by Enter switches the layout only from this length (see `prepareCorrection`).
+    static let minimumLettersForEnterSwitch = 4
     private var maximumQueueDepth = 0
     private let logger = Logger(subsystem: "com.switchfix", category: "input-engine")
 
@@ -641,10 +643,6 @@ public final class InputEngine {
             cancelReason = "correction-disallowed"
         } else if result.originalWord.count > 64 {
             cancelReason = "word-too-long"
-        } else if request.boundary.contains("\n") {
-            // Enter has already submitted the text in chats and terminals: deleting now
-            // erases the wrong thing and retyping the newline would submit it again.
-            cancelReason = "word-ended-by-enter"
         }
         guard cancelReason == nil else {
             noteNotApplied(result.detectionID)
@@ -654,6 +652,42 @@ public final class InputEngine {
         }
 
         let boundary = request.boundary
+        if boundary.contains("\n") {
+            // Enter has already submitted the text in chats and terminals: deleting now
+            // erases the wrong thing and retyping the newline would submit it again. The
+            // layout still switches, so the next message is typed in the right one.
+            noteNotApplied(result.detectionID)
+            // Nothing on screen shows the switch and the revert hotkey (Caps Lock by default,
+            // pressed for the capital that starts the next message) must not undo it, so only
+            // words long enough for the model to be sure switch: short ones are most of the
+            // false positives.
+            let letters = max(
+                result.originalWord.filter(\.isLetter).count,
+                result.convertedWord.filter(\.isLetter).count
+            )
+            let switchesLayout = result.shouldSwitchLayout
+                && result.targetLayout != request.context.layout
+                && letters >= Self.minimumLettersForEnterSwitch
+            SwitchFixLog.engine.notice("correction cancelled reason=word-ended-by-enter layoutSwitch=\(switchesLayout ? result.targetLayout.rawValue : "none")")
+            guard switchesLayout else { return }
+            let plan = CorrectionPlan(
+                boundarySequence: request.sequence,
+                contextEpoch: request.context.epoch,
+                targetPID: request.context.frontmostPID,
+                editGeneration: request.editGeneration,
+                correctionEpoch: request.correctionEpoch,
+                deleteCount: 0,
+                replacementText: "",
+                originalText: result.originalWord,
+                correctedText: result.originalWord,
+                boundaryText: boundary,
+                originalLayout: result.sourceLayout,
+                targetLayout: result.targetLayout,
+                provenance: provenance
+            )
+            corrector.finishLayoutSwitch(to: result.targetLayout, after: plan, latestCaptureState: captureState.snapshot)
+            return
+        }
         logger.notice(
             "correction planned \(SwitchFixLog.text(result.originalWord), privacy: .public) -> \(SwitchFixLog.text(result.convertedWord), privacy: .public) deletes=\(result.originalWord.count + boundary.count) pid=\(request.context.frontmostPID)"
         )
