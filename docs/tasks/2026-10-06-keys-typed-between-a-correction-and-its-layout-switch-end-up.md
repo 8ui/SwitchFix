@@ -7,9 +7,9 @@ phase: review
 created: 2026-10-06
 updated: 2026-10-06
 blocked_by: null
-steps_done: 2
+steps_done: 3
 steps_total: 3
-step_current: 3
+step_current: null
 artifacts:
   spec: null
   plan: null
@@ -25,7 +25,7 @@ Telegram: в русской раскладке «слово ␣""» быстро
 
 1. ✅ Отменять переключение при наборе после коррекции
 2. ✅ Тест в InputPipelineTestRunner
-3. ▶ Ревью и проверки
+3. ✅ Ревью и проверки
 
 ## Log
 
@@ -41,6 +41,7 @@ Telegram: в русской раскладке «слово ␣""» быстро
 - 2026-10-06: verify: `swift run -c release InputPipelineTestRunner` → exit 0 ✅
 - 2026-10-06: spec-review: n/a; code-review: субагент general-purpose (opus) — дефектов нет; поправлены комментарий и лог пропуска
 - 2026-10-06: ревью учтено
+- 2026-10-06: шаг 3 ✅ Ревью и проверки — локальные проверки и ревью пройдены; ждёт CI
 
 ## Decisions
 
