@@ -3,7 +3,7 @@ id: 2026-10-06-ukrainian-apostrophe-key-is-not-mapped-words-with-cannot-be
 title: "Ukrainian apostrophe key is not mapped: words with ʼ cannot be corrected"
 type: bug
 pipeline: no-spec
-phase: review
+phase: done
 created: 2026-10-06
 updated: 2026-10-06
 blocked_by: null
@@ -13,8 +13,8 @@ step_current: null
 artifacts:
   spec: null
   plan: docs/plans/uk-apostrophe-plan.md
-  branch: null
-  pr: null
+  branch: claude/wave-1
+  pr: "https://github.com/8ui/SwitchFix/pull/23"
 ---
 
 ## Context
@@ -51,6 +51,9 @@ artifacts:
 - 2026-10-06: verify: `swift run -c release InputPipelineTestRunner` → exit 0 ✅
 - 2026-10-06: шаг 4 ✅ Проверки и ревью — code-review general-purpose (opus) ×2: 4 находки исправлены, A/escape — в долг
 - 2026-10-06: code-review ×2 (general-purpose, opus): RU+UK last-ru, legacy ґ, RU-only edge, hotkey after / — исправлены; двойной \ в хоткее исправлен; A и escape — в долг
+- 2026-10-06: verify: `CI зелёный: https://github.com/8ui/SwitchFix/actions/runs/37467000197 (push f9b7c7e, PR 23)` → exit 0 ✅
+- 2026-10-06: artifacts.branch = claude/wave-1; artifacts.pr = https://github.com/8ui/SwitchFix/pull/23
+- 2026-10-06: CI зелёный, PR 23
 
 ## Decisions
 
@@ -215,6 +218,12 @@ artifacts:
   
   Building for production...
   Build complete! (0,20 с)
+  ```
+
+- 2026-10-06 · `CI зелёный: https://github.com/8ui/SwitchFix/actions/runs/37467000197 (push f9b7c7e, PR 23)` · exit 0 ✅
+
+  ```
+  (без вывода)
   ```
 
 ## Handoff

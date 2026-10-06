@@ -1292,6 +1292,8 @@ private struct LearningHarness {
     let corrector: TextCorrector
     let caret = CaretStub()
     let selections = SelectionLog()
+    /// Layout switches the corrector ran (never the real input source).
+    let switched: SelectionLog
     let screen: ScreenStub?
     let screenChecks = ScreenCheckLog()
     var timestamp: UInt64 = 0
@@ -1311,7 +1313,13 @@ private struct LearningHarness {
         lexicon = PersonalLexicon(storage: InMemoryLexiconStorage(), saveDelay: 0)
         let emitted = EmissionLog()
         self.emitted = emitted
-        let corrector = TextCorrector()
+        let switched = SelectionLog()
+        self.switched = switched
+        let corrector = TextCorrector(
+            layoutSwitchQueue: DispatchQueue(label: "test.harness.layout-switch"),
+            frontmostPID: { current.frontmostPID },
+            layoutSwitch: { switched.append($0.rawValue) }
+        )
         self.corrector = corrector
         let reverted = EmissionLog()
         self.reverted = reverted
@@ -1840,12 +1848,22 @@ run("automatic correction: a word ended by Enter is not corrected") {
     var harness = LearningHarness()
     harness.type("ghbdtn", boundary: "\n")
     check(!waitUntil(0.3) { harness.emitted.count > 0 }, "Enter may have submitted the text: no delete, no retype")
+    check(waitUntil { !harness.switched.converted.isEmpty }, "the layout still switches")
+    check(harness.switched.converted == ["russian"], "one switch to Russian, got \(harness.switched.converted)")
     harness.type("ghbdtn")
     check(waitUntil { harness.emitted.count == 1 }, "the next word ended by a space is still corrected")
     _ = waitUntil(0.3) { harness.emitted.count > 1 }
     check(harness.emitted.count == 1, "exactly one correction, got \(harness.emitted.count)")
     check(!harness.emitted.all.contains { $0.boundaryText.contains("\n") }, "Enter is never retyped")
     check(harness.emitted.last?.boundaryText == " ", "only the space is retyped")
+}
+
+run("automatic correction: Enter switches the layout only for a mistyped word") {
+    var harness = LearningHarness()
+    harness.type("hello", boundary: "\n")
+    check(!waitUntil(0.3) { !harness.switched.converted.isEmpty }, "a word typed right: no switch")
+    check(harness.emitted.count == 0, "and nothing is emitted")
+    // A key typed after Enter cancels the queued switch: `mayFinishLayoutSwitch` (tested above).
 }
 
 run("learning: forced hotkey conversion teaches alwaysCorrect") {
