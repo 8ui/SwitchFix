@@ -14,7 +14,7 @@ artifacts:
   spec: null
   plan: docs/plans/keys-typed-between-check-and-deletes-plan.md
   branch: claude/correction-race
-  pr: null
+  pr: "https://github.com/8ui/SwitchFix/pull/26"
 ---
 
 ## Context
@@ -52,6 +52,7 @@ artifacts:
 - 2026-10-06: verify: `CI зелёный: https://github.com/8ui/SwitchFix/actions/runs/37479237812 (push f8fb613)` → exit 0 ✅
 - 2026-10-06: artifacts.branch = claude/correction-race
 - 2026-10-06: CI зелёный, ветка claude/correction-race запушена
+- 2026-10-06: artifacts.pr = https://github.com/8ui/SwitchFix/pull/26
 
 ## Decisions
 
