@@ -197,14 +197,17 @@ public final class TextCorrector {
 
     /// Whether a layout switch queued on the main thread after `plan` reached the app may
     /// still run: the focus and app it was made for are unchanged and that app is still in
-    /// front (`frontmostPID`, read on main). Typing after the correction does not cancel it:
-    /// the next keys belong to the new layout.
+    /// front (`frontmostPID`, read on main), and nothing was typed since: a key pressed before
+    /// the switch runs was typed in the old layout, so switching now would split the text
+    /// being typed between two layouts (`""` in Russian came out as `"@`). The next word is
+    /// checked in the old layout instead.
     public static func mayFinishLayoutSwitch(
         for plan: CorrectionPlan,
         latest: CaptureStateSnapshot,
         frontmostPID: pid_t?
     ) -> Bool {
-        frontmostPID == plan.targetPID &&
+        latest.editGeneration == plan.editGeneration &&
+            frontmostPID == plan.targetPID &&
             latest.context.frontmostPID == plan.targetPID &&
             latest.context.epoch == plan.contextEpoch &&
             latest.context.appAllowed &&
@@ -212,8 +215,8 @@ public final class TextCorrector {
     }
 
     /// Switches to `layout` on the layout-switch queue (main) after `plan` reached the app,
-    /// unless a newer switch was queued since or the focus or app changed (public for the
-    /// pipeline tests; `apply` and `postUndo` call it).
+    /// unless a newer switch was queued since, the focus or app changed or the user typed
+    /// (public for the pipeline tests; `apply` and `postUndo` call it).
     public func finishLayoutSwitch(
         to layout: Layout,
         after plan: CorrectionPlan,
@@ -231,8 +234,9 @@ public final class TextCorrector {
                 return
             }
             let frontmost = frontmostPID()
-            guard Self.mayFinishLayoutSwitch(for: plan, latest: latestCaptureState(), frontmostPID: frontmost) else {
-                logger.notice("layout switch skipped: focus or app changed since the correction pid=\(plan.targetPID, privacy: .public) frontmost=\(frontmost ?? -1, privacy: .public)")
+            let latest = latestCaptureState()
+            guard Self.mayFinishLayoutSwitch(for: plan, latest: latest, frontmostPID: frontmost) else {
+                logger.notice("layout switch skipped: typing, focus or app changed since the correction pid=\(plan.targetPID, privacy: .public) frontmost=\(frontmost ?? -1, privacy: .public) typed=\(latest.editGeneration != plan.editGeneration, privacy: .public)")
                 return
             }
             if let layoutSwitch {

@@ -2703,10 +2703,16 @@ run("layout switch after a correction: rechecked on main") {
     check(!TextCorrector.mayFinishLayoutSwitch(for: plan, latest: store.snapshot(), frontmostPID: pid + 1), "another app in front: no switch")
     check(!TextCorrector.mayFinishLayoutSwitch(for: plan, latest: store.snapshot(), frontmostPID: nil), "no app in front: no switch")
     _ = store.capture(
-        timestamp: 1, kind: .character("g"), keyCode: 0, flagsRawValue: 0,
+        timestamp: 1, kind: .revertHotkey, keyCode: 0, flagsRawValue: 0,
         isAutorepeat: false, sourcePID: 1, sourceUserData: 0
     )
-    check(TextCorrector.mayFinishLayoutSwitch(for: plan, latest: store.snapshot(), frontmostPID: pid), "typing on does not cancel the switch")
+    check(TextCorrector.mayFinishLayoutSwitch(for: plan, latest: store.snapshot(), frontmostPID: pid), "a hotkey edits nothing: switch")
+    let typedOn = CaptureStateStore(context: context(), hotkeys: HotkeyConfiguration(hotkeyModifiers: 0))
+    _ = typedOn.capture(
+        timestamp: 1, kind: .character("\""), keyCode: 19, flagsRawValue: 0,
+        isAutorepeat: false, sourcePID: 1, sourceUserData: 0
+    )
+    check(!TextCorrector.mayFinishLayoutSwitch(for: plan, latest: typedOn.snapshot(), frontmostPID: pid), "a key typed before the switch ran was typed in the old layout: no switch")
     _ = store.capture(
         timestamp: 2, kind: .focusMayChange, keyCode: 0, flagsRawValue: 0,
         isAutorepeat: false, sourcePID: 1, sourceUserData: 0
@@ -2775,6 +2781,20 @@ run("layout switch after a correction: queued, rechecked and superseded") {
     gate.signal()
     settle()
     check(switched.converted == ["russian", "english"], "the focus changed before it ran: no switch, got \(switched.converted)")
+
+    // A quote typed while the switch waits went to the old layout; switching now would
+    // type the next quote in the new one.
+    let typing = CaptureStateStore(context: context(), hotkeys: HotkeyConfiguration(hotkeyModifiers: 0))
+    let waiting = DispatchSemaphore(value: 0)
+    queue.async { waiting.wait() }
+    corrector.finishLayoutSwitch(to: .english, after: plan(to: .english), latestCaptureState: typing.snapshot)
+    _ = typing.capture(
+        timestamp: 1, kind: .character("\""), keyCode: 19, flagsRawValue: 0,
+        isAutorepeat: false, sourcePID: 1, sourceUserData: 0
+    )
+    waiting.signal()
+    settle()
+    check(switched.converted == ["russian", "english"], "a key typed before it ran: no switch, got \(switched.converted)")
 }
 
 run("revert screen check: a hotkey correction (no boundary)") {
