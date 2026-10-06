@@ -3,7 +3,7 @@ id: 2026-10-06-keys-typed-between-the-last-staleness-check-and-the
 title: "Keys typed between the last staleness check and the correction's deletes are deleted"
 type: bug
 pipeline: no-spec
-phase: review
+phase: done
 created: 2026-10-06
 updated: 2026-10-06
 blocked_by: null
@@ -13,7 +13,7 @@ step_current: null
 artifacts:
   spec: null
   plan: docs/plans/keys-typed-between-check-and-deletes-plan.md
-  branch: null
+  branch: claude/correction-race
   pr: null
 ---
 
@@ -49,6 +49,9 @@ artifacts:
 - 2026-10-06: verify: `swift run -c release TestRunner` → exit 0 ✅
 - 2026-10-06: verify: `swift run -c release InputPipelineTestRunner` → exit 0 ✅
 - 2026-10-06: code-review (general-purpose, opus): исправлено — модификатор, отпущенный без клавиши, снимает сигнал (Karabiner-переключатели); биты стороны вместо общей маски; переключение раскладки после post не считает модификатор; запись post до последней проверки; 'input' в логе. Тест 'клавиша между проверкой и эмиссией' — регрессионный страж (проходил и до фикса)
+- 2026-10-06: verify: `CI зелёный: https://github.com/8ui/SwitchFix/actions/runs/37479237812 (push f8fb613)` → exit 0 ✅
+- 2026-10-06: artifacts.branch = claude/correction-race
+- 2026-10-06: CI зелёный, ветка claude/correction-race запушена
 
 ## Decisions
 
@@ -176,6 +179,12 @@ artifacts:
   
   Building for production...
   Build complete! (0,19 с)
+  ```
+
+- 2026-10-06 · `CI зелёный: https://github.com/8ui/SwitchFix/actions/runs/37479237812 (push f8fb613)` · exit 0 ✅
+
+  ```
+  (без вывода)
   ```
 
 ## Handoff
