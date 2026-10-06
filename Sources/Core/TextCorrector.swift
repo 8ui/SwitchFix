@@ -85,8 +85,13 @@ public struct CorrectionPlan: Equatable {
         )
     }
 
-    public func isEligible(using state: CaptureStateSnapshot) -> Bool {
+    /// - Parameter countingModifiers: false after posting, where a modifier held for the next
+    ///   key does not keep the layout from switching (no key was typed yet).
+    public func isEligible(using state: CaptureStateSnapshot, countingModifiers: Bool = true) -> Bool {
         state.latestPhysicalSequence == boundarySequence &&
+            // A modifier pressed since: the key it modifies may reach the field before the
+            // tap reports it (`KeyboardMonitor.modifierChange`).
+            (!countingModifiers || state.modifierPressSequence != boundarySequence) &&
             state.editGeneration == editGeneration &&
             state.correctionEpoch == correctionEpoch &&
             state.context.epoch == contextEpoch &&
@@ -110,6 +115,35 @@ public struct RevertPlan: Equatable {
     func deleting(_ count: Int) -> RevertPlan {
         RevertPlan(recorded: recorded, inverse: inverse.deleting(count), undoID: undoID)
     }
+}
+
+/// When a correction's (or revert's) events were posted, for telling whether a physical key
+/// the tap reported afterwards may have reached the field first (`TextCorrector.race`).
+public struct CorrectionPost: Equatable {
+    /// The plan's boundary sequence: keys after it raced the post.
+    public let boundarySequence: UInt64
+    /// Uptime nanoseconds (the clock of `CGEvent.timestamp`) before the first event.
+    public let startedAt: UInt64
+    /// After the last event; nil while posting.
+    public var endedAt: UInt64?
+    /// nil: posted to the process.
+    public let route: AppPostMode?
+
+    public init(boundarySequence: UInt64, startedAt: UInt64, endedAt: UInt64?, route: AppPostMode?) {
+        self.boundarySequence = boundarySequence
+        self.startedAt = startedAt
+        self.endedAt = endedAt
+        self.route = route
+    }
+}
+
+/// How a physical key captured after a correction's last staleness check relates to its post.
+public enum CorrectionPostRace: String, Equatable {
+    /// Made before the first event: it may already have been in the app's queue, and the
+    /// deletes then removed it (or text before the word).
+    case before
+    /// Made during the burst: it may sit between the deletes and the replacement.
+    case during
 }
 
 public struct CorrectionEventDescriptor: Equatable {
@@ -144,20 +178,30 @@ public final class TextCorrector {
     private let layoutSwitchQueue: DispatchQueue
     private let frontmostPID: () -> pid_t?
     private let layoutSwitch: ((Layout) -> Void)?
+    private let postRoute: (pid_t) -> AppPostMode?
+    private let eventPoster: (([CGEvent], AppPostMode?, pid_t) -> Void)?
+    /// The last correction or revert posted, until a physical key after it is checked (`race`).
+    private let lastPost = OSAllocatedUnfairLock<CorrectionPost?>(initialState: nil)
 
     /// - Parameters:
     ///   - layoutSwitchQueue: must be main in the app (TIS APIs are main-thread-only).
     ///   - layoutSwitch: nil switches with `inputSourceManager`.
+    ///   - postRoute: how events reach the app with this pid; nil reads `AppPostMode` (tests replace it).
+    ///   - eventPoster: nil posts the events (tests record them instead).
     public init(
         inputSourceManager: InputSourceManager = .shared,
         layoutSwitchQueue: DispatchQueue = .main,
         frontmostPID: @escaping () -> pid_t? = { NSWorkspace.shared.frontmostApplication?.processIdentifier },
-        layoutSwitch: ((Layout) -> Void)? = nil
+        layoutSwitch: ((Layout) -> Void)? = nil,
+        postRoute: ((pid_t) -> AppPostMode?)? = nil,
+        eventPoster: (([CGEvent], AppPostMode?, pid_t) -> Void)? = nil
     ) {
         self.inputSourceManager = inputSourceManager
         self.layoutSwitchQueue = layoutSwitchQueue
         self.frontmostPID = frontmostPID
         self.layoutSwitch = layoutSwitch
+        self.postRoute = postRoute ?? Self.configuredPostRoute
+        self.eventPoster = eventPoster
         let source = CGEventSource(stateID: .privateState)
         source?.userData = switchFixEventMarker
         source?.localEventsSuppressionInterval = 0
@@ -278,16 +322,24 @@ public final class TextCorrector {
     ) -> Bool {
         guard plan.originalText.count <= 64,
               plan.deleteCount <= 128,
-              let events = makeCorrectionEvents(plan: plan),
-              plan.isEligible(using: latestCaptureState()) else {
-            logger.debug("apply rejected \(SwitchFixLog.text(plan.originalText), privacy: .public) (oversized/no events/state changed)")
+              let events = makeCorrectionEvents(plan: plan) else {
+            logger.debug("apply rejected \(SwitchFixLog.text(plan.originalText), privacy: .public) (oversized/no events)")
             return false
         }
-        post(events, targetPID: plan.targetPID)
+        // Everything that takes time comes before the last check: a key the tap reports
+        // after it may already be in the app's queue ahead of the deletes.
+        let route = postRoute(plan.targetPID)
+        beginPost(boundarySequence: plan.boundarySequence, route: route)
+        guard plan.isEligible(using: latestCaptureState()) else {
+            abandonPost(boundarySequence: plan.boundarySequence)
+            logger.debug("apply rejected \(SwitchFixLog.text(plan.originalText), privacy: .public) (state changed)")
+            return false
+        }
+        post(events, route: route, targetPID: plan.targetPID, boundarySequence: plan.boundarySequence)
 
         recordUndo(plan)
         if let layout = plan.targetLayout,
-           plan.isEligible(using: latestCaptureState()) {
+           plan.isEligible(using: latestCaptureState(), countingModifiers: false) {
             finishLayoutSwitch(to: layout, after: plan, latestCaptureState: latestCaptureState)
         }
         logger.notice(
@@ -440,16 +492,22 @@ public final class TextCorrector {
         latestCaptureState: @escaping () -> CaptureStateSnapshot
     ) -> Bool {
         let inverse = revert.inverse
-        guard let events = makeCorrectionEvents(plan: inverse),
-              inverse.isEligible(using: latestCaptureState()) else {
-            logger.debug("undo rejected: could not build inverse events or state changed")
+        guard let events = makeCorrectionEvents(plan: inverse) else {
+            logger.debug("undo rejected: could not build inverse events")
             return false
         }
-        post(events, targetPID: inverse.targetPID)
+        let route = postRoute(inverse.targetPID)
+        beginPost(boundarySequence: inverse.boundarySequence, route: route)
+        guard inverse.isEligible(using: latestCaptureState()) else {
+            abandonPost(boundarySequence: inverse.boundarySequence)
+            logger.debug("undo rejected: state changed")
+            return false
+        }
+        post(events, route: route, targetPID: inverse.targetPID, boundarySequence: inverse.boundarySequence)
         logger.notice(
             "revert APPLIED \(SwitchFixLog.text(inverse.correctedText), privacy: .public) <- \(SwitchFixLog.text(inverse.originalText), privacy: .public) deletes=\(inverse.deleteCount) pid=\(inverse.targetPID)"
         )
-        if inverse.isEligible(using: latestCaptureState()) {
+        if inverse.isEligible(using: latestCaptureState(), countingModifiers: false) {
             finishLayoutSwitch(to: revert.recorded.originalLayout, after: inverse, latestCaptureState: latestCaptureState)
         }
         return true
@@ -571,14 +629,70 @@ public final class TextCorrector {
         return events
     }
 
-    private func post(_ events: [CGEvent], targetPID: pid_t) {
-        // Some toolkits (e.g. Qt in Telegram) drop Unicode-string events posted
-        // straight to the process; per-app override routes them through the system
-        // event stream instead. Read on every correction so settings apply immediately.
+    /// Some toolkits (e.g. Qt in Telegram) drop Unicode-string events posted straight to the
+    /// process; a per-app override routes them through the system event stream instead. Read
+    /// on every correction so settings apply immediately.
+    private static func configuredPostRoute(for targetPID: pid_t) -> AppPostMode? {
         let bundleID = NSRunningApplication(processIdentifier: targetPID)?.bundleIdentifier
         let modes = AppPostMode.overrides()
+        return bundleID.flatMap { modes[$0] }
+    }
+
+    /// Whether a physical key made at `timestamp` (uptime nanoseconds) may have reached the
+    /// field before or inside `post`; nil: after it, or no usable time.
+    public static func race(of timestamp: UInt64, with post: CorrectionPost) -> CorrectionPostRace? {
+        guard timestamp > 0 else { return nil }
+        if timestamp < post.startedAt { return .before }
+        if post.endedAt.map({ timestamp < $0 }) ?? true { return .during }
+        return nil
+    }
+
+    /// Runs on the input queue for every physical input: the first one after the last posted
+    /// correction ends its record, and how it relates to the post when it may have raced it.
+    public func race(ofInput sequence: UInt64, timestamp: UInt64) -> (CorrectionPost, CorrectionPostRace)? {
+        let post = lastPost.withLock { value -> CorrectionPost? in
+            guard let post = value, sequence > post.boundarySequence else { return nil }
+            value = nil
+            return post
+        }
+        guard let post, let race = Self.race(of: timestamp, with: post) else { return nil }
+        return (post, race)
+    }
+
+    /// Records the post before its last check, so that an input reported between the two is
+    /// still compared with it (`race(ofInput:timestamp:)`).
+    private func beginPost(boundarySequence: UInt64, route: AppPostMode?) {
+        lastPost.withLock {
+            $0 = CorrectionPost(
+                boundarySequence: boundarySequence,
+                startedAt: DispatchTime.now().uptimeNanoseconds,
+                endedAt: nil,
+                route: route
+            )
+        }
+    }
+
+    /// The last check cancelled the post `beginPost` recorded.
+    private func abandonPost(boundarySequence: UInt64) {
+        lastPost.withLock { value in
+            if value?.boundarySequence == boundarySequence { value = nil }
+        }
+    }
+
+    /// Posts after `beginPost`; the record ends when the last event is out.
+    private func post(_ events: [CGEvent], route: AppPostMode?, targetPID: pid_t, boundarySequence: UInt64) {
+        defer {
+            let endedAt = DispatchTime.now().uptimeNanoseconds
+            lastPost.withLock { value in
+                if value?.boundarySequence == boundarySequence { value?.endedAt = endedAt }
+            }
+        }
+        if let eventPoster {
+            eventPoster(events, route, targetPID)
+            return
+        }
         let tap: CGEventTapLocation?
-        switch bundleID.flatMap({ modes[$0] }) {
+        switch route {
         case .session: tap = .cgSessionEventTap
         case .hid: tap = .cghidEventTap
         case nil: tap = nil

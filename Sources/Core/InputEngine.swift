@@ -406,6 +406,16 @@ public final class InputEngine {
     private func process(_ input: CapturedInput) {
         latestProcessedSequence = input.sequence
         logger.debug("input seq=\(input.sequence) kind=\(Self.logDescription(input), privacy: .public) autorepeat=\(input.isAutorepeat) srcPid=\(input.sourcePID)")
+        // The tap is listen-only and reports an input after the app may have it: no staleness
+        // check can see it, so log when one may have beaten the correction's events.
+        if let (post, race) = corrector.race(ofInput: input.sequence, timestamp: input.timestamp) {
+            let now = DispatchTime.now().uptimeNanoseconds
+            let ahead = Double(Int64(bitPattern: (race == .before ? post.startedAt : post.endedAt ?? now) &- input.timestamp)) / 1_000_000.0
+            let seen = Double(Int64(bitPattern: now &- input.timestamp)) / 1_000_000.0
+            SwitchFixLog.engine.notice(
+                "correction may have raced: input seq=\(input.sequence) made \(race.rawValue) the post (\(ahead) ms before its \(race == .before ? "start" : "end")), processed \(seen) ms after it was made, route=\(post.route?.rawValue ?? "pid")"
+            )
+        }
 
         if input.kind.recordsUserEdit {
             correctionQueue.async { [weak self] in

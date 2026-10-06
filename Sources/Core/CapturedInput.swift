@@ -133,6 +133,8 @@ public struct CaptureStateSnapshot: Equatable {
     public let context: InputContextSnapshot
     public let pendingInputCount: Int
     public let correctionAllowed: Bool
+    /// `latestPhysicalSequence` when a modifier was last pressed (`noteModifierPress`); nil: never.
+    public let modifierPressSequence: UInt64?
 
     public init(
         latestPhysicalSequence: UInt64,
@@ -140,7 +142,8 @@ public struct CaptureStateSnapshot: Equatable {
         correctionEpoch: UInt64,
         context: InputContextSnapshot,
         pendingInputCount: Int,
-        correctionAllowed: Bool
+        correctionAllowed: Bool,
+        modifierPressSequence: UInt64? = nil
     ) {
         self.latestPhysicalSequence = latestPhysicalSequence
         self.editGeneration = editGeneration
@@ -148,6 +151,7 @@ public struct CaptureStateSnapshot: Equatable {
         self.context = context
         self.pendingInputCount = pendingInputCount
         self.correctionAllowed = correctionAllowed
+        self.modifierPressSequence = modifierPressSequence
     }
 }
 
@@ -162,6 +166,7 @@ public final class CaptureStateStore {
         var overloadMarkerPending = false
         var correctionAllowed = true
         var correctionEnabled = true
+        var modifierPressSequence: UInt64?
     }
 
     public enum EnqueueDecision {
@@ -188,8 +193,26 @@ public final class CaptureStateStore {
                 correctionEpoch: value.correctionEpoch,
                 context: value.context,
                 pendingInputCount: value.pendingInputCount,
-                correctionAllowed: value.correctionAllowed && value.correctionEnabled
+                correctionAllowed: value.correctionAllowed && value.correctionEnabled,
+                modifierPressSequence: value.modifierPressSequence
             )
+        }
+    }
+
+    /// A modifier went down (`KeyboardMonitor.modifierChange`): a correction planned at the
+    /// current sequence is stale (`CorrectionPlan.isEligible`). Not an input of its own: the
+    /// sequence, the edit generation and the state machine are left alone.
+    public func noteModifierPress() {
+        state.withLock { $0.modifierPressSequence = $0.latestPhysicalSequence }
+    }
+
+    /// Every counted modifier is up again: with no key since the press, nothing it modified
+    /// can race a correction any more.
+    public func noteModifiersReleased() {
+        state.withLock { value in
+            if value.modifierPressSequence == value.latestPhysicalSequence {
+                value.modifierPressSequence = nil
+            }
         }
     }
 

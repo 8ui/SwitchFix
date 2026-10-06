@@ -1216,8 +1216,11 @@ private final class SelectionLog {
 private final class ScreenCheckLog {
     private let lock = NSLock()
     private var _outcomes: [String] = []
+    /// Runs on the input queue after each outcome, before a proceeding check emits.
+    var onOutcome: ((ScreenCheckOutcome) -> Void)?
     func append(_ kind: ScreenCheckKind, _ outcome: ScreenCheckOutcome) {
         lock.lock(); _outcomes.append("\(kind.rawValue):\(outcome.rawValue)"); lock.unlock()
+        onOutcome?(outcome)
     }
     var outcomes: [String] { lock.lock(); defer { lock.unlock() }; return _outcomes }
 }
@@ -2971,6 +2974,230 @@ run("input-source shortcuts: re-read at most once per interval unless forced") {
     check(due(.now, 100, 100), "a forced read (sources changed, tap restarted)")
     check(!due(.keep, nil, 100), "SwitchFix's own switch never reads")
     check(!due(.keep, 100, 100 + 10 * interval), "not even when stale")
+}
+
+// MARK: - Keys the listen-only tap reports after the last staleness check
+
+run("correction race: a key between the screen check and the emission cancels it") {
+    let harness = screenChecked(.text(before: "ghbdtn "), emits: false) { harness in
+        let store = harness.store, engine = harness.engine
+        harness.screenChecks.onOutcome = { outcome in
+            guard outcome == .proceeded else { return }
+            engine.enqueue(store.capture(
+                timestamp: 99, kind: .character("\""), keyCode: 19, flagsRawValue: 0,
+                isAutorepeat: false, sourcePID: 1, sourceUserData: 0
+            ))
+        }
+    }
+    check(harness.screenChecks.outcomes == ["correction:proceeded"], "the check itself passed, got \(harness.screenChecks.outcomes)")
+    check(harness.emitted.count == 0, "the emission's own check sees the key")
+}
+
+run("correction race: a modifier pressed while the field is read cancels it") {
+    let harness = screenChecked(.text(before: "ghbdtn "), emits: false) { harness in
+        let store = harness.store
+        // Shift goes down milliseconds before the quote or capital it types.
+        harness.screen?.beforeFirstReply = { store.noteModifierPress() }
+    }
+    check(harness.screenChecks.outcomes == ["correction:proceeded"], "the field still shows the word, got \(harness.screenChecks.outcomes)")
+    check(harness.emitted.count == 0, "the key the modifier is for may reach the field before the deletes")
+
+    let before = LearningHarness(screen: ScreenStub(.text(before: "ghbdtn ")))
+    before.store.noteModifierPress()
+    var typed = before
+    typed.type("ghbdtn")
+    check(waitUntil(2) { typed.emitted.count == 1 }, "a modifier pressed before the word does not cancel it")
+}
+
+run("correction race: modifier presses that count") {
+    let none: UInt16 = 0
+    func change(_ keyCode: UInt16, _ bits: UInt64, tap: UInt16 = none) -> KeyboardMonitor.ModifierChange? {
+        KeyboardMonitor.modifierChange(keyCode: keyCode, flags: CGEventFlags(rawValue: bits), tapHotkeyKeyCode: tap)
+    }
+    let leftShift = CGEventFlags.maskShift.rawValue | 0x2, rightShift = CGEventFlags.maskShift.rawValue | 0x4
+    check(change(56, leftShift) == .press, "left Shift down")
+    check(change(60, rightShift) == .press, "right Shift down")
+    check(change(55, CGEventFlags.maskCommand.rawValue | 0x8) == .press, "Command down")
+    check(change(56, 0) == .releaseAll, "the last modifier up")
+    check(change(60, leftShift) == nil, "right Shift up while left is held: neither a press nor all up")
+    check(change(57, CGEventFlags.maskAlphaShift.rawValue) == nil, "Caps Lock is the revert hotkey")
+    check(change(63, CGEventFlags.maskSecondaryFn.rawValue) == nil, "Fn/Globe switches the input source")
+    check(change(61, CGEventFlags.maskAlternate.rawValue | 0x40, tap: 58) == nil, "either Option is the lone-tap hotkey")
+    check(change(58, CGEventFlags.maskAlternate.rawValue | 0x20, tap: 59) == .press, "Option counts when Control is the tap hotkey")
+    check(change(56, CGEventFlags.maskAlternate.rawValue | 0x20, tap: 58) == .releaseAll,
+          "the tap hotkey's Option held does not keep Shift counted")
+
+    let current = context()
+    let store = CaptureStateStore(context: current, hotkeys: HotkeyConfiguration(hotkeyModifiers: 0))
+    func capture(_ kind: CapturedInput.Kind) {
+        _ = store.capture(timestamp: 1, kind: kind, keyCode: 0, flagsRawValue: 0,
+                          isAutorepeat: false, sourcePID: 1, sourceUserData: 0)
+    }
+    capture(.character("g"))
+    store.noteModifierPress()
+    store.noteModifiersReleased()
+    check(store.snapshot().modifierPressSequence == nil, "tapped alone (a modifier that switches the layout): forgotten")
+    store.noteModifierPress()
+    capture(.boundary("!"))
+    let boundary = store.snapshot().latestPhysicalSequence
+    store.noteModifiersReleased()
+    check(store.snapshot().modifierPressSequence == boundary - 1,
+          "Shift for the boundary itself (\"!\") stays before it: kept after a key, does not cancel")
+    let plan = CorrectionPlan(
+        boundarySequence: boundary, contextEpoch: current.epoch, targetPID: current.frontmostPID,
+        editGeneration: store.snapshot().editGeneration, correctionEpoch: 0, deleteCount: 7,
+        replacementText: "привет!", originalText: "ghbdtn", correctedText: "привет", boundaryText: "!",
+        originalLayout: .english, targetLayout: .russian
+    )
+    check(plan.isEligible(using: store.snapshot()), "a modifier pressed before the boundary does not cancel")
+    store.noteModifierPress()
+    check(!plan.isEligible(using: store.snapshot()), "one pressed after it does")
+    check(plan.isEligible(using: store.snapshot(), countingModifiers: false), "except for the switch after posting")
+
+    check(KeyboardMonitor.tapLatency(eventTimestamp: 1_000, now: 6_000) == 5_000, "callback time minus event time")
+    check(KeyboardMonitor.tapLatency(eventTimestamp: 0, now: 6_000) == nil, "no event time")
+    check(KeyboardMonitor.tapLatency(eventTimestamp: 7_000, now: 6_000) == nil, "an event time from the future")
+}
+
+/// A real corrector whose route lookup and posting are replaced.
+private final class PostRecorder {
+    private let lock = NSLock()
+    private var _posts: [(count: Int, route: AppPostMode?)] = []
+    func append(_ count: Int, _ route: AppPostMode?) { lock.lock(); _posts.append((count, route)); lock.unlock() }
+    var posts: [(count: Int, route: AppPostMode?)] { lock.lock(); defer { lock.unlock() }; return _posts }
+}
+
+run("correction race: the last check runs after the post route is resolved") {
+    let current = context()
+    func plan(_ store: CaptureStateStore) -> CorrectionPlan {
+        let latest = store.snapshot()
+        return CorrectionPlan(
+            boundarySequence: latest.latestPhysicalSequence,
+            contextEpoch: current.epoch,
+            targetPID: current.frontmostPID,
+            editGeneration: latest.editGeneration,
+            correctionEpoch: latest.correctionEpoch,
+            deleteCount: 6,
+            replacementText: "hello ",
+            originalText: "руддщ",
+            correctedText: "hello",
+            boundaryText: " ",
+            originalLayout: .russian,
+            targetLayout: nil
+        )
+    }
+    func capture(_ store: CaptureStateStore, _ kind: CapturedInput.Kind) {
+        _ = store.capture(timestamp: 1, kind: kind, keyCode: 0, flagsRawValue: 0,
+                          isAutorepeat: false, sourcePID: 1, sourceUserData: 0)
+    }
+    /// `typesDuringLookup`: a key the tap reports while the route is looked up.
+    func corrector(_ store: CaptureStateStore, _ posted: PostRecorder, typesDuringLookup: Bool) -> TextCorrector {
+        TextCorrector(
+            layoutSwitchQueue: DispatchQueue(label: "test.race.layout-switch"),
+            frontmostPID: { current.frontmostPID },
+            layoutSwitch: { _ in },
+            postRoute: { _ in
+                if typesDuringLookup { capture(store, .character("\"")) }
+                return .session
+            },
+            eventPoster: { events, route, _ in posted.append(events.count, route) }
+        )
+    }
+
+    var store = CaptureStateStore(context: current, hotkeys: HotkeyConfiguration(hotkeyModifiers: 0))
+    capture(store, .boundary(" "))
+    var posted = PostRecorder()
+    check(corrector(store, posted, typesDuringLookup: false).apply(plan(store), latestCaptureState: store.snapshot),
+          "nothing typed: applied")
+    check(posted.posts.count == 1 && posted.posts[0].count == 24 && posted.posts[0].route == .session,
+          "6 deletes and 6 characters, down and up, on the looked-up route")
+
+    store = CaptureStateStore(context: current, hotkeys: HotkeyConfiguration(hotkeyModifiers: 0))
+    capture(store, .boundary(" "))
+    posted = PostRecorder()
+    check(!corrector(store, posted, typesDuringLookup: true).apply(plan(store), latestCaptureState: store.snapshot),
+          "a key reported during the lookup cancels the correction")
+    check(posted.posts.isEmpty, "and nothing is posted, got \(posted.posts.count)")
+
+    // The revert hotkey's inverse goes through the same order.
+    store = CaptureStateStore(context: current, hotkeys: HotkeyConfiguration(hotkeyModifiers: 0))
+    capture(store, .boundary(" "))
+    posted = PostRecorder()
+    let reverting = corrector(store, posted, typesDuringLookup: true)
+    reverting.recordUndo(plan(store))
+    capture(store, .revertHotkey)
+    let sequence = store.snapshot().latestPhysicalSequence
+    if let revert = reverting.prepareUndo(sequence: sequence, context: current, latestCaptureState: store.snapshot),
+       reverting.takeUndo(revert) {
+        check(!reverting.postUndo(revert, latestCaptureState: store.snapshot), "a key reported during the lookup cancels the revert")
+        check(posted.posts.isEmpty, "and nothing is posted, got \(posted.posts.count)")
+    } else {
+        check(false, "the revert was prepared")
+    }
+}
+
+run("correction race: Shift pressed during the post keeps the layout switch") {
+    let current = context(layout: .russian, sourceID: "com.test.russian")
+    let store = CaptureStateStore(context: current, hotkeys: HotkeyConfiguration(hotkeyModifiers: 0))
+    let switched = SelectionLog()
+    let layoutQueue = DispatchQueue(label: "test.race.post-switch")
+    let corrector = TextCorrector(
+        layoutSwitchQueue: layoutQueue,
+        frontmostPID: { current.frontmostPID },
+        layoutSwitch: { switched.append($0.rawValue) },
+        postRoute: { _ in .session },
+        // Shift goes down for the next capital while the events are posted: no key yet.
+        eventPoster: { _, _, _ in store.noteModifierPress() }
+    )
+    _ = store.capture(timestamp: 1, kind: .boundary(" "), keyCode: 49, flagsRawValue: 0,
+                      isAutorepeat: false, sourcePID: 1, sourceUserData: 0)
+    let latest = store.snapshot()
+    check(corrector.apply(CorrectionPlan(
+        boundarySequence: latest.latestPhysicalSequence, contextEpoch: current.epoch,
+        targetPID: current.frontmostPID, editGeneration: latest.editGeneration,
+        correctionEpoch: latest.correctionEpoch, deleteCount: 6, replacementText: "hello ",
+        originalText: "руддщ", correctedText: "hello", boundaryText: " ",
+        originalLayout: .russian, targetLayout: .english
+    ), latestCaptureState: store.snapshot), "applied")
+    layoutQueue.sync {}
+    check(switched.converted == [Layout.english.rawValue], "the next word is typed in the new layout, got \(switched.converted)")
+}
+
+run("correction race: a key made before or during the post is reported once") {
+    let post = CorrectionPost(boundarySequence: 5, startedAt: 1_000, endedAt: 2_000, route: .session)
+    check(TextCorrector.race(of: 999, with: post) == .before, "made before the first event")
+    check(TextCorrector.race(of: 1_500, with: post) == .during, "made inside the burst")
+    check(TextCorrector.race(of: 2_000, with: post) == nil, "made after the last event")
+    check(TextCorrector.race(of: 0, with: post) == nil, "no event time")
+    var posting = post
+    posting.endedAt = nil
+    check(TextCorrector.race(of: 5_000, with: posting) == .during, "still posting")
+
+    let current = context()
+    let store = CaptureStateStore(context: current, hotkeys: HotkeyConfiguration(hotkeyModifiers: 0))
+    let corrector = TextCorrector(
+        layoutSwitchQueue: DispatchQueue(label: "test.race.report"),
+        frontmostPID: { current.frontmostPID },
+        layoutSwitch: { _ in },
+        postRoute: { _ in nil },
+        eventPoster: { _, _, _ in }
+    )
+    _ = store.capture(timestamp: 1, kind: .boundary(" "), keyCode: 49, flagsRawValue: 0,
+                      isAutorepeat: false, sourcePID: 1, sourceUserData: 0)
+    let latest = store.snapshot()
+    let applied = corrector.apply(CorrectionPlan(
+        boundarySequence: latest.latestPhysicalSequence, contextEpoch: current.epoch,
+        targetPID: current.frontmostPID, editGeneration: latest.editGeneration,
+        correctionEpoch: latest.correctionEpoch, deleteCount: 6, replacementText: "hello ",
+        originalText: "руддщ", correctedText: "hello", boundaryText: " ",
+        originalLayout: .russian, targetLayout: nil
+    ), latestCaptureState: store.snapshot)
+    check(applied, "applied")
+    let boundary = latest.latestPhysicalSequence
+    check(corrector.race(ofInput: boundary, timestamp: 1) == nil, "the boundary itself did not race")
+    let raced = corrector.race(ofInput: boundary + 1, timestamp: 1)
+    check(raced?.1 == .before && raced?.0.route == nil, "a key made before the post, got \(String(describing: raced?.1))")
+    check(corrector.race(ofInput: boundary + 2, timestamp: 1) == nil, "reported once per post")
 }
 
 if CommandLine.arguments.contains("--integration-smoke") {
