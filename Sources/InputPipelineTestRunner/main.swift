@@ -909,6 +909,18 @@ run("caret word extraction") {
     check(word("123") == nil, "a word needs a letter")
     check(word("ghbdtné") == nil, "a character no layout can type rejects the word")
     check(word(String(repeating: "a", count: 65)) == nil, "a word over 64 characters is rejected")
+    // The backslash is the Ukrainian apostrophe key (ʼ): inside a word only between letters.
+    check(word("g\\znybwz") == "g\\znybwz", "the apostrophe key between letters stays in the word")
+    check(word("це пʼятниця") == "пʼятниця", "the apostrophe itself is a word character")
+    check(word("\\ghbdtn") == "ghbdtn", "a leading backslash ends the word")
+    check(word("ghbdtn\\") == nil, "nothing after a trailing backslash")
+    check(word("j,\\'rn") == "j,\\'rn", "letter keys around the apostrophe key count as letters")
+    check(word("C:\\dir\\ghbdtn") == "ghbdtn", "a path separates at the last backslash")
+    check(word("src/dir\\ghbdtn") == "ghbdtn", "a path after a slash separates too")
+    check(word("src/g\\znybwz") == "g\\znybwz", "an apostrophe word after a slash stays whole")
+    check(word("x\\\\znybwz") == "znybwz", "a doubled backslash does not join")
+    check(word("it\\ghbdtn") == "ghbdtn", "the key before a letter other than я ю є ї separates")
+    check(word("ghbdtn", next: "\\") == "ghbdtn", "a backslash after the caret does not join")
 }
 
 run("100,000 event stress") {
@@ -2703,10 +2715,16 @@ run("layout switch after a correction: rechecked on main") {
     check(!TextCorrector.mayFinishLayoutSwitch(for: plan, latest: store.snapshot(), frontmostPID: pid + 1), "another app in front: no switch")
     check(!TextCorrector.mayFinishLayoutSwitch(for: plan, latest: store.snapshot(), frontmostPID: nil), "no app in front: no switch")
     _ = store.capture(
-        timestamp: 1, kind: .character("g"), keyCode: 0, flagsRawValue: 0,
+        timestamp: 1, kind: .revertHotkey, keyCode: 0, flagsRawValue: 0,
         isAutorepeat: false, sourcePID: 1, sourceUserData: 0
     )
-    check(TextCorrector.mayFinishLayoutSwitch(for: plan, latest: store.snapshot(), frontmostPID: pid), "typing on does not cancel the switch")
+    check(TextCorrector.mayFinishLayoutSwitch(for: plan, latest: store.snapshot(), frontmostPID: pid), "a hotkey edits nothing: switch")
+    let typedOn = CaptureStateStore(context: context(), hotkeys: HotkeyConfiguration(hotkeyModifiers: 0))
+    _ = typedOn.capture(
+        timestamp: 1, kind: .character("\""), keyCode: 19, flagsRawValue: 0,
+        isAutorepeat: false, sourcePID: 1, sourceUserData: 0
+    )
+    check(!TextCorrector.mayFinishLayoutSwitch(for: plan, latest: typedOn.snapshot(), frontmostPID: pid), "a key typed before the switch ran was typed in the old layout: no switch")
     _ = store.capture(
         timestamp: 2, kind: .focusMayChange, keyCode: 0, flagsRawValue: 0,
         isAutorepeat: false, sourcePID: 1, sourceUserData: 0
@@ -2775,6 +2793,20 @@ run("layout switch after a correction: queued, rechecked and superseded") {
     gate.signal()
     settle()
     check(switched.converted == ["russian", "english"], "the focus changed before it ran: no switch, got \(switched.converted)")
+
+    // A quote typed while the switch waits went to the old layout; switching now would
+    // type the next quote in the new one.
+    let typing = CaptureStateStore(context: context(), hotkeys: HotkeyConfiguration(hotkeyModifiers: 0))
+    let waiting = DispatchSemaphore(value: 0)
+    queue.async { waiting.wait() }
+    corrector.finishLayoutSwitch(to: .english, after: plan(to: .english), latestCaptureState: typing.snapshot)
+    _ = typing.capture(
+        timestamp: 1, kind: .character("\""), keyCode: 19, flagsRawValue: 0,
+        isAutorepeat: false, sourcePID: 1, sourceUserData: 0
+    )
+    waiting.signal()
+    settle()
+    check(switched.converted == ["russian", "english"], "a key typed before it ran: no switch, got \(switched.converted)")
 }
 
 run("revert screen check: a hotkey correction (no boundary)") {

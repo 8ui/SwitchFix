@@ -98,9 +98,14 @@ private func tokenize(_ sentence: String, language: Layout) -> [String] {
         for (index, ch) in chars.enumerated() {
             if isLetter(ch, of: language) {
                 current.append(ch)
-            } else if "'’-".contains(ch), !current.isEmpty, index + 1 < chars.count,
+            } else if "'’ʼ-".contains(ch), !current.isEmpty, index + 1 < chars.count,
                       isLetter(chars[index + 1], of: language) {
-                current.append(ch == "’" ? "'" : ch)
+                // Ukrainian-PC types the apostrophe as ʼ on the backslash key.
+                if ch == "-" {
+                    current.append(ch)
+                } else {
+                    current.append(language == .ukrainian ? "ʼ" : "'")
+                }
             } else {
                 tainted = true
             }

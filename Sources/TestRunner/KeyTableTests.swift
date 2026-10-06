@@ -206,6 +206,23 @@ func runSystemKeyTableTests() {
         if let au = table("Australian", .english) { assertEqual(au, us, "Australian ≡ US") }
     }
 
+    runSuite("KeyTables: the Ukrainian apostrophe") {
+        // Ukrainian-PC: ʼ (U+02BC, a modifier letter) on the backslash key, kept by the sanitizer.
+        assertEqual(KeyTable.pcUkrainian.keyToChar[KeyStroke(42)], "ʼ")
+        assertEqual(LayoutMapper.convert("g\\znybwz", from: .english, to: .ukrainian), "пʼятниця")
+        assertEqual(LayoutMapper.convert("пʼятниця", from: .ukrainian, to: .english), "g\\znybwz")
+        var raw = KeyTable.pcUkrainian.keyToChar
+        raw[KeyStroke(42, shift: true)] = "₴"
+        assertEqual(KeyTableBuilder.sanitized(raw, layout: .ukrainian)?.keyToChar[KeyStroke(42)], "ʼ")
+        var russian = KeyTable.pcRussian.keyToChar
+        russian[KeyStroke(42)] = "ʼ"
+        assertEqual(KeyTableBuilder.sanitized(russian, layout: .russian)?.keyToChar[KeyStroke(42)], nil, "not a Russian letter")
+        assertEqual(KeyTable.pcRussian.keyToChar[KeyStroke(42)], nil, "RussianWin unchanged")
+        if let system = table("Ukrainian-PC", .ukrainian) {
+            assertEqual(system.keyToChar[KeyStroke(42)], "ʼ", "system Ukrainian-PC")
+        }
+    }
+
     runSuite("KeyTables: sanity overlay") {
         // RussianWin Shift+` is a Latin 'Ë' in the system data. Which key carries 'Ё'
         // depends on the keyboard type (ANSI vs ISO), so only assert what holds on both:

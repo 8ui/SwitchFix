@@ -184,6 +184,61 @@ func runNgramDetectorSuites() {
         assertEqual(hotkey.flushBuffer(boundaryCharacter: nil)?.convertedWord, "-к", "the hotkey converts a flag")
     }
 
+    runSuite("NgramDetector: the Ukrainian apostrophe key") {
+        // Ukrainian-PC puts ʼ on the backslash key.
+        let uk: Set<Layout> = [.english, .ukrainian]
+        assertEqual(detectNgram("g\\znybwz", current: .english, allowed: uk)?.convertedWord, "пʼятниця")
+        assertEqual(detectNgram("j,\\'rn", current: .english, allowed: uk)?.convertedWord, "обʼєкт")
+        assertEqual(detectNgram("пʼятниця", current: .ukrainian, allowed: uk)?.convertedWord, nil, "typed right: stays")
+        // Paths and escapes stay, transparently.
+        let ru: Set<Layout> = [.english, .russian]
+        for (words, allowed) in [
+            (["C:\\Users"], uk), (["C:\\Users"], ru), (["\\n"], uk), (["\\section"], uk),
+            (["path\\to\\file"], uk), (["path\\to\\file"], ru), (["dir\\ghbdtn"], ru),
+            (["\\\\server"], uk), (["\\\\server"], ru), (["ghbdtn\\"], uk),
+        ] {
+            let detector = ngramDetector(current: .english, allowed: allowed)
+            let recorder = MockDetectorDelegate()
+            detector.delegate = recorder
+            for word in words {
+                detector.addCharacter(word)
+                detector.flushBuffer(boundaryCharacter: " ")
+            }
+            assert(recorder.results.isEmpty, "\(words.joined(separator: " ")) must stay, got \(recorder.results.map(\.convertedWord))")
+        }
+        // Where the key types a backslash (RussianWin) it works at an edge as before.
+        assertEqual(detectNgram("ghbdtn\\", current: .english, allowed: ru)?.convertedWord, "привет\\")
+        assertEqual(detectNgram("\\ghbdtn", current: .english, allowed: ru)?.convertedWord, "\\привет")
+        assertEqual(detectNgram("g\\znybwz", current: .english, allowed: ru)?.convertedWord, nil, "no Ukrainian: no apostrophe")
+        // Russian and Ukrainian without history: only the target the key fits is tried.
+        assertEqual(detectNgram("g\\znybwz", current: .english, allowed: [.english, .russian, .ukrainian])?.convertedWord, "пʼятниця")
+        assertEqual(detectNgram("ghbdsn\\", current: .english, allowed: [.english, .russian, .ukrainian])?.convertedWord, nil, "not to Russian")
+        // Russian and Ukrainian, Russian typed last: the target types a backslash — no 'п\ятниця'.
+        let both = ngramDetector(current: .russian, allowed: [.english, .russian, .ukrainian])
+        both.currentLayout = .english
+        both.addCharacter("g\\znybwz")
+        assertEqual(both.flushBuffer(boundaryCharacter: " ")?.convertedWord, nil, "Russian target: stays")
+        // The old Apple Ukrainian layout types ґ on the backslash key: no apostrophe there.
+        var legacy = KeyTable.pcUkrainian.keyToChar
+        legacy[KeyStroke(42)] = "ґ"
+        legacy[KeyStroke(42, shift: true)] = "Ґ"
+        legacy[KeyStroke(50)] = "'"
+        legacy[KeyStroke(50, shift: true)] = "~"
+        let legacyTables = KeyboardTables([
+            .english: [KeyboardTables.pc.primary(for: .english)],
+            .russian: KeyboardTables.pc.candidates(for: .russian),
+            .ukrainian: [KeyTable(keyToChar: legacy)],
+        ])
+        let onLegacy = ngramDetector(current: .english, allowed: uk)
+        onLegacy.keyboardTables = legacyTables
+        onLegacy.addCharacter("g\\znybwz")
+        assertEqual(onLegacy.flushBuffer(boundaryCharacter: " ")?.convertedWord, nil, "ґ on the backslash key: stays")
+        // The hotkey (no boundary) still converts.
+        let hotkey = ngramDetector(current: .english, allowed: uk)
+        hotkey.addCharacter("ghbdtn\\")
+        assert(hotkey.flushBuffer(boundaryCharacter: nil) != nil, "the hotkey converts a backslash token")
+    }
+
     runSuite("NgramDetector: index expressions stay") {
         for words in [["obj[0]"], ["w[1]"], ["x[0]."], ["arr[12]"], ["m{1}"], ["print", "a[0],", "b[1]"], ["a[0]"]] {
             let detector = ngramDetector(current: .english, allowed: [.english, .russian])

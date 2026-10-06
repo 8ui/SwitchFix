@@ -76,12 +76,38 @@ public class LayoutMapper {
     public static func canBeTyped(_ text: String, on layout: Layout) -> Bool {
         let keys: [Character: Character]
         switch layout {
-        case .english: keys = PCLayoutData.enToRu
+        case .english: keys = PCLayoutData.enToRu.merging(PCLayoutData.enToUkStandard) { current, _ in current }
         case .russian: keys = ruToEn
         case .ukrainian: keys = ukStandardToEn.merging(ukLegacyToEn) { current, _ in current }
         }
         return text.contains(where: \.isLetter)
             && text.allSatisfy { keys[$0] != nil || $0 == "'" || $0 == "’" || $0 == "-" }
+    }
+
+    /// What the backslash key, typed on the English layout, types on `layout`'s primary table:
+    /// the apostrophe ʼ on Ukrainian-PC, ґ on the old Apple Ukrainian layout, `\` on RussianWin.
+    public static func backslashKey(on layout: Layout, tables: KeyboardTables = .pc) -> Character? {
+        convert("\\", from: .english, to: layout, tables: tables).first
+    }
+
+    public static func isApostrophe(_ character: Character?) -> Bool {
+        character == "ʼ" || character == "'" || character == "’"
+    }
+
+    /// Whether the backslash key between `before` and `after`, typed on the English layout,
+    /// is the Ukrainian apostrophe: the Ukrainian table types an apostrophe on it, a letter key
+    /// is before it (comma → б counts) and я, ю, є or ї after it, the only letters that follow
+    /// ʼ (`g\znybwz` → пʼятниця). Paths and escapes (`C:\Users`, `dir\file`, `\n`) do not
+    /// match; the rare ones that do (`it\'s`) are left to the model.
+    public static func isUkrainianApostropheJoin(before: Character, after: Character, tables: KeyboardTables = .pc) -> Bool {
+        func ukrainian(_ character: Character) -> Character? {
+            convert(String(character), from: .english, to: .ukrainian, tables: tables).first
+        }
+        guard isApostrophe(backslashKey(on: .ukrainian, tables: tables)),
+              before != "\\",
+              before.isLetter || ukrainian(before)?.isLetter == true,
+              let next = ukrainian(after)?.lowercased().first else { return false }
+        return "яюєї".contains(next)
     }
 
     /// Convert through the physical key: `from`'s key for each character, then the
