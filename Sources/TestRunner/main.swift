@@ -34,6 +34,14 @@ if CommandLine.arguments.contains("--threshold-sweep") {
     exit(0)
 }
 
+// `--layout-eval-real-tables`: report-only eval on the installed keyboard layouts.
+if CommandLine.arguments.contains("--layout-eval-real-tables") {
+    runRealTableLayoutEval()
+    print("\n========================================")
+    print("Results: \(passed) passed, \(failed) failed")
+    exit(failed > 0 ? 1 : 0)
+}
+
 // `--layout-eval-only`: run just the real-text layout-detection eval (plan/005).
 if CommandLine.arguments.contains("--layout-eval-only") {
     runLayoutEvalSuites()
