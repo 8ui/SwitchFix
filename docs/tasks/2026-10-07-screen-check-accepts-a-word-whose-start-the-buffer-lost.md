@@ -3,9 +3,9 @@ id: 2026-10-07-screen-check-accepts-a-word-whose-start-the-buffer-lost
 title: Screen check accepts a word whose start the buffer lost
 type: bug
 pipeline: minimal
-phase: review
+phase: done
 created: 2026-10-07
-updated: 2026-10-07
+updated: 2026-10-08
 blocked_by: null
 steps_done: 3
 steps_total: 3
@@ -13,8 +13,8 @@ step_current: null
 artifacts:
   spec: null
   plan: null
-  branch: null
-  pr: null
+  branch: claude/word-start-screen-check
+  pr: "https://github.com/8ui/SwitchFix/pull/27"
 ---
 
 ## Context
@@ -42,6 +42,9 @@ artifacts:
 - 2026-10-07: verify: `swift run -c release TestRunner` → exit 0 ✅
 - 2026-10-07: verify: `swift run -c release InputPipelineTestRunner` → exit 0 ✅
 - 2026-10-07: code-review (general-purpose, opus): Medium — откат коррекции выделения внутри слова (приdtn→привет) отказывал → requiresWordStart только для коррекций (kind == .correction), тест + мутация; Low — хоткей на слове, набранном внутри существующего слова, теперь отменяется (безопаснее, оставлено); Low — autocorrected с потерянным префиксом → долг; добавлены тесты NBSP, decomposed, selection accept/require
+- 2026-10-08: artifacts.branch = claude/word-start-screen-check; artifacts.pr = https://github.com/8ui/SwitchFix/pull/27
+- 2026-10-08: verify: `CI зелёный: https://github.com/8ui/SwitchFix/actions/runs/37747485093 (push 3689d0d, включает код 1de67dd)` → exit 0 ✅
+- 2026-10-08: CI зелёный, PR #27 открыт (https://github.com/8ui/SwitchFix/pull/27)
 
 ## Decisions
 
@@ -171,6 +174,12 @@ artifacts:
   
   Building for production...
   Build complete! (0,19 с)
+  ```
+
+- 2026-10-08 · `CI зелёный: https://github.com/8ui/SwitchFix/actions/runs/37747485093 (push 3689d0d, включает код 1de67dd)` · exit 0 ✅
+
+  ```
+  (без вывода)
   ```
 
 ## Handoff
