@@ -825,7 +825,8 @@ public final class InputEngine {
                         boundary: check.boundary,
                         probe: probe,
                         final: final,
-                        selection: check.selectionHandling
+                        selection: check.selectionHandling,
+                        requiresWordStart: check.kind == .correction
                     )
                     if case .replaced = verdict, !check.acceptsReplacement {
                         verdict = .mismatch
@@ -834,7 +835,8 @@ public final class InputEngine {
                     // selection or a changed word will not turn back into it.
                     if verdict == .mismatch, check.retriesMismatch, !final, !shadow,
                        let shown = Self.textBefore(probe, selection: check.selectionHandling),
-                       ScreenVerification.verdict(word: check.word, boundary: check.boundary, probe: shown, final: true) == .mismatch {
+                       ScreenVerification.verdict(word: check.word, boundary: check.boundary, probe: shown, final: true,
+                                                  requiresWordStart: check.kind == .correction) == .mismatch {
                         verdict = .retry
                     }
                     // A field a whole word behind can look autocorrected (its previous word):
