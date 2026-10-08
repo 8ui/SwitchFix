@@ -74,16 +74,19 @@ public enum ScreenVerification {
     ///   - boundary: the typed boundary after it ("" for the hotkey).
     ///   - final: the retry deadline has passed; the verdict is never `retry`.
     ///   - selection: what a selection after the caret means (see `ScreenSelectionHandling`).
+    ///   - requiresWordStart: a letter right before the word cancels (`startsWord`). Off for a
+    ///     revert: the corrected text of a selection conversion may sit inside a word.
     public static func verdict(
         word: String,
         boundary: String,
         probe: FieldTextProbe,
         final: Bool,
-        selection: ScreenSelectionHandling = .refuse
+        selection: ScreenSelectionHandling = .refuse,
+        requiresWordStart: Bool = true
     ) -> ScreenVerdict {
         if selection == .require {
             // Only a suggestion is trusted: anything else cancels instead of failing open.
-            let verdict = self.verdict(word: word, boundary: boundary, probe: probe, final: final, selection: .accept)
+            let verdict = self.verdict(word: word, boundary: boundary, probe: probe, final: final, selection: .accept, requiresWordStart: requiresWordStart)
             switch verdict {
             case .matchBeforeSelection, .retry: return verdict
             default: return .mismatch
@@ -94,7 +97,7 @@ public enum ScreenVerification {
             guard selection == .accept else { return .mismatch }
             // The text before it may have been unreadable for now (a timeout).
             guard let before else { return final ? .mismatch : .retry }
-            switch verdict(word: word, boundary: boundary, probe: .text(before: before, atTextStart: atTextStart), final: final) {
+            switch verdict(word: word, boundary: boundary, probe: .text(before: before, atTextStart: atTextStart), final: final, requiresWordStart: requiresWordStart) {
             case .match:
                 // Only the exact text: a word missing its trailing space at the deadline would
                 // make the extra Backspace delete the character before it.
@@ -111,7 +114,9 @@ public enum ScreenVerification {
         case .text(let before, let atTextStart):
             let field = folded(before)
             let expected = folded(word + boundary)
-            if field.hasSuffix(expected) { return .match }
+            if field.hasSuffix(expected) {
+                return !requiresWordStart || startsWord(field: field, length: expected.count) ? .match : .mismatch
+            }
             // Nothing before the caret: the app has not handled the keys yet, or the element
             // is not the field (a container reporting an empty range). Never proof of a change.
             if field.isEmpty { return final ? .unknown : .retry }
@@ -127,10 +132,23 @@ public enum ScreenVerification {
             // (autocorrect, a prediction) would have changed the word by now.
             if !boundary.isEmpty, boundary.allSatisfy(\.isWhitespace),
                field.hasSuffix(folded(word)) {
-                return .match
+                return !requiresWordStart || startsWord(field: field, length: word.count) ? .match : .mismatch
             }
             return .mismatch
         }
+    }
+
+    /// Whether the field's last `length` characters start a word: a letter right before them
+    /// means the buffer lost the word's start (it was reset mid-word, e.g. by a focus change
+    /// the app reports as typing begins), and converting the rest would leave a mangled word
+    /// (руддщ → рello). A character the window cut off is not known, so it does not count.
+    private static func startsWord(field: [String], length: Int) -> Bool {
+        guard field.count > length else { return true }
+        return !isLetter(field[field.count - length - 1])
+    }
+
+    private static func isLetter(_ character: String) -> Bool {
+        character.unicodeScalars.first?.properties.isAlphabetic ?? false
     }
 
     /// How many characters to delete when the field shows an autocorrection of `word`

@@ -2176,7 +2176,28 @@ run("screen verification: verdict") {
     check(verdict("ghbdtn", .text(before: "a ghbdth"), boundary: "") == .mismatch, "the hotkey has no boundary to anchor on")
     check(verdict("ie ww", .text(before: "a ie wx ")) == .mismatch, "a merged pair is never re-cut")
     check(verdict("helo", .text(before: "hello ")) == .mismatch, "a short word is not matched by similarity")
-    check(verdict("ghbdtn", .text(before: "xghbdtn ")) == .match, "only the deleted tail matters")
+    check(verdict("уддщ", .text(before: "руддщ ")) == .mismatch,
+          "a letter right before the word: the buffer lost the word's start (руддщ → рello)")
+    check(verdict("ghbdtn", .text(before: "xghbdtn ")) == .mismatch, "also in Latin")
+    check(verdict("уддщ", .text(before: "руддщ"), final: true) == .mismatch,
+          "also for a word whose trailing space the editor hides")
+    check(verdict("ujnjdj", .text(before: "ya xujnjdj"), boundary: "") == .mismatch, "and for the hotkey")
+    check(verdict("ghbdtn", .text(before: "2ghbdtn ")) == .match, "a digit before the word is not part of it")
+    check(verdict("ghbdtn", .text(before: "(ghbdtn ")) == .match, "punctuation before the word")
+    check(verdict("ghbdtn", .text(before: "ghbdtn "), boundary: " ") == .match, "the whole field is the word")
+    check(verdict(",kj", .text(before: "x ,kj ")) == .match, "a word starting with a punctuation-key letter")
+    check(verdict("ghbdtn", .text(before: "\u{00A0}ghbdtn ")) == .match, "an NBSP before the word")
+    check(verdict("ghbdtn", .text(before: "ghbdtn ", atTextStart: true)) == .match, "the field is the word")
+    check(verdict("ghbdtn", .text(before: "e\u{0301}ghbdtn ")) == .mismatch, "a decomposed accented letter is a letter")
+    check(ScreenVerification.verdict(word: "вет", boundary: "", probe: .text(before: "привет"), final: false,
+                                     requiresWordStart: false) == .match,
+          "a revert may delete a selection conversion inside a word")
+    check(ScreenVerification.verdict(word: "ghbdtn", boundary: " ", probe: .selection(length: 3, before: "xghbdtn "),
+                                     final: false, selection: .accept) == .mismatch,
+          "a letter before the word cancels before an inline suggestion too")
+    check(ScreenVerification.verdict(word: "ghbdtn", boundary: " ", probe: .selection(length: 3, before: "xghbdtn "),
+                                     final: false, selection: .require) == .mismatch,
+          "and when a suggestion is required")
     check(verdict("ghbdtn", .text(before: "x ")) == .mismatch, "unrelated text")
     check(verdict("ghbdtn", .text(before: "ghbdtn")) == .retry, "the app has not handled the space yet")
     check(verdict("ghbdtn", .text(before: "ghb")) == .retry, "accessibility text lags behind typing")
@@ -2267,6 +2288,10 @@ run("screen check: corrects only what the field still shows") {
     harness = screenChecked(.text(before: "привет "), emits: false)
     check(harness.emitted.count == 0, "the field replaced the word (autocorrect, prediction)")
     check(harness.screen?.queries == 1, "a changed word is decided at once, got \(harness.screen?.queries ?? -1)")
+
+    harness = screenChecked(.text(before: "old xghbdtn "), emits: false)
+    check(harness.emitted.count == 0, "the buffer lost the word's start (reset mid-word): not corrected")
+    check(harness.screen?.queries == 1, "a word with a letter before it is decided at once, got \(harness.screen?.queries ?? -1)")
 
     harness = screenChecked(.unavailable(transient: false), emits: true)
     check(harness.emitted.count == 1, "no readable field: corrected as before")
@@ -2566,6 +2591,14 @@ run("revert screen check: the field still shows the correction") {
     check(waitUntil { harness.lexicon.rule(for: "ghbdtn", sourceLayout: .english) == .neverCorrect }, "and learned")
     check(harness.screen?.queries == 2, "one read for the correction, one for the revert, got \(harness.screen?.queries ?? -1)")
     check(harness.screen?.windows.last == "привет ".utf16.count + 6, "reads the corrected text, got \(harness.screen?.windows ?? [])")
+}
+
+run("revert screen check: a letter before the corrected text does not refuse it") {
+    // A selection conversion may sit inside a word (приdtn → привет): its revert deletes
+    // only the converted part.
+    var harness = revertHarness([.text(before: "xпривет ")])
+    harness.send(.revertHotkey)
+    check(waitUntil { harness.reverted.count == 1 }, "reverted")
 }
 
 run("revert screen check: a changed field is not deleted and not converted") {
